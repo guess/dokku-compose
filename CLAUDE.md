@@ -34,15 +34,28 @@ scripts/release.sh 0.2.0
 
 **Library modules** (`lib/`): Each file maps to one Dokku command namespace and exports `ensure_*()` / `destroy_*()` functions:
 
-- `core.sh` — Logging (colored), `dokku_cmd()` wrapper, global state
+- `core.sh` — Logging (colored), `dokku_cmd()` wrapper, helper functions (`dokku_set_properties`, `dokku_set_list`, `dokku_set_property`)
 - `yaml.sh` — YAML parsing helpers wrapping `yq`
-- `apps.sh` — App creation, domains, vhosts
+- `apps.sh` — App creation/destruction
+- `domains.sh` — Domain configuration, vhost enable/disable
 - `services.sh` — Generic handler for all service plugins (postgres, redis, mongo, etc.)
 - `plugins.sh` — Plugin installation
 - `network.sh` — Shared Docker networks
-- `ports.sh`, `certs.sh`, `nginx.sh`, `config.sh`, `builder.sh`, `dokku.sh` — Remaining namespaces
+- `proxy.sh` — Proxy enable/disable
+- `ports.sh` — Port mappings
+- `certs.sh` — SSL certificates
+- `storage.sh` — Persistent storage mounts
+- `nginx.sh` — Nginx properties
+- `checks.sh` — Zero-downtime deploy checks
+- `logs.sh` — Log management
+- `registry.sh` — Registry management
+- `scheduler.sh` — Scheduler selection
+- `config.sh` — Environment variables
+- `builder.sh` — Dockerfile builder, app.json path
+- `docker_options.sh` — Per-phase Docker options
+- `dokku.sh` — Dokku version check, installation
 
-**Execution flow for `up`:** Version check → Plugins → Networks → Per-app configuration (create app → services → networks → ports → certs → nginx → env vars → builder).
+**Execution flow for `up`:** Version check → Plugins → Networks → Services → Per-app configuration (create app → domains → services → networks → proxy → ports → certs → storage → nginx → checks → logs → registry → scheduler → env vars → builder → docker options).
 
 **Idempotency pattern:** Every `ensure_*` function queries current Dokku state via `dokku_cmd_check()` before acting. If state already matches, it logs "already configured" and skips. `dokku_cmd_check()` is for read-only queries (not logged in tests); `dokku_cmd()` is for mutations (logged and asserted in tests).
 
@@ -63,6 +76,6 @@ Tests use BATS (Bash Automated Testing System), installed as git submodules unde
 - 4-space indentation
 - Module functions follow `ensure_<feature>(app)` / `destroy_<feature>(app)` naming
 - Service naming convention: `{app}-{plugin}` (e.g., "api-postgres")
-- YAML access uses `yaml_get`, `yaml_app_get`, `yaml_app_list`, `yaml_app_has` helpers
+- YAML access uses `yaml_get`, `yaml_app_get`, `yaml_app_list`, `yaml_app_has`, `yaml_app_map_keys`, `yaml_app_map_get` helpers
 - Global state: `DOKKU_COMPOSE_DRY_RUN`, `DOKKU_COMPOSE_ERRORS`, `DOKKU_COMPOSE_FAIL_FAST`
 - Remote execution via `DOKKU_HOST` env var (SSH transport)
