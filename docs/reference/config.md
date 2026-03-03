@@ -4,31 +4,36 @@ Dokku docs: https://dokku.com/docs/configuration/environment-variables/
 
 Module: `lib/config.sh`
 
+## How It Works
+
+dokku-compose only manages env vars that match a configured prefix (default `APP_`). This keeps your YAML-declared vars separate from vars injected by Dokku itself — things like `DATABASE_URL` from linked services are never touched.
+
+When you run `up`:
+
+1. **Set** — vars in your `env:` map are set on the app (or globally)
+2. **Converge** — any existing vars matching the prefix that are *not* in your YAML are automatically unset
+
+This means removing a var from your YAML and re-running `up` will clean it up. Vars outside the prefix are always left alone.
+
+Values containing `${VAR}` are resolved from your shell environment at runtime via `envsubst`.
+
 ## YAML Keys
 
-### App Environment (`apps.<app>.env`)
+### Env Prefix (`dokku.env_prefix`)
 
-Set environment variables for an app. Only vars matching the configured prefix (default `APP_`) are managed — non-matching vars are warned and skipped. Values containing `${VAR}` are resolved from your shell environment at runtime via `envsubst`.
+Controls the prefix for managed env vars. Only vars starting with this prefix are set, unset, or converged.
+
+Defaults to `"APP_"` if not configured.
 
 ```yaml
-apps:
-  api:
-    env:                        # set env vars, unset orphaned prefixed vars
-      APP_ENV: production
-      APP_SECRET: "${SECRET_KEY}"
-
-  legacy:
-    env: false                  # unset all prefixed vars
-
-  other:
-    # env key absent — no change
+dokku:
+  env_prefix: "MYCO_"          # manage vars starting with MYCO_
 ```
 
-| Value | Dokku Commands |
-|-------|----------------|
-| `{map}` | `config:set --no-restart <app> KEY=VAL...`<br>`config:unset --no-restart <app> <orphaned>...` |
-| `false` | `config:unset --no-restart <app> <all-prefixed-vars>...` |
-| absent | no action |
+| Config | Behavior |
+|--------|----------|
+| Not configured | Default prefix `APP_` |
+| `"CUSTOM_"` | Manage vars starting with `CUSTOM_` |
 
 ### Global Environment (`dokku.env`)
 
@@ -47,18 +52,26 @@ dokku:
 | `false` | `config:unset --no-restart --global <all-prefixed-vars>...` |
 | absent | no action |
 
-### Env Prefix (`dokku.env_prefix`)
+### App Environment (`apps.<app>.env`)
 
-Controls which env vars dokku-compose manages. Only vars matching this prefix are set, unset, or converged. Vars that don't match the prefix (like `DATABASE_URL` injected by service links) are never touched.
-
-Defaults to `"APP_"` if not configured.
+Set environment variables for a specific app.
 
 ```yaml
-dokku:
-  env_prefix: "MYCO_"          # manage vars starting with MYCO_
+apps:
+  api:
+    env:                        # set prefixed vars, unset orphaned prefixed vars
+      APP_ENV: production
+      APP_SECRET: "${SECRET_KEY}"
+
+  legacy:
+    env: false                  # unset all prefixed vars
+
+  other:
+    # env key absent — no change
 ```
 
-| Config | Behavior |
-|--------|----------|
-| Not configured | Default prefix `APP_` |
-| `"CUSTOM_"` | Manage vars starting with `CUSTOM_` |
+| Value | Dokku Commands |
+|-------|----------------|
+| `{map}` | `config:set --no-restart <app> KEY=VAL...`<br>`config:unset --no-restart <app> <orphaned>...` |
+| `false` | `config:unset --no-restart <app> <all-prefixed-vars>...` |
+| absent | no action |
