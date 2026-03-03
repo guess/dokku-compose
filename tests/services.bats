@@ -214,13 +214,19 @@ SCRIPT
 
 # --- destroy_services ---
 
-@test "destroy_services destroys all declared service instances" {
+@test "destroy_services destroys unlinked service instances" {
     mock_dokku_exit "postgres:exists funqtion-postgres" 0
     mock_dokku_exit "redis:exists funqtion-redis" 0
     mock_dokku_exit "postgres:exists studio-postgres" 0
     mock_dokku_exit "redis:exists studio-redis" 0
     mock_dokku_exit "postgres:exists qultr-postgres" 0
     mock_dokku_exit "redis:exists qultr-redis" 0
+    mock_dokku_output "postgres:links funqtion-postgres" ""
+    mock_dokku_output "redis:links funqtion-redis" ""
+    mock_dokku_output "postgres:links studio-postgres" ""
+    mock_dokku_output "redis:links studio-redis" ""
+    mock_dokku_output "postgres:links qultr-postgres" ""
+    mock_dokku_output "redis:links qultr-redis" ""
     destroy_services
     assert_dokku_called "postgres:destroy funqtion-postgres --force"
     assert_dokku_called "redis:destroy funqtion-redis --force"
@@ -228,6 +234,26 @@ SCRIPT
     assert_dokku_called "redis:destroy studio-redis --force"
     assert_dokku_called "postgres:destroy qultr-postgres --force"
     assert_dokku_called "redis:destroy qultr-redis --force"
+}
+
+@test "destroy_services skips services still linked to apps" {
+    mock_dokku_exit "postgres:exists funqtion-postgres" 0
+    mock_dokku_exit "redis:exists funqtion-redis" 0
+    mock_dokku_exit "postgres:exists studio-postgres" 0
+    mock_dokku_exit "redis:exists studio-redis" 0
+    mock_dokku_exit "postgres:exists qultr-postgres" 0
+    mock_dokku_exit "redis:exists qultr-redis" 0
+    # funqtion-postgres still linked to an app
+    mock_dokku_output "postgres:links funqtion-postgres" "funqtion"
+    mock_dokku_output "redis:links funqtion-redis" ""
+    mock_dokku_output "postgres:links studio-postgres" ""
+    mock_dokku_output "redis:links studio-redis" ""
+    mock_dokku_output "postgres:links qultr-postgres" ""
+    mock_dokku_output "redis:links qultr-redis" ""
+    destroy_services
+    refute_dokku_called "postgres:destroy funqtion-postgres"
+    assert_dokku_called "redis:destroy funqtion-redis --force"
+    assert_dokku_called "postgres:destroy studio-postgres --force"
 }
 
 @test "destroy_services skips services that don't exist" {

@@ -219,11 +219,22 @@ destroy_services() {
         plugin=$(_service_plugin "$service")
         [[ -z "$plugin" ]] && continue
 
-        if dokku_cmd_check "${plugin}:exists" "$service"; then
-            log_action "$service" "Destroying ${plugin}"
-            dokku_cmd "${plugin}:destroy" "$service" --force
-            log_done
+        if ! dokku_cmd_check "${plugin}:exists" "$service"; then
+            continue
         fi
+
+        # Only destroy if no apps are still linked
+        local linked_apps
+        linked_apps=$(dokku_cmd "${plugin}:links" "$service" 2>/dev/null || true)
+        if [[ -n "$linked_apps" ]]; then
+            log_action "$service" "Still linked, skipping destroy"
+            log_skip
+            continue
+        fi
+
+        log_action "$service" "Destroying ${plugin}"
+        dokku_cmd "${plugin}:destroy" "$service" --force
+        log_done
     done <<< "$services"
 }
 

@@ -209,7 +209,7 @@ cmd_down() {
         fi
     done <<< "$apps"
 
-    # Phase 2: Destroy service instances
+    # Phase 2: Destroy service instances (skips services still linked to other apps)
     if type destroy_services &>/dev/null; then
         destroy_services
     fi
