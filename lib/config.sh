@@ -1,3 +1,7 @@
+# lib/config.sh — Environment variable management
+# Dokku docs: https://dokku.com/docs/configuration/environment-variables/
+# Commands: config:*
+
 #!/usr/bin/env bash
 # Dokku environment variable management
 

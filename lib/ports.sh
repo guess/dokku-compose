@@ -1,3 +1,7 @@
+# lib/ports.sh — Port mapping configuration
+# Dokku docs: https://dokku.com/docs/networking/port-management/
+# Commands: ports:*
+
 #!/usr/bin/env bash
 # Dokku port management
 

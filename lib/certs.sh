@@ -1,3 +1,7 @@
+# lib/certs.sh — SSL certificate management
+# Dokku docs: https://dokku.com/docs/configuration/ssl/
+# Commands: certs:*
+
 #!/usr/bin/env bash
 # Dokku SSL certificate management
 

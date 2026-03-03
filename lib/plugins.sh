@@ -1,3 +1,7 @@
+# lib/plugins.sh — Plugin installation and management
+# Dokku docs: https://dokku.com/docs/advanced-usage/plugin-management/
+# Commands: plugin:*
+
 #!/usr/bin/env bash
 # Dokku plugin management
 

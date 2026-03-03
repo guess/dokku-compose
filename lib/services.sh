@@ -1,3 +1,7 @@
+# lib/services.sh — Service instances, links, and custom plugin scripts
+# Dokku docs: (community service plugins — postgres, redis, mongo, etc.)
+# Commands: {plugin}:create, {plugin}:link, {plugin}:unlink, {plugin}:destroy
+
 #!/usr/bin/env bash
 # Dokku service management — top-level services with per-app links
 

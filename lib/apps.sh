@@ -1,3 +1,8 @@
+# lib/apps.sh — Application and domain management
+# Dokku docs: https://dokku.com/docs/deployment/application-management/
+#              https://dokku.com/docs/configuration/domains/
+# Commands: apps:*, domains:*
+
 #!/usr/bin/env bash
 # Dokku application management
 

@@ -1,3 +1,7 @@
+# lib/dokku.sh — Dokku version check and installation
+# Dokku docs: https://dokku.com/docs/getting-started/installation/
+# Commands: version
+
 #!/usr/bin/env bash
 # Dokku version management
 

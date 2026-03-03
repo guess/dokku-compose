@@ -1,3 +1,7 @@
+# lib/network.sh — Docker network creation and app attachment
+# Dokku docs: https://dokku.com/docs/networking/network/
+# Commands: network:*
+
 #!/usr/bin/env bash
 # Dokku network management
 

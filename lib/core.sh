@@ -1,3 +1,6 @@
+# lib/core.sh — Logging, colors, and dokku_cmd wrapper
+# Internal utility module — no direct Dokku command namespace
+
 #!/usr/bin/env bash
 # Core utilities for dokku-compose
 # Logging, colors, dokku command wrapper

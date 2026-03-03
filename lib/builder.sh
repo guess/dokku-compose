@@ -1,3 +1,9 @@
+# lib/builder.sh — Dockerfile builder and build argument configuration
+# Dokku docs: https://dokku.com/docs/deployment/builders/builder-management/
+#              https://dokku.com/docs/advanced-usage/docker-options/
+#              https://dokku.com/docs/appendices/file-formats/app-json/
+# Commands: builder-dockerfile:*, docker-options:*, app-json:*
+
 #!/usr/bin/env bash
 # Dokku Dockerfile builder configuration
 

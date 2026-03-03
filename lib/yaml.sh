@@ -1,3 +1,6 @@
+# lib/yaml.sh — YAML parsing helpers wrapping yq
+# Internal utility module — no direct Dokku command namespace
+
 #!/usr/bin/env bash
 # YAML helpers wrapping yq
 # https://github.com/mikefarah/yq

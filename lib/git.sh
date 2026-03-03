@@ -1,3 +1,7 @@
+# lib/git.sh — Git deployment (stub — deployment is out of scope)
+# Dokku docs: https://dokku.com/docs/deployment/methods/git/
+# Commands: git:* (not implemented; see design note below)
+
 #!/usr/bin/env bash
 # Dokku git deployment
 # https://dokku.com/docs/deployment/methods/git/
