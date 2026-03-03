@@ -30,9 +30,12 @@ services:
 
 apps:
   funqtion:
-    dockerfile: docker/prod/api/Dockerfile
-    app_json: docker/prod/api/app.json
-    build_dir: apps/funqtion-api
+    builder:
+      dockerfile: docker/prod/api/Dockerfile
+      app_json: docker/prod/api/app.json
+      build_dir: apps/funqtion-api
+      build_args:
+        SENTRY_AUTH_TOKEN: "test-token"
     ports:
       - "https:4001:4000"
     certs: certs/funqtion.co
@@ -41,11 +44,10 @@ apps:
       - funqtion-redis
     env:
       APP_ENV: staging
-    build_args:
-      SENTRY_AUTH_TOKEN: "test-token"
 
   studio:
-    build_dir: apps/studio-api
+    builder:
+      build_dir: apps/studio-api
     ports:
       - "https:4002:4000"
     certs: certs/strates.io
@@ -56,7 +58,8 @@ apps:
       - studio-net
 
   qultr:
-    build_dir: apps/qultr-api
+    builder:
+      build_dir: apps/qultr-api
     ports:
       - "https:4003:4000"
     certs: certs/qultr.dev
@@ -69,8 +72,9 @@ apps:
       - qultr-net
 
   qultr-sandbox:
-    dockerfile: docker/prod/sandbox/Dockerfile
-    build_dir: apps/qultr-sandbox
+    builder:
+      dockerfile: docker/prod/sandbox/Dockerfile
+      build_dir: apps/qultr-sandbox
     ports:
       - "http:4004:4000"
     networks:

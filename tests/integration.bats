@@ -66,6 +66,7 @@ teardown() {
     assert_dokku_called "config:set --no-restart funqtion"
     assert_dokku_called "builder-dockerfile:set funqtion dockerfile-path docker/prod/api/Dockerfile"
     assert_dokku_called "app-json:set funqtion appjson-path docker/prod/api/app.json"
+    assert_dokku_called "builder:set funqtion build-dir apps/funqtion-api"
 }
 
 @test "full up: idempotent when everything exists" {
