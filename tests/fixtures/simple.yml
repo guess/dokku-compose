@@ -6,9 +6,14 @@ dokku:
 networks:
   - app-net
 
+services:
+  myapp-postgres:
+    plugin: postgres
+
 apps:
   myapp:
     build_dir: apps/myapp
     ports:
       - "http:5000:5000"
-    postgres: true
+    links:
+      - myapp-postgres

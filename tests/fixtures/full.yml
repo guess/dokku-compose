@@ -11,6 +11,23 @@ networks:
   - studio-net
   - qultr-net
 
+services:
+  funqtion-postgres:
+    plugin: postgres
+    version: "17-3.5"
+    image: postgis/postgis
+  funqtion-redis:
+    plugin: redis
+    version: "7.2-alpine"
+  studio-postgres:
+    plugin: postgres
+  studio-redis:
+    plugin: redis
+  qultr-postgres:
+    plugin: postgres
+  qultr-redis:
+    plugin: redis
+
 apps:
   funqtion:
     dockerfile: docker/prod/api/Dockerfile
@@ -19,11 +36,9 @@ apps:
     ports:
       - "https:4001:4000"
     ssl: certs/funqtion.co
-    postgres:
-      version: "17-3.5"
-      image: postgis/postgis
-    redis:
-      version: "7.2-alpine"
+    links:
+      - funqtion-postgres
+      - funqtion-redis
     env:
       APP_ENV: staging
     build_args:
@@ -34,8 +49,9 @@ apps:
     ports:
       - "https:4002:4000"
     ssl: certs/strates.io
-    postgres: true
-    redis: true
+    links:
+      - studio-postgres
+      - studio-redis
     networks:
       - studio-net
 
@@ -44,8 +60,9 @@ apps:
     ports:
       - "https:4003:4000"
     ssl: certs/qultr.dev
-    postgres: true
-    redis: true
+    links:
+      - qultr-postgres
+      - qultr-redis
     nginx:
       client-max-body-size: "15m"
     networks:

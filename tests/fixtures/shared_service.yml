@@ -1,0 +1,24 @@
+dokku:
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+
+services:
+  shared-db:
+    plugin: postgres
+    version: "17"
+  shared-cache:
+    plugin: redis
+
+apps:
+  api:
+    build_dir: apps/api
+    links:
+      - shared-db
+      - shared-cache
+  worker:
+    build_dir: apps/worker
+    links:
+      - shared-db
