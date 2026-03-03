@@ -112,3 +112,85 @@ ensure_app_links() {
         fi
     done <<< "$all_services"
 }
+
+# --- Script plugin helpers ---
+
+# Get list of plugin names from dokku.plugins
+_script_plugin_names() {
+    yaml_get '.dokku.plugins | keys | .[]' 2>/dev/null || true
+}
+
+# Check if a plugin has a custom script defined
+_plugin_has_script() {
+    local plugin="$1"
+    local script
+    script=$(yaml_get ".dokku.plugins.${plugin}.script")
+    [[ -n "$script" && "$script" != "null" ]]
+}
+
+# Get the custom script path for a plugin
+_plugin_script_path() {
+    local plugin="$1"
+    local script
+    script=$(yaml_get ".dokku.plugins.${plugin}.script")
+    echo "$(_compose_file_dir)/${script}"
+}
+
+# Run a custom script for a plugin
+_run_plugin_script() {
+    local plugin="$1" app="$2" action="$3"
+
+    local script_path
+    script_path=$(_plugin_script_path "$plugin")
+
+    if [[ ! -f "$script_path" ]]; then
+        log_error "$app" "Custom script not found: $script_path"
+        return 1
+    fi
+
+    local config
+    config=$(yq eval ".apps.${app}.${plugin} | tojson" "$DOKKU_COMPOSE_FILE" 2>/dev/null || echo '{}')
+
+    SERVICE_ACTION="$action" \
+    SERVICE_APP="$app" \
+    SERVICE_CONFIG="$config" \
+        source "$script_path"
+}
+
+# --- Script plugin entry points ---
+
+ensure_app_scripts() {
+    local app="$1"
+
+    local plugins
+    plugins=$(_script_plugin_names)
+    [[ -z "$plugins" || "$plugins" == "null" ]] && return 0
+
+    while IFS= read -r plugin; do
+        [[ -z "$plugin" ]] && continue
+        _plugin_has_script "$plugin" || continue
+        yaml_app_has "$app" ".$plugin" || continue
+
+        log_action "$app" "Running $plugin script"
+        _run_plugin_script "$plugin" "$app" "up"
+        log_done
+    done <<< "$plugins"
+}
+
+destroy_app_scripts() {
+    local app="$1"
+
+    local plugins
+    plugins=$(_script_plugin_names)
+    [[ -z "$plugins" || "$plugins" == "null" ]] && return 0
+
+    while IFS= read -r plugin; do
+        [[ -z "$plugin" ]] && continue
+        _plugin_has_script "$plugin" || continue
+        yaml_app_has "$app" ".$plugin" || continue
+
+        log_action "$app" "Running $plugin script (down)"
+        _run_plugin_script "$plugin" "$app" "down"
+        log_done
+    done <<< "$plugins"
+}

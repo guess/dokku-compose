@@ -132,3 +132,60 @@ YAML
     assert_dokku_called "postgres:link shared-db api --no-restart"
     assert_dokku_called "redis:link shared-cache api --no-restart"
 }
+
+# --- ensure_app_scripts (custom script plugins) ---
+
+@test "ensure_app_scripts runs custom script for script plugins" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
+
+    local script_dir
+    script_dir=$(dirname "$DOKKU_COMPOSE_FILE")
+    mkdir -p "${script_dir}/scripts"
+    cat > "${script_dir}/scripts/letsencrypt.sh" <<'SCRIPT'
+echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
+SCRIPT
+
+    ensure_app_scripts "api"
+    assert_dokku_called "script:up:api:"
+
+    rm -rf "${script_dir}/scripts"
+}
+
+@test "ensure_app_scripts skips script plugins not configured on app" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
+
+    local script_dir
+    script_dir=$(dirname "$DOKKU_COMPOSE_FILE")
+    mkdir -p "${script_dir}/scripts"
+    cat > "${script_dir}/scripts/letsencrypt.sh" <<'SCRIPT'
+echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
+SCRIPT
+
+    ensure_app_scripts "nonexistent"
+    [[ ! -s "$DOKKU_CMD_LOG" ]]
+
+    rm -rf "${script_dir}/scripts"
+}
+
+@test "ensure_app_scripts skips non-script plugins" {
+    ensure_app_scripts "funqtion"
+    [[ ! -s "$DOKKU_CMD_LOG" ]]
+}
+
+# --- destroy_app_scripts ---
+
+@test "destroy_app_scripts runs custom script with down action" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
+
+    local script_dir
+    script_dir=$(dirname "$DOKKU_COMPOSE_FILE")
+    mkdir -p "${script_dir}/scripts"
+    cat > "${script_dir}/scripts/letsencrypt.sh" <<'SCRIPT'
+echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
+SCRIPT
+
+    destroy_app_scripts "api"
+    assert_dokku_called "script:down:api:"
+
+    rm -rf "${script_dir}/scripts"
+}
