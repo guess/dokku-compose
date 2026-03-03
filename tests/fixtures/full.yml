@@ -1,0 +1,60 @@
+dokku:
+  version: "0.35.12"
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+      version: "1.41.0"
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+
+networks:
+  - studio-net
+  - qultr-net
+
+apps:
+  funqtion:
+    dockerfile: docker/prod/api/Dockerfile
+    app_json: docker/prod/api/app.json
+    build_dir: apps/funqtion-api
+    ports:
+      - "https:4001:4000"
+    ssl: certs/funqtion.co
+    postgres:
+      version: "17-3.5"
+      image: postgis/postgis
+    redis:
+      version: "7.2-alpine"
+    env:
+      APP_ENV: staging
+    build_args:
+      SENTRY_AUTH_TOKEN: "test-token"
+
+  studio:
+    build_dir: apps/studio-api
+    ports:
+      - "https:4002:4000"
+    ssl: certs/strates.io
+    postgres: true
+    redis: true
+    networks:
+      - studio-net
+
+  qultr:
+    build_dir: apps/qultr-api
+    ports:
+      - "https:4003:4000"
+    ssl: certs/qultr.dev
+    postgres: true
+    redis: true
+    nginx:
+      client-max-body-size: "15m"
+    networks:
+      - qultr-net
+
+  qultr-sandbox:
+    dockerfile: docker/prod/sandbox/Dockerfile
+    build_dir: apps/qultr-sandbox
+    ports:
+      - "http:4004:4000"
+    networks:
+      - qultr-net
