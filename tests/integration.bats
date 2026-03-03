@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+
+setup() {
+    load 'test_helper'
+    setup_mocks
+
+    # Source all modules
+    for module in apps network plugins postgres redis ports certs nginx config builder dokku; do
+        source "${PROJECT_ROOT}/lib/${module}.sh"
+    done
+
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/full.yml"
+}
+
+teardown() {
+    teardown_mocks
+}
+
+@test "full up: creates all networks" {
+    mock_dokku_exit "network:exists studio-net" 1
+    mock_dokku_exit "network:exists qultr-net" 1
+    ensure_networks
+    assert_dokku_called "network:create studio-net"
+    assert_dokku_called "network:create qultr-net"
+}
+
+@test "full up: configures app with all features" {
+    local app="funqtion"
+
+    # Mock everything as not existing
+    mock_dokku_exit "apps:exists $app" 1
+    mock_dokku_exit "postgres:exists ${app}-db" 1
+    mock_dokku_exit "postgres:linked ${app}-db $app" 1
+    mock_dokku_exit "redis:exists ${app}-redis" 1
+    mock_dokku_exit "redis:linked ${app}-redis $app" 1
+    mock_dokku_output "ports:report $app --ports-map" ""
+
+    # Run all ensure functions (same order as configure_app)
+    ensure_app "$app"
+    ensure_vhosts_disabled "$app"
+    ensure_app_postgres "$app"
+    ensure_app_redis "$app"
+    ensure_app_ports "$app"
+    ensure_app_config "$app"
+    ensure_app_builder "$app"
+
+    # Verify key commands were called
+    assert_dokku_called "apps:create funqtion"
+    assert_dokku_called "domains:disable funqtion"
+    assert_dokku_called "postgres:create funqtion-db -I 17-3.5 -i postgis/postgis"
+    assert_dokku_called "postgres:link funqtion-db funqtion --no-restart"
+    assert_dokku_called "redis:create funqtion-redis -I 7.2-alpine"
+    assert_dokku_called "redis:link funqtion-redis funqtion --no-restart"
+    assert_dokku_called "ports:set funqtion https:4001:4000"
+    assert_dokku_called "config:set --no-restart funqtion"
+    assert_dokku_called "builder-dockerfile:set funqtion dockerfile-path docker/prod/api/Dockerfile"
+    assert_dokku_called "app-json:set funqtion appjson-path docker/prod/api/app.json"
+}
+
+@test "full up: idempotent when everything exists" {
+    local app="studio"
+
+    # Mock everything as already existing/configured
+    mock_dokku_exit "apps:exists $app" 0
+    mock_dokku_exit "postgres:exists ${app}-db" 0
+    mock_dokku_exit "postgres:linked ${app}-db $app" 0
+    mock_dokku_exit "redis:exists ${app}-redis" 0
+    mock_dokku_exit "redis:linked ${app}-redis $app" 0
+    mock_dokku_output "ports:report $app --ports-map" "https:4002:4000"
+
+    ensure_app "$app"
+    ensure_app_postgres "$app"
+    ensure_app_redis "$app"
+    ensure_app_ports "$app"
+
+    # Should NOT have created/linked anything
+    refute_dokku_called "apps:create"
+    refute_dokku_called "postgres:create"
+    refute_dokku_called "postgres:link"
+    refute_dokku_called "redis:create"
+    refute_dokku_called "redis:link"
+    refute_dokku_called "ports:set"
+}
+
+@test "simple config: minimal app setup" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
+
+    mock_dokku_exit "apps:exists myapp" 1
+    mock_dokku_exit "postgres:exists myapp-db" 1
+    mock_dokku_exit "postgres:linked myapp-db myapp" 1
+    mock_dokku_output "ports:report myapp --ports-map" ""
+
+    ensure_app "myapp"
+    ensure_app_postgres "myapp"
+    ensure_app_ports "myapp"
+
+    assert_dokku_called "apps:create myapp"
+    assert_dokku_called "postgres:create myapp-db"
+    assert_dokku_called "ports:set myapp http:5000:5000"
+}
