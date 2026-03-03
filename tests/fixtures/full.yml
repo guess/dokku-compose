@@ -45,6 +45,9 @@ apps:
     checks:
       wait-to-retire: 60
       attempts: 5
+    registry:
+      push-on-release: true
+      server: registry.example.com
     env:
       APP_ENV: staging
 
