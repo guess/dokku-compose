@@ -18,76 +18,272 @@ Configuring a Dokku server means running dozens of imperative commands in the ri
 
 ## Install
 
+### On a Dokku server (recommended)
+
 ```bash
-# Clone the repo
-git clone https://github.com/your-org/dokku-compose.git
+# Clone into /opt or wherever you keep tools
+git clone --recurse-submodules https://github.com/your-org/dokku-compose.git /opt/dokku-compose
+
+# Symlink to PATH
+ln -s /opt/dokku-compose/bin/dokku-compose /usr/local/bin/dokku-compose
+
+# yq is auto-installed when running as root — or install manually:
+# https://github.com/mikefarah/yq#install
+
+# Verify
+dokku-compose --version
+```
+
+### On macOS / development machine
+
+```bash
+# Clone with submodules (needed for test framework)
+git clone --recurse-submodules https://github.com/your-org/dokku-compose.git
 cd dokku-compose
 
-# yq is the only dependency (auto-installed on servers if missing)
-brew install yq   # or: https://github.com/mikefarah/yq#install
+# Install yq
+brew install yq
 
-# Run it
-bin/dokku-compose --help
+# Run against a remote Dokku server over SSH
+DOKKU_HOST=my-server.example.com bin/dokku-compose up --dry-run
 ```
+
+### Requirements
+
+| Dependency | Version | Notes |
+|------------|---------|-------|
+| Bash | >= 4.0 | Ships with most Linux distros |
+| [yq](https://github.com/mikefarah/yq) | >= 4.0 | Auto-installed on servers if running as root |
+| [Dokku](https://dokku.com) | any | Local or remote via `DOKKU_HOST` |
+| [BATS](https://github.com/bats-core/bats-core) | — | Included as git submodule (tests only) |
 
 ## Features
 
-### Config Format
+### Application Management
+
+Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
 
 ```yaml
-# dokku-compose.yml
+apps:
+  api:
+    build_dir: apps/api       # sets APP_PATH build arg
+```
 
+```
+dokku apps:create api
+dokku domains:disable api     # vhosts disabled by default
+```
+
+### PostgreSQL
+
+Provision a PostgreSQL service and link it to an app. Use `true` for defaults or an object for version/image control.
+
+```yaml
+apps:
+  api:
+    # Simple — default version
+    postgres: true
+
+  analytics:
+    # Advanced — pin version, use PostGIS image
+    postgres:
+      version: "17-3.5"
+      image: postgis/postgis
+```
+
+```
+dokku postgres:create api-db
+dokku postgres:link api-db api --no-restart
+
+dokku postgres:create analytics-db -I 17-3.5 -i postgis/postgis
+dokku postgres:link analytics-db analytics --no-restart
+```
+
+### Redis
+
+Same pattern as PostgreSQL. Use `true` for defaults or specify a version.
+
+```yaml
+apps:
+  api:
+    redis: true
+
+  cache:
+    redis:
+      version: "7.2-alpine"
+```
+
+```
+dokku redis:create api-redis
+dokku redis:link api-redis api --no-restart
+
+dokku redis:create cache-redis -I 7.2-alpine
+dokku redis:link cache-redis cache --no-restart
+```
+
+### Port Mappings
+
+Map external ports to container ports. Supports `http` and `https` schemes.
+
+```yaml
+apps:
+  api:
+    ports:
+      - "https:4001:4000"
+
+  worker:
+    ports:
+      - "http:5001:5000"
+```
+
+```
+dokku ports:set api https:4001:4000
+dokku ports:set worker http:5001:5000
+```
+
+Ports are compared against current state — if they already match, the command is skipped.
+
+### SSL Certificates
+
+Point to a directory containing `cert.crt` and `cert.key`. The files are tarred and piped to Dokku.
+
+```yaml
+apps:
+  api:
+    ssl: certs/example.com
+```
+
+```
+tar cf - -C certs/example.com cert.crt cert.key | dokku certs:add api
+```
+
+In `--dry-run` mode, cert file existence is not checked so you can preview without having certs locally.
+
+### Nginx Configuration
+
+Set any nginx property supported by Dokku. Each key-value pair maps directly to `nginx:set`.
+
+```yaml
+apps:
+  api:
+    nginx:
+      client-max-body-size: "15m"
+      proxy-buffer-size: "8k"
+      proxy-read-timeout: "120s"
+```
+
+```
+dokku nginx:set api client-max-body-size 15m
+dokku nginx:set api proxy-buffer-size 8k
+dokku nginx:set api proxy-read-timeout 120s
+```
+
+### Environment Variables
+
+Set config vars in a single `config:set` call. Values containing `${VAR}` are resolved from your shell environment at runtime.
+
+```yaml
+apps:
+  api:
+    env:
+      APP_ENV: production
+      SECRET_KEY: "${SECRET_KEY}"
+      DATABASE_POOL: "10"
+```
+
+```
+dokku config:set --no-restart api APP_ENV=production SECRET_KEY=abc123 DATABASE_POOL=10
+```
+
+### Dockerfile Builder
+
+Configure Dokku's Dockerfile builder: custom Dockerfile path, app.json location, and build args.
+
+```yaml
+apps:
+  api:
+    dockerfile: docker/prod/api/Dockerfile
+    app_json: docker/prod/api/app.json
+    build_dir: apps/api
+    build_args:
+      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+```
+
+```
+dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
+dokku app-json:set api appjson-path docker/prod/api/app.json
+dokku docker-options:add api build --build-arg APP_PATH=apps/api
+dokku docker-options:add api build --build-arg APP_NAME=api
+dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
+```
+
+`build_dir` is automatically passed as `APP_PATH` and `APP_NAME` build args.
+
+### Networks
+
+Create shared Docker networks for inter-app communication and attach apps to them.
+
+```yaml
+networks:
+  - backend-net
+  - worker-net
+
+apps:
+  api:
+    networks:
+      - backend-net
+
+  worker:
+    networks:
+      - backend-net
+      - worker-net
+```
+
+```
+dokku network:create backend-net
+dokku network:create worker-net
+dokku network:set api attach-post-deploy backend-net
+dokku network:set worker attach-post-deploy backend-net worker-net
+```
+
+Networks are created once globally, then attached per-app.
+
+### Plugin Management
+
+Declare required plugins with optional version pinning. Already-installed plugins are skipped.
+
+```yaml
 dokku:
-  version: "0.35.12"
   plugins:
     postgres:
       url: https://github.com/dokku/dokku-postgres.git
       version: "1.41.0"
     redis:
       url: https://github.com/dokku/dokku-redis.git
-
-networks:
-  - backend-net
-
-apps:
-  # Full example with all options
-  api:
-    dockerfile: docker/prod/api/Dockerfile
-    app_json: docker/prod/api/app.json
-    build_dir: apps/api
-    ports:
-      - "https:4001:4000"
-    ssl: certs/example.com
-    postgres:
-      version: "17-3.5"
-      image: postgis/postgis
-    redis:
-      version: "7.2-alpine"
-    nginx:
-      client-max-body-size: "15m"
-    env:
-      APP_ENV: "${APP_ENV}"
-    build_args:
-      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
-    networks:
-      - backend-net
-
-  # Minimal example
-  worker:
-    build_dir: apps/worker
-    ports:
-      - "http:5001:5000"
-    postgres: true          # shorthand: default version
-    networks:
-      - backend-net
+    letsencrypt:
+      url: https://github.com/dokku/dokku-letsencrypt.git
 ```
 
-### Conventions
+```
+dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
+dokku plugin:install https://github.com/dokku/dokku-redis.git
+dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
+```
 
-- **Services as shorthand or objects**: `postgres: true` for defaults, `postgres: { version: "17-3.5" }` for specifics
-- **Environment variable interpolation**: `${VAR}` resolved at runtime from the shell environment
-- **SSL as path**: Directory containing `cert.crt` and `cert.key`
-- **No vhosts by default**: Apps use Tailscale/Cloudflare Tunnel, not domain-based routing
+### Dokku Version Check
+
+Declare the expected Dokku version. A warning is logged if the running version doesn't match.
+
+```yaml
+dokku:
+  version: "0.35.12"
+```
+
+```
+[dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
+```
+
+Use `dokku-compose setup` to install Dokku at the declared version on a fresh server.
 
 ### Commands
 
@@ -205,9 +401,3 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/postgres.bats
 ```
 
-## Key Technologies
-
-- **Runtime**: Bash >= 4.0
-- **YAML parsing**: [yq](https://github.com/mikefarah/yq) >= 4.0 (auto-installed if missing)
-- **Server**: [Dokku](https://dokku.com) (local or via SSH)
-- **Testing**: [BATS](https://github.com/bats-core/bats-core) with mocked commands
