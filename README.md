@@ -30,7 +30,7 @@ curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku
 Or install a specific version:
 
 ```bash
-VERSION=0.1.0
+VERSION=0.2.0
 curl -fsSL "https://github.com/guess/dokku-compose/releases/download/v${VERSION}/dokku-compose" \
   | sudo install /dev/stdin /usr/local/bin/dokku-compose
 ```
@@ -249,11 +249,9 @@ dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 
 `build_dir` is automatically passed as `APP_PATH` and `APP_NAME` build args.
 
-### Service Plugins
+### Services
 
-Any plugin declared in `dokku.plugins` can be configured per-app. If an app has a key matching a plugin name, dokku-compose automatically creates and links the service. This works with all official Dokku service plugins (postgres, redis, mongo, mysql, mariadb, elasticsearch, rabbitmq, memcached, etc.) — they all share the same command API.
-
-Use `true` for defaults or an object for version/image control. Service names follow the pattern `{app}-{plugin}`.
+Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
 
 ```yaml
 dokku:
@@ -263,21 +261,81 @@ dokku:
     redis:
       url: https://github.com/dokku/dokku-redis.git
 
-apps:
-  api:
-    postgres:
-      version: "17-3.5"
-      image: postgis/postgis
-    redis: true
+services:
+  api-postgres:
+    plugin: postgres
+    version: "17-3.5"
+    image: postgis/postgis       # custom image (e.g., PostGIS)
+  api-redis:
+    plugin: redis
+  shared-cache:
+    plugin: redis                # shared between multiple apps
 ```
 
 ```
 dokku postgres:create api-postgres -I 17-3.5 -i postgis/postgis
-dokku postgres:link api-postgres api --no-restart
-
 dokku redis:create api-redis
-dokku redis:link api-redis api --no-restart
+dokku redis:create shared-cache
 ```
+
+Services are created before apps during `up`, so they are ready to be linked.
+
+#### Linking Services to Apps
+
+Apps reference services by name using `links:`. This connects the service to the app and injects the service's connection URL as an environment variable.
+
+```yaml
+apps:
+  api:
+    links:
+      - api-postgres
+      - api-redis
+      - shared-cache
+
+  worker:
+    links:
+      - shared-cache
+```
+
+```
+dokku postgres:link api-postgres api --no-restart
+dokku redis:link api-redis api --no-restart
+dokku redis:link shared-cache api --no-restart
+
+dokku redis:link shared-cache worker --no-restart
+```
+
+Link reconciliation is declarative:
+
+| `links:` value | Behavior |
+|-----------------|----------|
+| Present with values | Link listed services, unlink any others |
+| Present but empty (`links: []`) | Unlink all services from the app |
+| Absent (key omitted) | Skip -- do not change links |
+
+This means you can safely remove a service from an app by removing it from the `links` list and re-running `up`. Any services currently linked to the app that are not in the list will be unlinked.
+
+#### Shared Services
+
+Because services are named independently from apps, multiple apps can link to the same service:
+
+```yaml
+services:
+  shared-cache:
+    plugin: redis
+
+apps:
+  api:
+    links:
+      - shared-cache
+  worker:
+    links:
+      - shared-cache
+```
+
+Both `api` and `worker` will receive the same Redis connection URL.
+
+#### Custom Plugin Scripts
 
 For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON of the app's config for this plugin) variables set.
 
@@ -331,7 +389,7 @@ web                  not created
 
 #### `down` — Tear Down
 
-Destroys apps and their linked services. Requires `--force` as a safety measure. For each app, services are unlinked and destroyed first, then the app itself is destroyed. You can target a single app or tear down everything:
+Destroys apps and their linked services. Requires `--force` as a safety measure. For each app, services are unlinked first, then the app is destroyed. Service instances from the top-level `services:` section are destroyed after all apps. You can target a single app or tear down everything:
 
 ```bash
 dokku-compose down --force myapp     # Destroy one app and its services
@@ -345,6 +403,7 @@ dokku-compose down --force           # Destroy all configured apps
 | `--file <path>` | Config file (default: `dokku-compose.yml`) |
 | `--dry-run` | Print commands without executing |
 | `--fail-fast` | Stop on first error (default: continue to next app) |
+| `--remove-orphans` | Destroy services and networks not in config |
 | `--help` | Show usage |
 | `--version` | Show version |
 
@@ -377,10 +436,12 @@ Idempotently ensures desired state, in order:
 1. Check Dokku version (warn on mismatch)
 2. Install missing plugins
 3. Create shared networks
-4. For each app:
+4. Create service instances (from top-level `services:`)
+5. For each app:
    - Create app (if not exists)
    - Disable vhosts
-   - Create + link services (postgres, redis, mongo, etc.)
+   - Link/unlink services (from `links:`)
+   - Run custom plugin scripts
    - Attach to networks
    - Set port mappings
    - Add SSL certificate
@@ -390,20 +451,24 @@ Idempotently ensures desired state, in order:
 
 Running `up` twice produces no changes -- every step checks current state before acting.
 
-**Note:** `up` is currently additive only. It creates and updates configuration to match your YAML, but removing a key (e.g. deleting a `ports:` block) won't remove the corresponding setting from Dokku. To fully reset an app, use `down --force` and re-run `up`. Full convergence (automatically removing configuration that's no longer in the YAML) is planned for a future release.
+**Note:** `up` is mostly additive. It creates and updates configuration to match your YAML, but removing a key (e.g. deleting a `ports:` block) won't remove the corresponding setting from Dokku. The exception is `links:`, which is fully declarative -- services not in the list are unlinked. To fully reset an app, use `down --force` and re-run `up`. Use `--remove-orphans` to destroy services and networks that are no longer in the config file.
 
 ### Output
 
 ```
 [networks  ] Creating backend-net... done
+[services  ] Creating api-postgres (postgres 17-3.5)... done
+[services  ] Creating api-redis (redis)... done
+[services  ] Creating shared-cache (redis)... done
 [api       ] Creating app... done
-[api       ] Creating postgres (17-3.5)... done
-[api       ] Linking postgres... done
+[api       ] Linking api-postgres... done
+[api       ] Linking api-redis... done
+[api       ] Linking shared-cache... done
 [api       ] Setting ports https:4001:4000... done
 [api       ] Adding SSL certificate... done
 [api       ] Setting 2 env vars... done
 [worker    ] Creating app... already configured
-[worker    ] Postgres... already configured
+[worker    ] Linking shared-cache... already configured
 ```
 
 ## Architecture
@@ -424,7 +489,7 @@ dokku-compose/
 │   ├── nginx.sh              # dokku nginx:*
 │   ├── plugins.sh            # dokku plugin:*
 │   ├── ports.sh              # dokku ports:*
-│   └── services.sh           # Generic service plugins (postgres, redis, mongo, etc.)
+│   └── services.sh           # Service instances, links, and plugin scripts
 ├── tests/
 │   ├── test_helper.bash      # Mock dokku_cmd, assertion helpers
 │   ├── fixtures/             # Test YAML configs
