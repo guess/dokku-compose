@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bundle
+        run: |
+          mkdir -p dist
+          bash scripts/bundle.sh > dist/dokku-compose
+          chmod +x dist/dokku-compose
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/dokku-compose
+          generate_release_notes: true
