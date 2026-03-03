@@ -30,12 +30,6 @@ destroy_app() {
     fi
 
     log_action "$app" "Destroying app"
-
-    # Destroy services before destroying app
-    if type destroy_app_services &>/dev/null; then
-        destroy_app_services "$app"
-    fi
-
     dokku_cmd apps:destroy "$app" --force
     log_done
 }
