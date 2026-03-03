@@ -1,0 +1,7 @@
+dokku:
+  env_prefix: "MYCO_"
+
+apps:
+  myapp:
+    env:
+      MYCO_ENV: production

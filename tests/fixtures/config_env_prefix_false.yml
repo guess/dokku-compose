@@ -1,0 +1,5 @@
+apps:
+  myapp:
+    env_prefix: false
+    env:
+      APP_ENV: production

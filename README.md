@@ -332,19 +332,18 @@ dokku scheduler:set api selected docker-local
 
 ### Environment Variables
 
-Set config vars in a single `config:set` call. Values containing `${VAR}` are resolved from your shell environment at runtime via `envsubst`. Unset variables resolve to empty strings.
+Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset. ([full reference](docs/reference/config.md))
 
 ```yaml
 apps:
   api:
     env:
       APP_ENV: production
-      SECRET_KEY: "${SECRET_KEY}"
-      DATABASE_POOL: "10"
+      APP_SECRET: "${SECRET_KEY}"
 ```
 
 ```
-dokku config:set --no-restart api APP_ENV=production SECRET_KEY=abc123 DATABASE_POOL=10
+dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 ```
 
 ### Dockerfile Builder
@@ -574,7 +573,7 @@ Idempotently ensures desired state, in order:
 
 1. Check Dokku version (warn on mismatch)
 2. Install missing plugins
-3. Set global domains (if declared)
+3. Set global config (domains, env vars)
 4. Create shared networks
 5. Create service instances (from top-level `services:`)
 6. For each app:

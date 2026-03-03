@@ -17,7 +17,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 |---|-----------|--------|--------|-----|
 | 1 | apps | apps.sh | supported | [link](https://dokku.com/docs/deployment/application-management/) |
 | 2 | domains | domains.sh | partial | [link](https://dokku.com/docs/configuration/domains/) |
-| 3 | config | config.sh | partial | [link](https://dokku.com/docs/configuration/environment-variables/) |
+| 3 | config | config.sh | supported | [link](https://dokku.com/docs/configuration/environment-variables/) |
 | 4 | certs | certs.sh | partial | [link](https://dokku.com/docs/configuration/ssl/) |
 | 5 | network | network.sh | partial | [link](https://dokku.com/docs/networking/network/) |
 | 6 | ports | ports.sh | partial | [link](https://dokku.com/docs/networking/port-management/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 3 namespaces (apps, plugin, version)
-- **Partial:** 15 namespaces (domains, config, certs, network, ports, nginx, builder-*, docker-options, proxy, storage, registry, scheduler, checks, logs, app-json)
+- **Supported:** 4 namespaces (apps, config, plugin, version)
+- **Partial:** 14 namespaces (domains, certs, network, ports, nginx, builder-*, docker-options, proxy, storage, registry, scheduler, checks, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -139,44 +139,43 @@ dokku:
 
 **Doc:** https://dokku.com/docs/configuration/environment-variables/
 **Module:** `lib/config.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| config:set | declarative | yes | `ensure_app_config()` sets all vars with --no-restart |
-| config:unset | declarative | no | Needed to remove vars no longer in YAML |
-| config:show | read-only | no | Could be used for idempotency |
-| config:get | read-only | no | Per-key idempotency check |
-| config:keys | read-only | no | Detect stale keys for unset |
+| config:set | declarative | yes | `ensure_app_config()` / `ensure_global_config()` with --no-restart |
+| config:unset | declarative | yes | Convergence: unsets orphaned vars matching `env_prefix` |
+| config:show | read-only | no | Not needed |
+| config:get | read-only | no | Not needed |
+| config:keys | read-only | yes | Used internally for prefix convergence |
 | config:export | read-only | no | Not needed |
-| config:clear | declarative | no | Nuclear option; unset per-key is safer |
+| config:clear | declarative | yes | `env: false` clears all env vars |
 
-### Proposed YAML Keys
+### YAML Keys
 
 ```yaml
+dokku:
+  env_prefix: "APP_"           # default; customizable or false to disable convergence
+  env:                          # global env vars
+    APP_GLOBAL_KEY: value
+
 apps:
   myapp:
-    env:                    # existing, well-designed
+    env_prefix: "WORKER_"      # per-app override (or false to disable)
+    env:                        # map = set + converge; {} = converge to zero; false = clear all; absent = no action
       APP_ENV: production
       SECRET_KEY: "${SECRET_KEY}"
-
-dokku:
-  env:                      # NEW: global env vars
-    GLOBAL_KEY: value
 ```
 
 ### Gaps in Existing Code
 
-- No idempotency: re-sets all vars every run (functionally harmless but noisy).
-- No `config:unset` for removed keys -- stale env vars persist. Requires care to distinguish user-declared vars from Dokku-managed vars (e.g., service-injected `DATABASE_URL`).
-- No global env support (`dokku.env`).
-- No destroy counterpart (low priority -- env destroyed with app).
+- No idempotency check — re-sets all vars every run (functionally harmless but noisy).
 
 ### Decision
 
-**Partial.** Core `config:set` works. Two gaps: (1) no idempotency check, (2) no convergence for removed keys. Adding `config:unset` for orphaned keys requires distinguishing user vs Dokku-managed vars.
+**Supported.** App and global `config:set` with --no-restart. Prefix-based convergence via `env_prefix` (default `APP_`) safely unsets orphaned vars without touching Dokku-managed vars like `DATABASE_URL`. `env: false` clears all vars. `env: {}` converges prefixed vars to zero. `${VAR}` references resolved via `envsubst`.
 
 ---
 

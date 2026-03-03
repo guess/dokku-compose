@@ -1,0 +1,8 @@
+dokku:
+  env_prefix: "MYCO_"
+
+apps:
+  myapp:
+    env_prefix: "WORKER_"
+    env:
+      WORKER_MODE: background
