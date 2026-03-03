@@ -5,7 +5,7 @@ setup() {
     setup_mocks
 
     # Source all modules
-    for module in apps domains network plugins services ports certs nginx config builder dokku; do
+    for module in apps domains network plugins services proxy ports certs storage nginx checks logs registry scheduler config builder docker_options dokku; do
         source "${PROJECT_ROOT}/lib/${module}.sh"
     done
 
@@ -45,24 +45,43 @@ teardown() {
     mock_dokku_exit "postgres:linked qultr-postgres $app" 1
     mock_dokku_exit "redis:linked qultr-redis $app" 1
     mock_dokku_output "ports:report $app --ports-map" ""
+    # Storage: no mounts yet
+    mock_dokku_output "storage:report funqtion --storage-mounts" ""
 
-    # Run all ensure functions (same order as cmd_up: services first, then configure_app)
+    # Run all ensure functions (same order as configure_app in bin/dokku-compose)
     ensure_services
     ensure_app "$app"
     ensure_app_domains "$app"
     ensure_app_links "$app"
+    ensure_app_scripts "$app"
+    ensure_app_networks "$app"
+    ensure_app_proxy "$app"
     ensure_app_ports "$app"
+    ensure_app_certs "$app"
+    ensure_app_storage "$app"
+    ensure_app_nginx "$app"
+    ensure_app_checks "$app"
+    ensure_app_logs "$app"
+    ensure_app_registry "$app"
+    ensure_app_scheduler "$app"
     ensure_app_config "$app"
     ensure_app_builder "$app"
+    ensure_app_docker_options "$app"
 
     # Verify key commands were called
     assert_dokku_called "apps:create funqtion"
     assert_dokku_called "domains:enable funqtion"
+    assert_dokku_called "domains:set funqtion funqtion.example.com api.funqtion.co"
     assert_dokku_called "postgres:create funqtion-postgres -I 17-3.5 -i postgis/postgis"
     assert_dokku_called "postgres:link funqtion-postgres funqtion --no-restart"
     assert_dokku_called "redis:create funqtion-redis -I 7.2-alpine"
     assert_dokku_called "redis:link funqtion-redis funqtion --no-restart"
     assert_dokku_called "ports:set funqtion https:4001:4000"
+    assert_dokku_called "storage:mount funqtion /var/lib/dokku/data/storage/funqtion/uploads:/app/uploads"
+    assert_dokku_called "checks:set funqtion wait-to-retire 60"
+    assert_dokku_called "checks:set funqtion attempts 5"
+    assert_dokku_called "registry:set funqtion push-on-release true"
+    assert_dokku_called "registry:set funqtion server registry.example.com"
     assert_dokku_called "config:set --no-restart funqtion"
     assert_dokku_called "builder-dockerfile:set funqtion dockerfile-path docker/prod/api/Dockerfile"
     assert_dokku_called "app-json:set funqtion appjson-path docker/prod/api/app.json"
