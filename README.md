@@ -390,6 +390,8 @@ Idempotently ensures desired state, in order:
 
 Running `up` twice produces no changes -- every step checks current state before acting.
 
+**Note:** `up` is currently additive only. It creates and updates configuration to match your YAML, but removing a key (e.g. deleting a `ports:` block) won't remove the corresponding setting from Dokku. To fully reset an app, use `down --force` and re-run `up`. Full convergence (automatically removing configuration that's no longer in the YAML) is planned for a future release.
+
 ### Output
 
 ```
