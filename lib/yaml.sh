@@ -90,6 +90,37 @@ yaml_app_map_get() {
     yq eval ".apps.${app}${path}.${key} // \"\"" "$DOKKU_COMPOSE_FILE"
 }
 
+# Check if a top-level key exists and is not null
+# Usage: yaml_has ".services"
+yaml_has() {
+    local path="$1"
+    local val
+    val=$(yq eval "$path" "$DOKKU_COMPOSE_FILE" 2>/dev/null)
+    [[ -n "$val" && "$val" != "null" ]]
+}
+
+# Get all service names from top-level services
+# Usage: yaml_service_names
+yaml_service_names() {
+    yq eval '.services | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true
+}
+
+# Get a property of a named service
+# Usage: yaml_service_get "api-postgres" ".plugin"
+yaml_service_get() {
+    local service="$1" path="$2"
+    yq eval ".services.${service}${path} // \"\"" "$DOKKU_COMPOSE_FILE"
+}
+
+# Check if a key exists in an app's config (even if null/empty)
+# Usage: yaml_app_key_exists "myapp" "links"
+yaml_app_key_exists() {
+    local app="$1" key="$2"
+    local result
+    result=$(yq eval ".apps.${app} | has(\"${key}\")" "$DOKKU_COMPOSE_FILE" 2>/dev/null)
+    [[ "$result" == "true" ]]
+}
+
 # Resolve ${VAR} references in a string using the current environment
 # Usage: resolve_env_vars "some ${VAR} string"
 resolve_env_vars() {
