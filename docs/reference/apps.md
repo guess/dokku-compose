@@ -20,10 +20,10 @@ apps:
 
 During `up`, apps are created if they don't already exist. During `down --force`, apps are destroyed.
 
-| Action | Dokku Command |
-|--------|---------------|
-| Create | `apps:create <app>` |
-| Destroy | `apps:destroy <app> --force` |
+```
+dokku apps:create <app>
+dokku apps:destroy <app> --force
+```
 
 ### `locked`
 
@@ -41,8 +41,8 @@ apps:
     # locked key absent — no change to lock state
 ```
 
-| Value | Dokku Command |
-|-------|---------------|
+| Value | Command |
+|-------|---------|
 | `true` | `apps:lock <app>` |
 | `false` | `apps:unlock <app>` |
 | absent | no action |

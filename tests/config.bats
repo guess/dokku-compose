@@ -25,27 +25,30 @@ teardown() {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/full.yml"
     ensure_app_config "qultr-sandbox"
     refute_dokku_called "config:set"
-    refute_dokku_called "config:clear"
+    refute_dokku_called "config:unset"
 }
 
 # --- App-scoped env: false ---
 
-@test "ensure_app_config clears all env when env: false" {
+@test "ensure_app_config unsets all prefixed vars when env: false" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_false.yml"
+    mock_dokku_output "config:keys myapp" "APP_ENV\nAPP_SECRET\nDATABASE_URL"
     ensure_app_config "myapp"
-    assert_dokku_called "config:clear --no-restart myapp"
+    assert_dokku_called "config:unset --no-restart myapp"
+    assert_dokku_called "APP_ENV"
+    assert_dokku_called "APP_SECRET"
+    refute_dokku_called "config:clear"
     refute_dokku_called "config:set"
+    refute_dokku_called "DATABASE_URL"
 }
 
-# --- App-scoped env: empty map ---
-
-@test "ensure_app_config unsets prefixed vars when env is empty map" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_empty.yml"
-    mock_dokku_output "config:keys myapp" "APP_OLD\nDATABASE_URL"
+@test "ensure_app_config does nothing when env: false and no prefixed vars exist" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_false.yml"
+    mock_dokku_output "config:keys myapp" "DATABASE_URL"
     ensure_app_config "myapp"
-    assert_dokku_called "config:unset --no-restart myapp APP_OLD"
-    refute_dokku_called "config:set"
+    refute_dokku_called "config:unset"
     refute_dokku_called "config:clear"
+    refute_dokku_called "config:set"
 }
 
 # --- Prefix convergence: default APP_ ---
@@ -78,25 +81,15 @@ teardown() {
     refute_dokku_called "DATABASE_URL"
 }
 
-# --- Prefix convergence: per-app override ---
+# --- Prefix validation ---
 
-@test "ensure_app_config uses per-app prefix override" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_prefix_app_override.yml"
-    mock_dokku_output "config:keys myapp" "WORKER_MODE\nWORKER_OLD\nMYCO_SOMETHING"
+@test "ensure_app_config warns and skips non-prefixed vars" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_bad_prefix.yml"
+    mock_dokku_output "config:keys myapp" ""
     ensure_app_config "myapp"
     assert_dokku_called "config:set --no-restart myapp"
-    assert_dokku_called "config:unset --no-restart myapp WORKER_OLD"
-    refute_dokku_called "MYCO_SOMETHING"
-}
-
-# --- Prefix convergence: disabled ---
-
-@test "ensure_app_config skips convergence when env_prefix: false" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_env_prefix_false.yml"
-    mock_dokku_output "config:keys myapp" "APP_ENV\nAPP_OLD\nDATABASE_URL"
-    ensure_app_config "myapp"
-    assert_dokku_called "config:set --no-restart myapp"
-    refute_dokku_called "config:unset"
+    assert_dokku_called "APP_ENV=production"
+    refute_dokku_called "DATABASE_URL"
 }
 
 # --- Global env: map ---
@@ -112,22 +105,16 @@ teardown() {
 
 # --- Global env: false ---
 
-@test "ensure_global_config clears all global env when false" {
+@test "ensure_global_config unsets all global prefixed vars when false" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_global_env_false.yml"
+    mock_dokku_output "config:keys --global" "APP_GLOBAL_KEY\nAPP_OTHER\nDATABASE_URL"
     ensure_global_config
-    assert_dokku_called "config:clear --global --no-restart"
-    refute_dokku_called "config:set"
-}
-
-# --- Global env: empty map ---
-
-@test "ensure_global_config unsets prefixed vars when env is empty map" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_global_env_empty.yml"
-    mock_dokku_output "config:keys --global" "APP_OLD\nSOME_OTHER"
-    ensure_global_config
-    assert_dokku_called "config:unset --no-restart --global APP_OLD"
-    refute_dokku_called "config:set"
+    assert_dokku_called "config:unset --no-restart --global"
+    assert_dokku_called "APP_GLOBAL_KEY"
+    assert_dokku_called "APP_OTHER"
     refute_dokku_called "config:clear"
+    refute_dokku_called "config:set"
+    refute_dokku_called "DATABASE_URL"
 }
 
 # --- Global env: absent ---

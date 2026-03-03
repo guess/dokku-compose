@@ -151,22 +151,21 @@ dokku:
 | config:get | read-only | no | Not needed |
 | config:keys | read-only | yes | Used internally for prefix convergence |
 | config:export | read-only | no | Not needed |
-| config:clear | declarative | yes | `env: false` clears all env vars |
+| config:clear | declarative | no | Not used — `env: false` converges via `config:unset` instead |
 
 ### YAML Keys
 
 ```yaml
 dokku:
-  env_prefix: "APP_"           # default; customizable or false to disable convergence
-  env:                          # global env vars
+  env_prefix: "MYCO_"           # default prefix is "APP_"
+  env:                           # global env vars
     APP_GLOBAL_KEY: value
 
 apps:
   myapp:
-    env_prefix: "WORKER_"      # per-app override (or false to disable)
-    env:                        # map = set + converge; {} = converge to zero; false = clear all; absent = no action
+    env:                         # map = set + converge; false = unset all prefixed; absent = no action
       APP_ENV: production
-      SECRET_KEY: "${SECRET_KEY}"
+      APP_SECRET: "${SECRET_KEY}"
 ```
 
 ### Gaps in Existing Code
@@ -175,7 +174,7 @@ apps:
 
 ### Decision
 
-**Supported.** App and global `config:set` with --no-restart. Prefix-based convergence via `env_prefix` (default `APP_`) safely unsets orphaned vars without touching Dokku-managed vars like `DATABASE_URL`. `env: false` clears all vars. `env: {}` converges prefixed vars to zero. `${VAR}` references resolved via `envsubst`.
+**Supported.** App and global `config:set` with --no-restart. Only vars matching the prefix (default `APP_`) are managed — non-matching vars are warned and skipped. Orphaned prefixed vars are automatically unset. `env: false` unsets all prefixed vars. `${VAR}` references resolved via `envsubst`.
 
 ---
 
