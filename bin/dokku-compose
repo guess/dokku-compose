@@ -23,6 +23,7 @@ usage() {
 Usage: dokku-compose <command> [options] [app-name...]
 
 Commands:
+  init     Create a starter dokku-compose.yml
   up       Create/update apps and services to match config
   down     Destroy apps and services (requires --force)
   ps       Show status of configured apps
@@ -83,7 +84,7 @@ parse_args() {
                 echo "dokku-compose ${DOKKU_COMPOSE_VERSION}"
                 exit 0
                 ;;
-            up|down|ps|setup)
+            init|up|down|ps|setup)
                 COMMAND="$1"
                 shift
                 ;;
@@ -252,6 +253,24 @@ cmd_ps() {
     done <<< "$apps"
 }
 
+cmd_init() {
+    if [[ -f "$DOKKU_COMPOSE_FILE" ]]; then
+        echo "Error: $DOKKU_COMPOSE_FILE already exists" >&2
+        exit 1
+    fi
+
+    if [[ ${#APP_FILTER[@]} -eq 0 ]]; then
+        echo "apps: {}" > "$DOKKU_COMPOSE_FILE"
+    else
+        echo "apps:" > "$DOKKU_COMPOSE_FILE"
+        for app in "${APP_FILTER[@]}"; do
+            echo "  ${app}:" >> "$DOKKU_COMPOSE_FILE"
+        done
+    fi
+
+    echo "Created $DOKKU_COMPOSE_FILE"
+}
+
 cmd_setup() {
     ensure_yq
 
@@ -267,6 +286,7 @@ cmd_setup() {
 parse_args "$@"
 
 case "$COMMAND" in
+    init)  cmd_init ;;
     up)    cmd_up ;;
     down)  cmd_down ;;
     ps)    cmd_ps ;;
