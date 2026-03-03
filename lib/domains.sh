@@ -43,10 +43,10 @@ destroy_app_domains() {
 }
 
 ensure_global_domains() {
-    yaml_has ".dokku.domains" || return 0
+    yaml_has ".domains" || return 0
 
     local raw
-    raw=$(yq eval ".dokku.domains" "$DOKKU_COMPOSE_FILE")
+    raw=$(yq eval ".domains" "$DOKKU_COMPOSE_FILE")
 
     if [[ "$raw" == "false" ]]; then
         log_action "global" "Disabling global domains"
@@ -60,7 +60,7 @@ ensure_global_domains() {
     while IFS= read -r domain; do
         [[ -z "$domain" ]] && continue
         items+=("$domain")
-    done <<< "$(yaml_list ".dokku.domains[]")"
+    done <<< "$(yaml_list ".domains[]")"
 
     [[ ${#items[@]} -eq 0 ]] && return 0
 

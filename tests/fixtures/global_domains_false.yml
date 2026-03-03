@@ -1,5 +1,4 @@
-dokku:
-  domains: false
+domains: false
 
 apps:
   myapp:

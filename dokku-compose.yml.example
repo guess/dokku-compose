@@ -1,19 +1,21 @@
 # dokku-compose.yml
 # Declarative Dokku deployment configuration
 
-# Optional: Dokku version and plugins
+# Optional: Dokku version check
 dokku:
   version: "0.35.12"
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
-    mongo:
-      url: https://github.com/dokku/dokku-mongo.git
-    letsencrypt:
-      url: https://github.com/dokku/dokku-letsencrypt.git
-      script: scripts/letsencrypt.sh   # custom handler (not a service plugin)
+
+# Plugin installation
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
+  mongo:
+    url: https://github.com/dokku/dokku-mongo.git
+  letsencrypt:
+    url: https://github.com/dokku/dokku-letsencrypt.git
+    script: scripts/letsencrypt.sh   # custom handler (not a service plugin)
 
 # Shared Docker networks for inter-app communication
 networks:

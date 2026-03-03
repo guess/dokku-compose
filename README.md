@@ -100,15 +100,14 @@ dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 Declare required plugins with optional version pinning. Already-installed plugins are skipped.
 
 ```yaml
-dokku:
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-      version: "1.41.0"
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
-    letsencrypt:
-      url: https://github.com/dokku/dokku-letsencrypt.git
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+    version: "1.41.0"
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
+  letsencrypt:
+    url: https://github.com/dokku/dokku-letsencrypt.git
 ```
 
 ```
@@ -151,9 +150,8 @@ Networks are created once globally, then attached per-app.
 Configure custom domains per app or globally.
 
 ```yaml
-dokku:
-  domains:
-    - example.com
+domains:
+  - example.com
 
 apps:
   api:
@@ -374,12 +372,11 @@ dokku docker-options:add api run --ulimit nofile=12
 Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
 
 ```yaml
-dokku:
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
 
 services:
   api-postgres:
@@ -460,11 +457,10 @@ Both `api` and `worker` will receive the same Redis connection URL.
 For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON of the app's config for this plugin) variables set.
 
 ```yaml
-dokku:
-  plugins:
-    letsencrypt:
-      url: https://github.com/dokku/dokku-letsencrypt.git
-      script: scripts/letsencrypt.sh
+plugins:
+  letsencrypt:
+    url: https://github.com/dokku/dokku-letsencrypt.git
+    script: scripts/letsencrypt.sh
 
 apps:
   web:

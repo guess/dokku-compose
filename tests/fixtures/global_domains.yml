@@ -1,7 +1,6 @@
-dokku:
-  domains:
-    - example.com
-    - example.org
+domains:
+  - example.com
+  - example.org
 
 apps:
   myapp:

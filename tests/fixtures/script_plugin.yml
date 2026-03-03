@@ -1,8 +1,7 @@
-dokku:
-  plugins:
-    letsencrypt:
-      url: https://github.com/dokku/dokku-letsencrypt.git
-      script: scripts/letsencrypt.sh
+plugins:
+  letsencrypt:
+    url: https://github.com/dokku/dokku-letsencrypt.git
+    script: scripts/letsencrypt.sh
 
 apps:
   api:

@@ -7,7 +7,7 @@
 
 ensure_plugins() {
     local plugins_defined
-    plugins_defined=$(yaml_get '.dokku.plugins | keys | .[]' 2>/dev/null || true)
+    plugins_defined=$(yaml_get '.plugins | keys | .[]' 2>/dev/null || true)
     [[ -z "$plugins_defined" || "$plugins_defined" == "null" ]] && return 0
 
     # Get currently installed plugins
@@ -25,8 +25,8 @@ ensure_plugins() {
         fi
 
         local url version
-        url=$(yaml_get ".dokku.plugins.${plugin_name}.url")
-        version=$(yaml_get ".dokku.plugins.${plugin_name}.version")
+        url=$(yaml_get ".plugins.${plugin_name}.url")
+        version=$(yaml_get ".plugins.${plugin_name}.version")
 
         if [[ -z "$url" ]]; then
             log_error "plugins" "No URL specified for plugin: $plugin_name"

@@ -114,19 +114,19 @@ ensure_app_config() {
 }
 
 ensure_global_config() {
-    yaml_has ".dokku.env" || return 0
+    yaml_has ".env" || return 0
 
     local prefix
     prefix=$(_resolve_env_prefix)
 
     local raw
-    raw=$(yq eval ".dokku.env" "$DOKKU_COMPOSE_FILE")
+    raw=$(yq eval ".env" "$DOKKU_COMPOSE_FILE")
 
     # env: false = empty map (all prefixed vars are orphaned)
     local keys=""
     if [[ "$raw" != "false" ]]; then
-        keys=$(yq eval '.dokku.env | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true)
-        _current_yaml_value_fn() { yq eval ".dokku.env.${1} // \"\"" "$DOKKU_COMPOSE_FILE"; }
+        keys=$(yq eval '.env | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true)
+        _current_yaml_value_fn() { yq eval ".env.${1} // \"\"" "$DOKKU_COMPOSE_FILE"; }
     fi
 
     _set_and_converge_env "global" "$keys" "$prefix" "--global"

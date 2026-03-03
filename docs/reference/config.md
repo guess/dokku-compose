@@ -35,15 +35,14 @@ dokku:
 | Not configured | Default prefix `APP_` |
 | `"CUSTOM_"` | Manage vars starting with `CUSTOM_` |
 
-### Global Environment (`dokku.env`)
+### Global Environment (`env`)
 
 Set environment variables globally. Global vars are inherited by all apps (app-specific vars take precedence).
 
 ```yaml
-dokku:
-  env:                          # set global env vars
-    APP_GLOBAL_KEY: value
-    APP_ANALYTICS: enabled
+env:                            # set global env vars
+  APP_GLOBAL_KEY: value
+  APP_ANALYTICS: enabled
 ```
 
 | Value | Dokku Commands |

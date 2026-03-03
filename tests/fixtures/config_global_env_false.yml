@@ -1,5 +1,4 @@
-dokku:
-  env: false
+env: false
 
 apps:
   myapp:

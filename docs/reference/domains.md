@@ -30,20 +30,18 @@ apps:
 | `false` | `domains:disable <app>`<br>`domains:clear <app>` |
 | absent | no action |
 
-### Global Domains (`dokku.domains`)
+### Global Domains (`domains`)
 
 Set the default global domains that Dokku applies to new apps. When set to `false`, global domains are disabled and cleared.
 
 ```yaml
-dokku:
-  domains:                      # set global domains
-    - example.com
-    - example.org
+domains:                        # set global domains
+  - example.com
+  - example.org
 ```
 
 ```yaml
-dokku:
-  domains: false                # disable + clear global domains
+domains: false                  # disable + clear global domains
 ```
 
 | Value | Dokku Commands |

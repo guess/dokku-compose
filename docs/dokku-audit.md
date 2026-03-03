@@ -109,20 +109,19 @@ None. All declarative commands are supported.
 | domains:add-global | declarative | no | Incremental; `domains:set-global` is used instead |
 | domains:remove-global | declarative | no | Incremental; `domains:set-global` replaces all |
 | domains:set-global | declarative | yes | `ensure_global_domains()` replaces all global domains |
-| domains:clear-global | declarative | yes | `ensure_global_domains()` via `dokku.domains: false` |
+| domains:clear-global | declarative | yes | `ensure_global_domains()` via top-level `domains: false` |
 
 ### YAML Keys
 
 ```yaml
+domains:                        # top-level: list = set-global; false = clear-global; absent = no action
+  - example.com
+
 apps:
   myapp:
-    domains:                    # list = enable + set; false = disable + clear; absent = no action
+    domains:                    # per-app: list = enable + set; false = disable + clear; absent = no action
       - myapp.example.com
       - www.example.com
-
-dokku:
-  domains:                      # list = set-global; false = clear-global; absent = no action
-    - example.com
 ```
 
 ### Gaps in Existing Code
@@ -131,7 +130,7 @@ dokku:
 
 ### Decision
 
-**Partial.** Per-app domain management: `domains:set` for atomic convergence, `domains:enable`/`domains:disable` driven by value (list/false), `destroy_app_domains()` for teardown. Global domain management: `domains:set-global`/`domains:clear-global` via `dokku.domains`. Absent key = no action (consistent tri-state). Gap: no idempotency.
+**Partial.** Per-app domain management: `domains:set` for atomic convergence, `domains:enable`/`domains:disable` driven by value (list/false), `destroy_app_domains()` for teardown. Global domain management: `domains:set-global`/`domains:clear-global` via top-level `domains:`. Absent key = no action (consistent tri-state). Gap: no idempotency.
 
 ---
 
@@ -158,12 +157,13 @@ dokku:
 ```yaml
 dokku:
   env_prefix: "MYCO_"           # default prefix is "APP_"
-  env:                           # global env vars
-    APP_GLOBAL_KEY: value
+
+env:                             # top-level: global env vars
+  APP_GLOBAL_KEY: value
 
 apps:
   myapp:
-    env:                         # map = set + converge; false = unset all prefixed; absent = no action
+    env:                         # per-app: map = set + converge; false = unset all prefixed; absent = no action
       APP_ENV: production
       APP_SECRET: "${SECRET_KEY}"
 ```

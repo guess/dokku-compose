@@ -119,16 +119,16 @@ ensure_app_links() {
 
 # --- Script plugin helpers ---
 
-# Get list of plugin names from dokku.plugins
+# Get list of plugin names from top-level plugins
 _script_plugin_names() {
-    yaml_get '.dokku.plugins | keys | .[]' 2>/dev/null || true
+    yaml_get '.plugins | keys | .[]' 2>/dev/null || true
 }
 
 # Check if a plugin has a custom script defined
 _plugin_has_script() {
     local plugin="$1"
     local script
-    script=$(yaml_get ".dokku.plugins.${plugin}.script")
+    script=$(yaml_get ".plugins.${plugin}.script")
     [[ -n "$script" && "$script" != "null" ]]
 }
 
@@ -136,7 +136,7 @@ _plugin_has_script() {
 _plugin_script_path() {
     local plugin="$1"
     local script
-    script=$(yaml_get ".dokku.plugins.${plugin}.script")
+    script=$(yaml_get ".plugins.${plugin}.script")
     echo "$(_compose_file_dir)/${script}"
 }
 

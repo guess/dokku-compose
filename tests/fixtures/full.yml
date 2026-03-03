@@ -1,11 +1,12 @@
 dokku:
   version: "0.35.12"
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-      version: "1.41.0"
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
+
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+    version: "1.41.0"
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
 
 networks:
   - studio-net
