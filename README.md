@@ -18,20 +18,17 @@ Configuring a Dokku server means running dozens of imperative commands in the ri
 
 ## Install
 
-### On a Dokku server (recommended)
+```bash
+curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku-compose \
+  | sudo install /dev/stdin /usr/local/bin/dokku-compose
+```
+
+Or install a specific version:
 
 ```bash
-# Clone into /opt or wherever you keep tools
-git clone --recurse-submodules https://github.com/your-org/dokku-compose.git /opt/dokku-compose
-
-# Symlink to PATH
-ln -s /opt/dokku-compose/bin/dokku-compose /usr/local/bin/dokku-compose
-
-# yq is auto-installed when running as root — or install manually:
-# https://github.com/mikefarah/yq#install
-
-# Verify
-dokku-compose --version
+VERSION=0.1.0
+curl -fsSL "https://github.com/guess/dokku-compose/releases/download/v${VERSION}/dokku-compose" \
+  | sudo install /dev/stdin /usr/local/bin/dokku-compose
 ```
 
 ### Requirements
@@ -41,7 +38,6 @@ dokku-compose --version
 | Bash | >= 4.0 | Ships with most Linux distros |
 | [yq](https://github.com/mikefarah/yq) | >= 4.0 | Auto-installed on servers if running as root |
 | [Dokku](https://dokku.com) | any | Local or remote via `DOKKU_HOST` |
-| [BATS](https://github.com/bats-core/bats-core) | — | Included as git submodule (tests only) |
 
 ## Features
 
@@ -370,18 +366,11 @@ Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*(
 
 ## Development
 
-### macOS setup
+### Setup
 
 ```bash
-# Clone with submodules (needed for test framework)
-git clone --recurse-submodules https://github.com/your-org/dokku-compose.git
+git clone --recurse-submodules https://github.com/guess/dokku-compose.git
 cd dokku-compose
-
-# Install yq
-brew install yq
-
-# Run against a remote Dokku server over SSH
-DOKKU_HOST=my-server.example.com bin/dokku-compose up --dry-run
 ```
 
 ### Running tests
