@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/dokku-compose.png" alt="dokku-compose" width="200">
+  <img src="assets/dokku-compose.png" alt="dokku-compose" width="300">
 </p>
 
 # dokku-compose
@@ -32,127 +32,6 @@ dokku-compose up
 dokku-compose ps
 ```
 
-## Config Format
-
-```yaml
-# dokku-compose.yml
-
-# Optional: Dokku version and plugins
-dokku:
-  version: "0.35.12"
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-      version: "1.41.0"
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
-
-# Shared Docker networks
-networks:
-  - backend-net
-
-# Application definitions
-apps:
-  api:
-    dockerfile: docker/prod/api/Dockerfile
-    app_json: docker/prod/api/app.json
-    build_dir: apps/api
-    ports:
-      - "https:4001:4000"
-    ssl: certs/example.com
-    postgres:
-      version: "17-3.5"
-      image: postgis/postgis
-    redis:
-      version: "7.2-alpine"
-    nginx:
-      client-max-body-size: "15m"
-    env:
-      APP_ENV: "${APP_ENV}"
-    build_args:
-      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
-    networks:
-      - backend-net
-
-  worker:
-    build_dir: apps/worker
-    ports:
-      - "http:5001:5000"
-    postgres: true          # shorthand: default version
-    networks:
-      - backend-net
-```
-
-### Config Conventions
-
-- **Services as shorthand or objects**: `postgres: true` for defaults, `postgres: { version: "17-3.5" }` for specifics
-- **Environment variable interpolation**: `${VAR}` resolved at runtime from the shell environment
-- **SSL as path**: Directory containing `cert.crt` and `cert.key`
-- **No vhosts by default**: Apps use Tailscale/Cloudflare Tunnel, not domain-based routing
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `dokku-compose up` | Create/update apps and services to match config |
-| `dokku-compose down --force` | Destroy apps and services (requires `--force`) |
-| `dokku-compose ps` | Show status of configured apps |
-| `dokku-compose setup` | Install Dokku at declared version |
-
-### Options
-
-| Option | Description |
-|--------|-------------|
-| `--file <path>` | Config file (default: `dokku-compose.yml`) |
-| `--dry-run` | Print commands without executing |
-| `--fail-fast` | Stop on first error (default: continue to next app) |
-| `--help` | Show usage |
-| `--version` | Show version |
-
-### Examples
-
-```bash
-dokku-compose up                      # Configure all apps
-dokku-compose up myapp                # Configure one app
-dokku-compose up --dry-run            # Preview changes
-dokku-compose down --force myapp      # Destroy an app
-dokku-compose ps                      # Show status
-```
-
-## What `up` Does
-
-Idempotently ensures desired state, in order:
-
-1. Check Dokku version (warn on mismatch)
-2. Install missing plugins
-3. Create shared networks
-4. For each app:
-   - Create app (if not exists)
-   - Disable vhosts
-   - Create + link PostgreSQL (if configured)
-   - Create + link Redis (if configured)
-   - Attach to networks
-   - Set port mappings
-   - Add SSL certificate
-   - Configure nginx properties
-   - Set environment variables
-   - Configure build settings (dockerfile path, build args)
-
-Running `up` twice produces no changes -- every step checks current state before acting.
-
-## Execution Modes
-
-- **Server mode** (default): Runs `dokku` commands directly on the local machine
-- **Remote mode**: Set `DOKKU_HOST` to run commands over SSH
-
-```bash
-# Run locally on the Dokku server
-dokku-compose up
-
-# Run remotely
-DOKKU_HOST=my-server.example.com dokku-compose up
-```
-
 ## Architecture
 
 ```
@@ -183,9 +62,41 @@ dokku-compose/
 
 Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*()` / `destroy_*()` functions.
 
-## Output
+### Execution Modes
 
-Colored, concise output showing what changed:
+- **Server mode** (default): Runs `dokku` commands directly on the local machine
+- **Remote mode**: Set `DOKKU_HOST` to run commands over SSH
+
+```bash
+# Run locally on the Dokku server
+dokku-compose up
+
+# Run remotely
+DOKKU_HOST=my-server.example.com dokku-compose up
+```
+
+### What `up` Does
+
+Idempotently ensures desired state, in order:
+
+1. Check Dokku version (warn on mismatch)
+2. Install missing plugins
+3. Create shared networks
+4. For each app:
+   - Create app (if not exists)
+   - Disable vhosts
+   - Create + link PostgreSQL (if configured)
+   - Create + link Redis (if configured)
+   - Attach to networks
+   - Set port mappings
+   - Add SSL certificate
+   - Configure nginx properties
+   - Set environment variables
+   - Configure build settings (dockerfile path, build args)
+
+Running `up` twice produces no changes -- every step checks current state before acting.
+
+### Output
 
 ```
 [networks  ] Creating backend-net... done
@@ -197,6 +108,97 @@ Colored, concise output showing what changed:
 [api       ] Setting 2 env vars... done
 [worker    ] Creating app... already configured
 [worker    ] Postgres... already configured
+```
+
+## Config Format
+
+```yaml
+# dokku-compose.yml
+
+# Optional: Dokku version and plugins
+dokku:
+  version: "0.35.12"
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+      version: "1.41.0"
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+
+# Shared Docker networks
+networks:
+  - backend-net
+
+# Application definitions
+apps:
+  # Full example with all options
+  api:
+    dockerfile: docker/prod/api/Dockerfile
+    app_json: docker/prod/api/app.json
+    build_dir: apps/api
+    ports:
+      - "https:4001:4000"
+    ssl: certs/example.com
+    postgres:
+      version: "17-3.5"
+      image: postgis/postgis
+    redis:
+      version: "7.2-alpine"
+    nginx:
+      client-max-body-size: "15m"
+    env:
+      APP_ENV: "${APP_ENV}"
+    build_args:
+      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+    networks:
+      - backend-net
+
+  # Minimal example
+  worker:
+    build_dir: apps/worker
+    ports:
+      - "http:5001:5000"
+    postgres: true          # shorthand: default version
+    networks:
+      - backend-net
+```
+
+### Conventions
+
+- **Services as shorthand or objects**: `postgres: true` for defaults, `postgres: { version: "17-3.5" }` for specifics
+- **Environment variable interpolation**: `${VAR}` resolved at runtime from the shell environment
+- **SSL as path**: Directory containing `cert.crt` and `cert.key`
+- **No vhosts by default**: Apps use Tailscale/Cloudflare Tunnel, not domain-based routing
+
+## Essential Commands
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `dokku-compose up` | Create/update apps and services to match config |
+| `dokku-compose down --force` | Destroy apps and services (requires `--force`) |
+| `dokku-compose ps` | Show status of configured apps |
+| `dokku-compose setup` | Install Dokku at declared version |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `--file <path>` | Config file (default: `dokku-compose.yml`) |
+| `--dry-run` | Print commands without executing |
+| `--fail-fast` | Stop on first error (default: continue to next app) |
+| `--help` | Show usage |
+| `--version` | Show version |
+
+### Examples
+
+```bash
+dokku-compose up                      # Configure all apps
+dokku-compose up myapp                # Configure one app
+dokku-compose up --dry-run            # Preview changes
+dokku-compose down --force myapp      # Destroy an app
+dokku-compose ps                      # Show status
 ```
 
 ## Testing
@@ -211,14 +213,12 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/postgres.bats
 ```
 
-## Dependencies
+## Key Technologies
 
-| Dependency | Version | Required |
-|------------|---------|----------|
-| bash | >= 4.0 | Yes |
-| yq | >= 4.0 | Yes (auto-installed if missing) |
-| dokku | any | Yes (on server or via SSH) |
-| BATS | latest | Tests only |
+- **Runtime**: Bash >= 4.0
+- **YAML parsing**: [yq](https://github.com/mikefarah/yq) >= 4.0 (auto-installed if missing)
+- **Server**: [Dokku](https://dokku.com) (local or via SSH)
+- **Testing**: [BATS](https://github.com/bats-core/bats-core) with mocked commands
 
 ## Out of Scope
 
