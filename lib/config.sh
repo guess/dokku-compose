@@ -17,7 +17,7 @@ _resolve_env_prefix() {
     # Per-app override
     if [[ -n "$app" ]] && yaml_app_key_exists "$app" "env_prefix"; then
         local app_prefix
-        app_prefix=$(yq eval ".apps.${app}.env_prefix" "$DOKKU_COMPOSE_FILE")
+        app_prefix=$(yaml_app_get "$app" ".env_prefix")
         if [[ "$app_prefix" == "false" ]]; then
             echo ""
             return 0
@@ -29,7 +29,7 @@ _resolve_env_prefix() {
     # Global override
     if yaml_has ".dokku.env_prefix"; then
         local global_prefix
-        global_prefix=$(yq eval ".dokku.env_prefix" "$DOKKU_COMPOSE_FILE")
+        global_prefix=$(yaml_get ".dokku.env_prefix")
         if [[ "$global_prefix" == "false" ]]; then
             echo ""
             return 0
@@ -43,14 +43,13 @@ _resolve_env_prefix() {
 }
 
 # Unset orphaned env vars matching the prefix.
-# Usage: _converge_env_vars <prefix> <declared_keys> [--global | <app>]
+# Usage: _converge_env_vars <prefix> <declared_keys_newline_separated> [--global | <app>]
 _converge_env_vars() {
     local prefix="$1" declared_keys="$2"
     shift 2
 
     [[ -z "$prefix" ]] && return 0
 
-    # Build target args (either "--global" or "<app>")
     local target=("$@")
 
     # Get current keys from Dokku
@@ -58,23 +57,18 @@ _converge_env_vars() {
     current_keys=$(dokku_cmd config:keys "${target[@]}" 2>/dev/null || true)
     [[ -z "$current_keys" ]] && return 0
 
+    # Build declared keys lookup set
+    declare -A declared_set
+    while IFS= read -r dk; do
+        [[ -n "$dk" ]] && declared_set["$dk"]=1
+    done <<< "$declared_keys"
+
     # Find orphaned keys: match prefix, not in declared keys
     local orphaned=()
     while IFS= read -r key; do
         [[ -z "$key" ]] && continue
-        # Must match prefix
         [[ "$key" != "${prefix}"* ]] && continue
-        # Must not be in declared keys
-        local found=false
-        while IFS= read -r dk; do
-            if [[ "$key" == "$dk" ]]; then
-                found=true
-                break
-            fi
-        done <<< "$declared_keys"
-        if [[ "$found" == "false" ]]; then
-            orphaned+=("$key")
-        fi
+        [[ -z "${declared_set[$key]+x}" ]] && orphaned+=("$key")
     done <<< "$current_keys"
 
     if [[ ${#orphaned[@]} -gt 0 ]]; then
@@ -84,6 +78,41 @@ _converge_env_vars() {
         dokku_cmd config:unset --no-restart "${target[@]}" "${orphaned[@]}"
         log_done
     fi
+}
+
+# Build KEY=VALUE pairs from a YAML env map and set/converge them.
+# Usage: _set_env <context> <yaml_keys_cmd> <yaml_value_cmd_prefix> <target_args...>
+# - context: log label ("myapp" or "global")
+# - keys: newline-separated list of YAML keys
+# - yaml_value_fn: function name that takes a key and returns its value
+# - target_args: args to pass to dokku_cmd (e.g., "myapp" or "--global")
+_set_and_converge_env() {
+    local context="$1" keys="$2" prefix="$3"
+    shift 3
+    local target=("$@")
+
+    local env_pairs=()
+    local declared_keys=""
+    while IFS= read -r key; do
+        [[ -z "$key" ]] && continue
+        local value
+        value=$(_current_yaml_value_fn "$key")
+        value=$(resolve_env_vars "$value")
+        env_pairs+=("${key}=${value}")
+        declared_keys+="${key}"$'\n'
+    done <<< "$keys"
+
+    # Set env vars (if any)
+    if [[ ${#env_pairs[@]} -gt 0 ]]; then
+        local label="Setting ${#env_pairs[@]} env var(s)"
+        [[ "$context" == "global" ]] && label="Setting ${#env_pairs[@]} global env var(s)"
+        log_action "$context" "$label"
+        dokku_cmd config:set --no-restart "${target[@]}" "${env_pairs[@]}"
+        log_done
+    fi
+
+    # Converge: unset orphaned prefixed vars
+    _converge_env_vars "$prefix" "$declared_keys" "${target[@]}"
 }
 
 ensure_app_config() {
@@ -102,32 +131,17 @@ ensure_app_config() {
         return 0
     fi
 
-    # Build KEY=VALUE pairs
     local keys
     keys=$(yaml_app_map_keys "$app" ".env")
 
-    local env_pairs=()
-    local declared_keys=""
-    while IFS= read -r key; do
-        [[ -z "$key" ]] && continue
-        local value
-        value=$(yaml_app_map_get "$app" ".env" "$key")
-        value=$(resolve_env_vars "$value")
-        env_pairs+=("${key}=${value}")
-        declared_keys+="${key}"$'\n'
-    done <<< "$keys"
+    # Set up value lookup for _set_and_converge_env
+    _current_yaml_value_fn() { yaml_app_map_get "$app" ".env" "$1"; }
 
-    # Set env vars (if any)
-    if [[ ${#env_pairs[@]} -gt 0 ]]; then
-        log_action "$app" "Setting ${#env_pairs[@]} env var(s)"
-        dokku_cmd config:set --no-restart "$app" "${env_pairs[@]}"
-        log_done
-    fi
-
-    # Converge: unset orphaned prefixed vars
     local prefix
     prefix=$(_resolve_env_prefix "$app")
-    _converge_env_vars "$prefix" "$declared_keys" "$app"
+    _set_and_converge_env "$app" "$keys" "$prefix" "$app"
+
+    unset -f _current_yaml_value_fn
 }
 
 ensure_global_config() {
@@ -144,30 +158,15 @@ ensure_global_config() {
         return 0
     fi
 
-    # Build KEY=VALUE pairs from dokku.env map
     local keys
     keys=$(yq eval '.dokku.env | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true)
 
-    local env_pairs=()
-    local declared_keys=""
-    while IFS= read -r key; do
-        [[ -z "$key" ]] && continue
-        local value
-        value=$(yq eval ".dokku.env.${key} // \"\"" "$DOKKU_COMPOSE_FILE")
-        value=$(resolve_env_vars "$value")
-        env_pairs+=("${key}=${value}")
-        declared_keys+="${key}"$'\n'
-    done <<< "$keys"
+    # Set up value lookup for _set_and_converge_env
+    _current_yaml_value_fn() { yq eval ".dokku.env.${1} // \"\"" "$DOKKU_COMPOSE_FILE"; }
 
-    # Set env vars (if any)
-    if [[ ${#env_pairs[@]} -gt 0 ]]; then
-        log_action "global" "Setting ${#env_pairs[@]} global env var(s)"
-        dokku_cmd config:set --global --no-restart "${env_pairs[@]}"
-        log_done
-    fi
-
-    # Converge: unset orphaned prefixed vars
     local prefix
     prefix=$(_resolve_env_prefix)
-    _converge_env_vars "$prefix" "$declared_keys" "--global"
+    _set_and_converge_env "global" "$keys" "$prefix" "--global"
+
+    unset -f _current_yaml_value_fn
 }

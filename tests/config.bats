@@ -105,7 +105,7 @@ teardown() {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_global_env.yml"
     mock_dokku_output "config:keys --global" ""
     ensure_global_config
-    assert_dokku_called "config:set --global --no-restart"
+    assert_dokku_called "config:set --no-restart --global"
     assert_dokku_called "APP_GLOBAL_KEY=globalvalue"
     assert_dokku_called "APP_OTHER=other"
 }
@@ -146,7 +146,7 @@ teardown() {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/config_global_env.yml"
     mock_dokku_output "config:keys --global" "APP_GLOBAL_KEY\nAPP_OTHER\nAPP_STALE\nSOME_OTHER"
     ensure_global_config
-    assert_dokku_called "config:set --global --no-restart"
+    assert_dokku_called "config:set --no-restart --global"
     assert_dokku_called "config:unset --no-restart --global APP_STALE"
     refute_dokku_called "SOME_OTHER"
 }
