@@ -11,7 +11,7 @@ if [[ -z "${DOKKU_COMPOSE_BUNDLED:-}" ]]; then
     source "${LIB_DIR}/core.sh"
     source "${LIB_DIR}/yaml.sh"
 
-    for module in apps network plugins services proxy ports certs nginx checks logs registry scheduler config builder dokku git; do
+    for module in apps network plugins services proxy ports certs storage nginx checks logs registry scheduler config builder dokku git; do
         if [[ -f "${LIB_DIR}/${module}.sh" ]]; then
             source "${LIB_DIR}/${module}.sh"
         fi
@@ -181,6 +181,7 @@ configure_app() {
     if type ensure_app_proxy &>/dev/null; then ensure_app_proxy "$app"; fi
     if type ensure_app_ports &>/dev/null; then ensure_app_ports "$app"; fi
     if type ensure_app_certs &>/dev/null; then ensure_app_certs "$app"; fi
+    if type ensure_app_storage &>/dev/null; then ensure_app_storage "$app"; fi
     if type ensure_app_nginx &>/dev/null; then ensure_app_nginx "$app"; fi
     if type ensure_app_checks &>/dev/null; then ensure_app_checks "$app"; fi
     if type ensure_app_logs &>/dev/null; then ensure_app_logs "$app"; fi
@@ -208,6 +209,9 @@ cmd_down() {
         fi
         if type destroy_app_scripts &>/dev/null; then
             destroy_app_scripts "$app"
+        fi
+        if type destroy_app_storage &>/dev/null; then
+            destroy_app_storage "$app"
         fi
         if type destroy_app &>/dev/null; then
             destroy_app "$app"
