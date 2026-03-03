@@ -79,6 +79,9 @@ apps:
     nginx:
       client-max-body-size: "15m"
     scheduler: docker-local
+    docker_options:
+      deploy:
+        - "--shm-size 256m"
     networks:
       - qultr-net
 
