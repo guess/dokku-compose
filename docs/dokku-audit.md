@@ -206,17 +206,17 @@ dokku:
 
 ### Proposed YAML Keys
 
-No new keys needed. Existing `ssl: certs/example.com` is clean and sufficient.
+Rename `ssl:` → `certs:` to match the Dokku namespace. Example: `certs: certs/example.com`.
 
 ### Gaps in Existing Code
 
 - No idempotency: `certs:add` called every run even if cert already installed.
-- No `certs:remove` / destroy counterpart. If `ssl:` key removed from YAML, old cert persists.
+- No `certs:remove` / destroy counterpart. If `certs:` key removed from YAML, old cert persists.
 - Dry-run logic bug: enters dry-run path when files are NOT found rather than when they are.
 
 ### Decision
 
-**Partial.** Core `certs:add` works for the primary use case. Gaps: no idempotency, no convergence when `ssl:` removed, minor dry-run bug.
+**Partial.** Core `certs:add` works for the primary use case. Gaps: no idempotency, no convergence when `certs:` removed, minor dry-run bug. Rename `ssl:` → `certs:` for namespace consistency.
 
 ---
 
@@ -377,18 +377,15 @@ nginx:                           # NEW: global nginx defaults
 ```yaml
 apps:
   myapp:
-    dockerfile: path/to/Dockerfile    # existing
-    build_dir: apps/myapp             # existing (should migrate to builder:set build-dir)
-    build_args:                       # existing
-      KEY: value
-
-    builder:                          # NEW
-      selected: dockerfile            # builder:set selected (dockerfile/herokuish/pack/nixpacks/etc)
-      pack:
-        projecttoml_path: project.toml
-      nixpacks:
-        nixpackstoml_path: nixpacks.toml
+    builder:                          # all build config nested here
+      dockerfile: path/to/Dockerfile  # builder-dockerfile:set dockerfile-path
+      build_dir: apps/myapp           # builder:set build-dir
+      build_args:                     # docker-options:add --build-arg (convenience)
+        KEY: value
+      app_json: docker/prod/app.json  # app-json:set appjson-path
 ```
+
+Note: Dockerfile builder is assumed. No `selected` key — opinionated choice to keep things simple.
 
 ### Gaps in Existing Code
 

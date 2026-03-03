@@ -77,8 +77,6 @@ apps:
     checks:
       wait_to_retire: 60
       attempts: 5
-    ps:
-      restart_policy: "on-failure:10"
     logs:
       max-size: "50m"
     registry:
@@ -96,24 +94,24 @@ apps:
     scheduler: docker-local
 
     # Complex / custom
-    scale:
-      web: 2
-      worker: 1
-    resources:
-      limits:
-        memory: "512m"
     env:
       APP_ENV: production
     docker_options:
+      build:
+        - "--no-cache"
       deploy:
         - "--shm-size 256m"
+      run:
+        - "--ulimit nofile=12"
     proxy:
       enabled: true
     builder:
-      selected: dockerfile
-    dockerfile: docker/prod/Dockerfile
-    build_dir: apps/myapp
-    ssl: certs/example.com
+      dockerfile: docker/prod/Dockerfile
+      build_dir: apps/myapp
+      build_args:
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+      app_json: docker/prod/app.json
+    certs: certs/example.com
 ```
 
 ## Module Contract
@@ -336,20 +334,42 @@ ensure_app_resources() {
 | Namespace | Pattern | Helper | Custom? |
 |-----------|---------|--------|---------|
 | nginx | map | dokku_set_properties | No |
-| checks (settings) | map | dokku_set_properties | No |
-| ps (settings) | map | dokku_set_properties | No |
+| checks | map | dokku_set_properties | No |
 | logs | map | dokku_set_properties | No |
 | registry | map | dokku_set_properties | No |
 | ports | list | dokku_set_list | No |
 | domains | list | — | Yes (enable/disable logic) |
 | scheduler | scalar | dokku_set_property | No |
 | storage | list reconcile | — | Yes (mount/unmount) |
-| resource | nested map | — | Yes (per-process-type) |
-| scale | map | — | Yes (web=N syntax) |
 | docker_options | phased list | — | Yes (per-phase) |
-| proxy | mixed | — | Yes (enable/disable + type) |
-| config (env) | map | — | Yes (envsubst, --no-restart) |
-| certs (ssl) | file-based | — | Yes (tar pipe) |
-| builder | mixed | — | Yes (multiple sub-namespaces) |
+| proxy | map | — | Yes (enable/disable) |
+| env | map | — | Yes (envsubst, --no-restart) |
+| certs | file-based | — | Yes (tar pipe) |
+| builder | nested map | — | Yes (dockerfile-only, maps to multiple namespaces) |
 | services | custom | — | Yes (plugin dispatch) |
 | networks (global) | map | — | Yes (map-with-optional-props) |
+
+### Deferred to future plan
+
+| Namespace | Pattern | Reason |
+|-----------|---------|--------|
+| ps | map | Complex: settings + scale in same namespace |
+| scale | map | Complex: web=N syntax, tied to ps namespace |
+| resource | nested map | Complex: per-process-type limits/reservations |
+
+## Design Decisions
+
+### YAML keys match Dokku namespaces
+
+Every per-app YAML key uses the exact Dokku command namespace name. This lets users predict the key from `dokku help` output and makes the helper functions work without translation.
+
+**Renames from earlier conventions:**
+- `ssl:` → `certs:` — matches `certs:add`, `certs:remove`, `certs:generate` commands
+- `env:` stays as `env:` — universally understood (Docker, Heroku); maps to `config:*` commands but `env` is the clearer concept
+- `docker_options:` stays as-is (underscore matches YAML convention; maps to `docker-options:*`)
+
+**Breaking change:** `ssl:` → `certs:` is a breaking rename. Acceptable because we're pre-1.0.
+
+**Keys that intentionally differ from Dokku namespace:**
+- `env:` → `config:set` (concept clarity wins over namespace matching)
+- `docker_options:` → `docker-options:add` (YAML underscore convention)
