@@ -102,37 +102,36 @@ None. All declarative commands are supported.
 | domains:add | declarative | no | Incremental; `domains:set` is used instead |
 | domains:remove | declarative | no | Incremental; `domains:set` replaces all |
 | domains:set | declarative | yes | `ensure_app_domains()` replaces all domains atomically |
-| domains:clear | declarative | yes | `destroy_app_domains()` clears all domains |
+| domains:clear | declarative | yes | `ensure_app_domains()` via `domains: false`, `destroy_app_domains()` |
 | domains:enable | declarative | yes | Called when `domains:` list is present |
-| domains:disable | declarative | yes | Called when `domains:` key is absent |
+| domains:disable | declarative | yes | Called when `domains: false` |
 | domains:report | read-only | no | Could enable idempotency checks |
-| domains:add-global | declarative | no | Global domain config |
-| domains:remove-global | declarative | no | Global domain removal |
-| domains:set-global | declarative | no | Replace all global domains |
-| domains:clear-global | declarative | no | Clear global domains |
+| domains:add-global | declarative | no | Incremental; `domains:set-global` is used instead |
+| domains:remove-global | declarative | no | Incremental; `domains:set-global` replaces all |
+| domains:set-global | declarative | yes | `ensure_global_domains()` replaces all global domains |
+| domains:clear-global | declarative | yes | `ensure_global_domains()` via `dokku.domains: false` |
 
 ### YAML Keys
 
 ```yaml
 apps:
   myapp:
-    domains:
+    domains:                    # list = enable + set; false = disable + clear; absent = no action
       - myapp.example.com
       - www.example.com
 
 dokku:
-  domains:                    # NOT YET IMPLEMENTED
+  domains:                      # list = set-global; false = clear-global; absent = no action
     - example.com
 ```
 
 ### Gaps in Existing Code
 
 - No idempotency check — re-sets domains every run.
-- No global domain management (`dokku.domains`).
 
 ### Decision
 
-**Partial.** Per-app domain management is implemented: `domains:set` for atomic convergence, `domains:enable`/`domains:disable` driven by presence of `domains:` key, `destroy_app_domains()` for teardown. Gaps: no idempotency, no global domain support.
+**Partial.** Per-app domain management: `domains:set` for atomic convergence, `domains:enable`/`domains:disable` driven by value (list/false), `destroy_app_domains()` for teardown. Global domain management: `domains:set-global`/`domains:clear-global` via `dokku.domains`. Absent key = no action (consistent tri-state). Gap: no idempotency.
 
 ---
 

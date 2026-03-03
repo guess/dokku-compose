@@ -1,0 +1,7 @@
+dokku:
+  domains: false
+
+apps:
+  myapp:
+    domains:
+      - myapp.example.com

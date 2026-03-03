@@ -22,6 +22,7 @@ Every reference doc should follow this template:
 - Use inline comments in YAML examples to explain each variant.
 - Keep descriptions to one or two sentences. If it needs more, the YAML example should do the explaining.
 - When a key has boolean/tri-state behavior (true/false/absent), always document all three cases.
+- When a value maps to multiple Dokku commands, use `<br>` to put each command on its own line in the table.
 - Each reference doc corresponds to one `lib/*.sh` module. Don't split or combine.
 
 ## Naming

@@ -152,9 +152,13 @@ dokku apps:create api
 
 ### Domains
 
-Configure custom domains per app. When domains are declared, vhosts are enabled and the domains are set atomically. When omitted, vhosts are disabled.
+Configure custom domains per app or globally. ([full reference](docs/reference/domains.md))
 
 ```yaml
+dokku:
+  domains:
+    - example.com
+
 apps:
   api:
     domains:
@@ -163,6 +167,8 @@ apps:
 ```
 
 ```
+dokku domains:enable --all
+dokku domains:set-global example.com
 dokku domains:enable api
 dokku domains:set api api.example.com api.example.co
 ```
@@ -568,12 +574,13 @@ Idempotently ensures desired state, in order:
 
 1. Check Dokku version (warn on mismatch)
 2. Install missing plugins
-3. Create shared networks
-4. Create service instances (from top-level `services:`)
-5. For each app:
+3. Set global domains (if declared)
+4. Create shared networks
+5. Create service instances (from top-level `services:`)
+6. For each app:
    - Create app (if not exists)
    - Lock/unlock app (if declared)
-   - Set domains (or disable vhosts)
+   - Set domains (if declared)
    - Link/unlink services (from `links:`)
    - Run custom plugin scripts
    - Attach to networks

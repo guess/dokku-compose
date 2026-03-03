@@ -138,17 +138,22 @@ cmd_up() {
         ensure_plugins
     fi
 
-    # Phase 3: Shared networks
+    # Phase 3: Global domains
+    if type ensure_global_domains &>/dev/null; then
+        ensure_global_domains
+    fi
+
+    # Phase 4: Shared networks
     if type ensure_networks &>/dev/null; then
         ensure_networks
     fi
 
-    # Phase 4: Service instances (before apps — apps link to them)
+    # Phase 5: Service instances (before apps — apps link to them)
     if type ensure_services &>/dev/null; then
         ensure_services
     fi
 
-    # Phase 5: Per-app configuration
+    # Phase 6: Per-app configuration
     local apps
     apps=$(get_target_apps)
     while IFS= read -r app; do
