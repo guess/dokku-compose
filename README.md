@@ -138,16 +138,17 @@ Networks are created once globally, then attached per-app.
 
 ### Application Management
 
-Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
+Create and destroy Dokku apps idempotently. If the app already exists, it's skipped. ([full reference](docs/reference/apps.md))
 
 ```yaml
 apps:
   api:
-    # per-app configuration goes here
+    locked: true    # prevent deploys (false to unlock, absent to skip)
 ```
 
 ```
 dokku apps:create api
+dokku apps:lock api
 ```
 
 ### Domains
@@ -572,6 +573,7 @@ Idempotently ensures desired state, in order:
 4. Create service instances (from top-level `services:`)
 5. For each app:
    - Create app (if not exists)
+   - Lock/unlock app (if declared)
    - Set domains (or disable vhosts)
    - Link/unlink services (from `links:`)
    - Run custom plugin scripts

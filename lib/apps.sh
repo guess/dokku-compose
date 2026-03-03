@@ -33,6 +33,25 @@ destroy_app() {
     log_done
 }
 
+ensure_app_locked() {
+    local app="$1"
+
+    yaml_app_key_exists "$app" "locked" || return 0
+
+    local locked
+    locked=$(yq eval ".apps.${app}.locked" "$DOKKU_COMPOSE_FILE")
+
+    if [[ "$locked" == "true" ]]; then
+        log_action "$app" "Locking app"
+        dokku_cmd apps:lock "$app"
+        log_done
+    elif [[ "$locked" == "false" ]]; then
+        log_action "$app" "Unlocking app"
+        dokku_cmd apps:unlock "$app"
+        log_done
+    fi
+}
+
 show_app_status() {
     local app="$1"
 

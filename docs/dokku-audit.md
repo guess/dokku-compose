@@ -15,7 +15,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 | # | Namespace | Module | Status | Doc |
 |---|-----------|--------|--------|-----|
-| 1 | apps | apps.sh | partial | [link](https://dokku.com/docs/deployment/application-management/) |
+| 1 | apps | apps.sh | supported | [link](https://dokku.com/docs/deployment/application-management/) |
 | 2 | domains | domains.sh | partial | [link](https://dokku.com/docs/configuration/domains/) |
 | 3 | config | config.sh | partial | [link](https://dokku.com/docs/configuration/environment-variables/) |
 | 4 | certs | certs.sh | partial | [link](https://dokku.com/docs/configuration/ssl/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 2 namespaces (plugin, version)
-- **Partial:** 16 namespaces (apps, domains, config, certs, network, ports, nginx, builder-*, docker-options, proxy, storage, registry, scheduler, checks, logs, app-json)
+- **Supported:** 3 namespaces (apps, plugin, version)
+- **Partial:** 15 namespaces (domains, config, certs, network, ports, nginx, builder-*, docker-options, proxy, storage, registry, scheduler, checks, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -55,7 +55,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 **Doc:** https://dokku.com/docs/deployment/application-management/
 **Module:** `lib/apps.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
@@ -68,24 +68,24 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | apps:report | read-only | no | Could enhance `cmd_ps` |
 | apps:clone | imperative | no | Runtime migration, not declarative |
 | apps:rename | imperative | no | Runtime migration, not declarative |
-| apps:lock | declarative | no | Could prevent deploys; niche |
-| apps:unlock | declarative | no | Counterpart to lock |
+| apps:lock | declarative | yes | `ensure_app_locked()` via `locked: true` |
+| apps:unlock | declarative | yes | `ensure_app_locked()` via `locked: false` |
 
-### Proposed YAML Keys
+### YAML Keys
 
 ```yaml
 apps:
   myapp:
-    locked: true   # apps:lock; false/absent = apps:unlock
+    locked: true   # apps:lock; false = apps:unlock; absent = no action
 ```
 
 ### Gaps in Existing Code
 
-- `apps:lock`/`apps:unlock` not supported (low priority).
+None. All declarative commands are supported.
 
 ### Decision
 
-**Partial.** Core create/destroy lifecycle is fully implemented. Vhost handling moved to `lib/domains.sh` — domains are now driven by YAML config. Imperative commands (clone, rename) are intentionally out of scope.
+**Supported.** Core create/destroy lifecycle is fully implemented. Lock/unlock driven by `locked:` key with tri-state behavior (true/false/absent). Vhost handling moved to `lib/domains.sh`. Imperative commands (clone, rename) are intentionally out of scope.
 
 ---
 

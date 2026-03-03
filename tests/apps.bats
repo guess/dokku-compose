@@ -34,3 +34,24 @@ teardown() {
     destroy_app "myapp"
     refute_dokku_called "apps:destroy"
 }
+
+# --- ensure_app_locked ---
+
+@test "ensure_app_locked locks app when locked: true" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/locked_true.yml"
+    ensure_app_locked "myapp"
+    assert_dokku_called "apps:lock myapp"
+}
+
+@test "ensure_app_locked unlocks app when locked: false" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/locked_false.yml"
+    ensure_app_locked "myapp"
+    assert_dokku_called "apps:unlock myapp"
+}
+
+@test "ensure_app_locked does nothing when locked key absent" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
+    ensure_app_locked "myapp"
+    refute_dokku_called "apps:lock"
+    refute_dokku_called "apps:unlock"
+}

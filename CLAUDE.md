@@ -70,6 +70,11 @@ Tests use BATS (Bash Automated Testing System), installed as git submodules unde
 - Test fixtures live in `tests/fixtures/*.yml`
 - `tests/integration.bats` covers end-to-end up/down workflows
 
+## Documentation
+
+- `docs/reference/` contains per-module user-facing reference docs (see `docs/reference/CLAUDE.md` for the template)
+- When adding or updating a feature in the README, keep the README section brief and link to the corresponding `docs/reference/*.md` file for full details (e.g., `([full reference](docs/reference/apps.md))`)
+
 ## Code Conventions
 
 - All scripts use `set -euo pipefail`
