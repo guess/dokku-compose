@@ -94,5 +94,5 @@ yaml_app_map_get() {
 # Usage: resolve_env_vars "some ${VAR} string"
 resolve_env_vars() {
     local str="$1"
-    eval echo "\"$str\""
+    echo "$str" | envsubst
 }

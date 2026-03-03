@@ -20,7 +20,7 @@ teardown() {
     assert_failure
 }
 
-@test "yaml_get reads values from fixture" {
+@test "yaml_app_names reads app names from fixture" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
     run yaml_app_names
     assert_output "myapp"
