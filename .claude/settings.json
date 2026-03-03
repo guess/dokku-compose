@@ -1,0 +1,20 @@
+{
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": true,
+    "superpowers@claude-plugins-official": true
+  },
+  "extraKnownMarketplaces": {
+    "expo-plugins": {
+      "source": {
+        "source": "github",
+        "repo": "expo/skills"
+      }
+    }
+  },
+  "mcpServers": {},
+  "numStartups": 0,
+  "customApiKeyResponses": {
+    "approved": [],
+    "rejected": []
+  }
+}
