@@ -63,3 +63,72 @@ YAML
     ensure_services
     [[ ! -s "$DOKKU_CMD_LOG" ]]
 }
+
+# --- ensure_app_links (link/unlink) ---
+
+@test "ensure_app_links links declared services" {
+    mock_dokku_exit "postgres:linked funqtion-postgres funqtion" 1
+    mock_dokku_exit "redis:linked funqtion-redis funqtion" 1
+    ensure_app_links "funqtion"
+    assert_dokku_called "postgres:link funqtion-postgres funqtion --no-restart"
+    assert_dokku_called "redis:link funqtion-redis funqtion --no-restart"
+}
+
+@test "ensure_app_links skips already linked services" {
+    mock_dokku_exit "postgres:linked funqtion-postgres funqtion" 0
+    mock_dokku_exit "redis:linked funqtion-redis funqtion" 0
+    ensure_app_links "funqtion"
+    refute_dokku_called "postgres:link"
+    refute_dokku_called "redis:link"
+}
+
+@test "ensure_app_links unlinks services not in links list" {
+    # studio has links: [studio-postgres, studio-redis]
+    # Mock studio-postgres as linked, studio-redis as linked
+    # But also mock funqtion-postgres as linked to studio (shouldn't be)
+    mock_dokku_exit "postgres:linked studio-postgres studio" 0
+    mock_dokku_exit "redis:linked studio-redis studio" 0
+    mock_dokku_exit "postgres:linked funqtion-postgres studio" 0
+    mock_dokku_exit "redis:linked funqtion-redis studio" 1
+    mock_dokku_exit "postgres:linked qultr-postgres studio" 1
+    mock_dokku_exit "redis:linked qultr-redis studio" 1
+    ensure_app_links "studio"
+    # Should unlink funqtion-postgres from studio (linked but not in studio's links)
+    assert_dokku_called "postgres:unlink funqtion-postgres studio --no-restart"
+    # Should NOT unlink studio-postgres or studio-redis (they're in the links list)
+    refute_dokku_called "postgres:unlink studio-postgres"
+    refute_dokku_called "redis:unlink studio-redis"
+}
+
+@test "ensure_app_links skips when links key absent" {
+    # qultr-sandbox has no links key
+    ensure_app_links "qultr-sandbox"
+    refute_dokku_called "link"
+    refute_dokku_called "unlink"
+}
+
+@test "ensure_app_links unlinks all when links key is empty" {
+    DOKKU_COMPOSE_FILE="${MOCK_DIR}/empty_links.yml"
+    cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
+services:
+  mydb:
+    plugin: postgres
+
+apps:
+  myapp:
+    build_dir: apps/myapp
+    links:
+YAML
+    mock_dokku_exit "postgres:linked mydb myapp" 0
+    ensure_app_links "myapp"
+    assert_dokku_called "postgres:unlink mydb myapp --no-restart"
+}
+
+@test "ensure_app_links works with shared services" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/shared_service.yml"
+    mock_dokku_exit "postgres:linked shared-db api" 1
+    mock_dokku_exit "redis:linked shared-cache api" 1
+    ensure_app_links "api"
+    assert_dokku_called "postgres:link shared-db api --no-restart"
+    assert_dokku_called "redis:link shared-cache api --no-restart"
+}
