@@ -11,7 +11,7 @@ if [[ -z "${DOKKU_COMPOSE_BUNDLED:-}" ]]; then
     source "${LIB_DIR}/core.sh"
     source "${LIB_DIR}/yaml.sh"
 
-    for module in apps network plugins services ports certs nginx config builder dokku git; do
+    for module in apps network plugins services ports certs nginx checks config builder dokku git; do
         if [[ -f "${LIB_DIR}/${module}.sh" ]]; then
             source "${LIB_DIR}/${module}.sh"
         fi
@@ -181,6 +181,7 @@ configure_app() {
     if type ensure_app_ports &>/dev/null; then ensure_app_ports "$app"; fi
     if type ensure_app_certs &>/dev/null; then ensure_app_certs "$app"; fi
     if type ensure_app_nginx &>/dev/null; then ensure_app_nginx "$app"; fi
+    if type ensure_app_checks &>/dev/null; then ensure_app_checks "$app"; fi
     if type ensure_app_config &>/dev/null; then ensure_app_config "$app"; fi
     if type ensure_app_builder &>/dev/null; then ensure_app_builder "$app"; fi
 }
