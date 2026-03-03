@@ -59,6 +59,74 @@ DOKKU_HOST=my-server.example.com bin/dokku-compose up --dry-run
 
 ## Features
 
+Features are listed in execution order — this is the sequence `dokku-compose up` follows.
+
+### Dokku Version Check
+
+Declare the expected Dokku version. A warning is logged if the running version doesn't match.
+
+```yaml
+dokku:
+  version: "0.35.12"
+```
+
+```
+[dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
+```
+
+Use `dokku-compose setup` to install Dokku at the declared version on a fresh server.
+
+### Plugin Management
+
+Declare required plugins with optional version pinning. Already-installed plugins are skipped.
+
+```yaml
+dokku:
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+      version: "1.41.0"
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+    letsencrypt:
+      url: https://github.com/dokku/dokku-letsencrypt.git
+```
+
+```
+dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
+dokku plugin:install https://github.com/dokku/dokku-redis.git
+dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
+```
+
+### Networks
+
+Create shared Docker networks for inter-app communication and attach apps to them.
+
+```yaml
+networks:
+  - backend-net
+  - worker-net
+
+apps:
+  api:
+    networks:
+      - backend-net
+
+  worker:
+    networks:
+      - backend-net
+      - worker-net
+```
+
+```
+dokku network:create backend-net
+dokku network:create worker-net
+dokku network:set api attach-post-deploy backend-net
+dokku network:set worker attach-post-deploy backend-net worker-net
+```
+
+Networks are created once globally, then attached per-app.
+
 ### Application Management
 
 Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
@@ -218,72 +286,6 @@ dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 ```
 
 `build_dir` is automatically passed as `APP_PATH` and `APP_NAME` build args.
-
-### Networks
-
-Create shared Docker networks for inter-app communication and attach apps to them.
-
-```yaml
-networks:
-  - backend-net
-  - worker-net
-
-apps:
-  api:
-    networks:
-      - backend-net
-
-  worker:
-    networks:
-      - backend-net
-      - worker-net
-```
-
-```
-dokku network:create backend-net
-dokku network:create worker-net
-dokku network:set api attach-post-deploy backend-net
-dokku network:set worker attach-post-deploy backend-net worker-net
-```
-
-Networks are created once globally, then attached per-app.
-
-### Plugin Management
-
-Declare required plugins with optional version pinning. Already-installed plugins are skipped.
-
-```yaml
-dokku:
-  plugins:
-    postgres:
-      url: https://github.com/dokku/dokku-postgres.git
-      version: "1.41.0"
-    redis:
-      url: https://github.com/dokku/dokku-redis.git
-    letsencrypt:
-      url: https://github.com/dokku/dokku-letsencrypt.git
-```
-
-```
-dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
-dokku plugin:install https://github.com/dokku/dokku-redis.git
-dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
-```
-
-### Dokku Version Check
-
-Declare the expected Dokku version. A warning is logged if the running version doesn't match.
-
-```yaml
-dokku:
-  version: "0.35.12"
-```
-
-```
-[dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
-```
-
-Use `dokku-compose setup` to install Dokku at the declared version on a fresh server.
 
 ### Commands
 
