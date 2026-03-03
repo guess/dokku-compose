@@ -76,6 +76,7 @@ apps:
       - qultr-redis
     nginx:
       client-max-body-size: "15m"
+    scheduler: docker-local
     networks:
       - qultr-net
 
