@@ -177,6 +177,56 @@ ensure_app_scripts() {
     done <<< "$plugins"
 }
 
+# --- Destroy functions ---
+
+destroy_app_links() {
+    local app="$1"
+
+    if ! yaml_app_has "$app" ".links"; then
+        return 0
+    fi
+
+    local links
+    links=$(yaml_app_list "$app" ".links[]")
+    [[ -z "$links" || "$links" == "null" ]] && return 0
+
+    while IFS= read -r service; do
+        [[ -z "$service" ]] && continue
+        local plugin
+        plugin=$(_service_plugin "$service")
+        [[ -z "$plugin" ]] && continue
+
+        if dokku_cmd_check "${plugin}:linked" "$service" "$app"; then
+            log_action "$app" "Unlinking ${service}"
+            dokku_cmd "${plugin}:unlink" "$service" "$app" --no-restart
+            log_done
+        fi
+    done <<< "$links"
+}
+
+destroy_services() {
+    if ! yaml_has ".services"; then
+        return 0
+    fi
+
+    local services
+    services=$(yaml_service_names)
+    [[ -z "$services" ]] && return 0
+
+    while IFS= read -r service; do
+        [[ -z "$service" ]] && continue
+        local plugin
+        plugin=$(_service_plugin "$service")
+        [[ -z "$plugin" ]] && continue
+
+        if dokku_cmd_check "${plugin}:exists" "$service"; then
+            log_action "$service" "Destroying ${plugin}"
+            dokku_cmd "${plugin}:destroy" "$service" --force
+            log_done
+        fi
+    done <<< "$services"
+}
+
 destroy_app_scripts() {
     local app="$1"
 

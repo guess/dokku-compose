@@ -189,3 +189,65 @@ SCRIPT
 
     rm -rf "${script_dir}/scripts"
 }
+
+# --- destroy_app_links ---
+
+@test "destroy_app_links unlinks all declared services from app" {
+    mock_dokku_exit "postgres:linked funqtion-postgres funqtion" 0
+    mock_dokku_exit "redis:linked funqtion-redis funqtion" 0
+    destroy_app_links "funqtion"
+    assert_dokku_called "postgres:unlink funqtion-postgres funqtion --no-restart"
+    assert_dokku_called "redis:unlink funqtion-redis funqtion --no-restart"
+}
+
+@test "destroy_app_links skips services not linked" {
+    mock_dokku_exit "postgres:linked funqtion-postgres funqtion" 1
+    mock_dokku_exit "redis:linked funqtion-redis funqtion" 1
+    destroy_app_links "funqtion"
+    refute_dokku_called "unlink"
+}
+
+@test "destroy_app_links skips when app has no links key" {
+    destroy_app_links "qultr-sandbox"
+    refute_dokku_called "unlink"
+}
+
+# --- destroy_services ---
+
+@test "destroy_services destroys all declared service instances" {
+    mock_dokku_exit "postgres:exists funqtion-postgres" 0
+    mock_dokku_exit "redis:exists funqtion-redis" 0
+    mock_dokku_exit "postgres:exists studio-postgres" 0
+    mock_dokku_exit "redis:exists studio-redis" 0
+    mock_dokku_exit "postgres:exists qultr-postgres" 0
+    mock_dokku_exit "redis:exists qultr-redis" 0
+    destroy_services
+    assert_dokku_called "postgres:destroy funqtion-postgres --force"
+    assert_dokku_called "redis:destroy funqtion-redis --force"
+    assert_dokku_called "postgres:destroy studio-postgres --force"
+    assert_dokku_called "redis:destroy studio-redis --force"
+    assert_dokku_called "postgres:destroy qultr-postgres --force"
+    assert_dokku_called "redis:destroy qultr-redis --force"
+}
+
+@test "destroy_services skips services that don't exist" {
+    mock_dokku_exit "postgres:exists funqtion-postgres" 1
+    mock_dokku_exit "redis:exists funqtion-redis" 1
+    mock_dokku_exit "postgres:exists studio-postgres" 1
+    mock_dokku_exit "redis:exists studio-redis" 1
+    mock_dokku_exit "postgres:exists qultr-postgres" 1
+    mock_dokku_exit "redis:exists qultr-redis" 1
+    destroy_services
+    refute_dokku_called "destroy"
+}
+
+@test "destroy_services skips when no services section" {
+    DOKKU_COMPOSE_FILE="${MOCK_DIR}/no_services.yml"
+    cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
+apps:
+  myapp:
+    build_dir: apps/myapp
+YAML
+    destroy_services
+    [[ ! -s "$DOKKU_CMD_LOG" ]]
+}
