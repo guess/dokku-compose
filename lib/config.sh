@@ -101,21 +101,16 @@ ensure_app_config() {
     local raw
     raw=$(yq eval ".apps.${app}.env" "$DOKKU_COMPOSE_FILE")
 
-    # env: false — unset all prefixed vars
-    if [[ "$raw" == "false" ]]; then
-        _converge_env_vars "$prefix" "" "$app"
-        return 0
+    # env: false = empty map (all prefixed vars are orphaned)
+    local keys=""
+    if [[ "$raw" != "false" ]]; then
+        keys=$(yaml_app_map_keys "$app" ".env")
+        _current_yaml_value_fn() { yaml_app_map_get "$app" ".env" "$1"; }
     fi
-
-    local keys
-    keys=$(yaml_app_map_keys "$app" ".env")
-
-    # Set up value lookup for _set_and_converge_env
-    _current_yaml_value_fn() { yaml_app_map_get "$app" ".env" "$1"; }
 
     _set_and_converge_env "$app" "$keys" "$prefix" "$app"
 
-    unset -f _current_yaml_value_fn
+    unset -f _current_yaml_value_fn 2>/dev/null || true
 }
 
 ensure_global_config() {
@@ -127,19 +122,14 @@ ensure_global_config() {
     local raw
     raw=$(yq eval ".dokku.env" "$DOKKU_COMPOSE_FILE")
 
-    # env: false — unset all prefixed vars
-    if [[ "$raw" == "false" ]]; then
-        _converge_env_vars "$prefix" "" "--global"
-        return 0
+    # env: false = empty map (all prefixed vars are orphaned)
+    local keys=""
+    if [[ "$raw" != "false" ]]; then
+        keys=$(yq eval '.dokku.env | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true)
+        _current_yaml_value_fn() { yq eval ".dokku.env.${1} // \"\"" "$DOKKU_COMPOSE_FILE"; }
     fi
-
-    local keys
-    keys=$(yq eval '.dokku.env | keys | .[]' "$DOKKU_COMPOSE_FILE" 2>/dev/null || true)
-
-    # Set up value lookup for _set_and_converge_env
-    _current_yaml_value_fn() { yq eval ".dokku.env.${1} // \"\"" "$DOKKU_COMPOSE_FILE"; }
 
     _set_and_converge_env "global" "$keys" "$prefix" "--global"
 
-    unset -f _current_yaml_value_fn
+    unset -f _current_yaml_value_fn 2>/dev/null || true
 }
