@@ -95,27 +95,6 @@ dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 
 [Environment Variables Reference →](docs/reference/config.md)
 
-### Plugin Management
-
-Declare required plugins with optional version pinning. Already-installed plugins are skipped.
-
-```yaml
-plugins:
-  postgres:
-    url: https://github.com/dokku/dokku-postgres.git
-    version: "1.41.0"
-  redis:
-    url: https://github.com/dokku/dokku-redis.git
-  letsencrypt:
-    url: https://github.com/dokku/dokku-letsencrypt.git
-```
-
-```
-dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
-dokku plugin:install https://github.com/dokku/dokku-redis.git
-dokku plugin:install https://github.com/dokku/dokku-letsencrypt.git
-```
-
 ### Networks
 
 Create shared Docker networks for inter-app communication and attach apps to them.
@@ -367,14 +346,15 @@ dokku docker-options:add api deploy --shm-size 256m
 dokku docker-options:add api run --ulimit nofile=12
 ```
 
-### Services
+### Plugins
 
-Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
+Declare required plugins with optional version pinning — already-installed plugins are skipped. Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
 
 ```yaml
 plugins:
   postgres:
     url: https://github.com/dokku/dokku-postgres.git
+    version: "1.41.0"
   redis:
     url: https://github.com/dokku/dokku-redis.git
 
@@ -390,12 +370,14 @@ services:
 ```
 
 ```
+dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
+dokku plugin:install https://github.com/dokku/dokku-redis.git
 dokku postgres:create api-postgres -I 17-3.5 -i postgis/postgis
 dokku redis:create api-redis
 dokku redis:create shared-cache
 ```
 
-Services are created before apps during `up`, so they are ready to be linked.
+Plugins are installed first, then services are created before apps during `up`, so they are ready to be linked.
 
 #### Linking Services to Apps
 
