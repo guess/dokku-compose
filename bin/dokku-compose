@@ -11,7 +11,7 @@ if [[ -z "${DOKKU_COMPOSE_BUNDLED:-}" ]]; then
     source "${LIB_DIR}/core.sh"
     source "${LIB_DIR}/yaml.sh"
 
-    for module in apps network plugins services ports certs nginx config builder dokku; do
+    for module in apps network plugins services ports certs nginx config builder dokku git; do
         if [[ -f "${LIB_DIR}/${module}.sh" ]]; then
             source "${LIB_DIR}/${module}.sh"
         fi
