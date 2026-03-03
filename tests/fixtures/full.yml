@@ -86,5 +86,7 @@ apps:
       build_dir: apps/qultr-sandbox
     ports:
       - "http:4004:4000"
+    proxy:
+      enabled: false
     networks:
       - qultr-net
