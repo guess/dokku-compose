@@ -143,12 +143,11 @@ Create and destroy Dokku apps idempotently. If the app already exists, it's skip
 ```yaml
 apps:
   api:
-    locked: true    # prevent deploys (false to unlock, absent to skip)
+    # per-app configuration goes here
 ```
 
 ```
 dokku apps:create api
-dokku apps:lock api
 ```
 
 ### Domains
