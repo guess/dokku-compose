@@ -20,29 +20,6 @@ Configuring a Dokku server means running dozens of imperative commands in the ri
 
 `dokku-compose` replaces that with a single YAML file. Describe what you want, run `dokku-compose up`, and it figures out what needs to change. Like Docker Compose, but for Dokku.
 
-## Install
-
-```bash
-curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku-compose \
-  | sudo install /dev/stdin /usr/local/bin/dokku-compose
-```
-
-Or install a specific version:
-
-```bash
-VERSION=0.2.0
-curl -fsSL "https://github.com/guess/dokku-compose/releases/download/v${VERSION}/dokku-compose" \
-  | sudo install /dev/stdin /usr/local/bin/dokku-compose
-```
-
-### Requirements
-
-| Dependency | Version | Notes |
-|------------|---------|-------|
-| Bash | >= 4.0 | Ships with most Linux distros |
-| [yq](https://github.com/mikefarah/yq) | >= 4.0 | Auto-installed on servers if running as root |
-| [Dokku](https://dokku.com) | any | Local or remote via `DOKKU_HOST` |
-
 ## Quick Start
 
 ```bash
@@ -53,18 +30,17 @@ curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku
 # Copy the example config and edit it
 cp dokku-compose.yml.example dokku-compose.yml
 
-# Install Dokku on a fresh server (optional, requires root)
-dokku-compose setup
-
 # Preview what will happen
 dokku-compose up --dry-run
 
-# Apply configuration (locally on the Dokku server)
+# Apply configuration
 dokku-compose up
 
 # Or apply to a remote server over SSH
 DOKKU_HOST=my-server.example.com dokku-compose up
 ```
+
+Requires bash >= 4.0 and [yq](https://github.com/mikefarah/yq) >= 4.0. See the [Installation Reference →](docs/reference/install.md) for version pinning, requirements, and remote execution details.
 
 ## Features
 
@@ -84,6 +60,40 @@ dokku:
 ```
 
 Use `dokku-compose setup` to install Dokku at the declared version on a fresh Ubuntu/Debian server. It only handles fresh installs — if Dokku is already installed at a different version, it will print an upgrade link and exit. Requires root.
+
+### Application Management
+
+Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
+
+```yaml
+apps:
+  api:
+    # per-app configuration goes here
+```
+
+```
+dokku apps:create api
+```
+
+[Application Management Reference →](docs/reference/apps.md)
+
+### Environment Variables
+
+Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset.
+
+```yaml
+apps:
+  api:
+    env:
+      APP_ENV: production
+      APP_SECRET: "${SECRET_KEY}"
+```
+
+```
+dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
+```
+
+[Environment Variables Reference →](docs/reference/config.md)
 
 ### Plugin Management
 
@@ -135,22 +145,6 @@ dokku network:set worker attach-post-deploy backend-net worker-net
 ```
 
 Networks are created once globally, then attached per-app.
-
-### Application Management
-
-Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
-
-```yaml
-apps:
-  api:
-    # per-app configuration goes here
-```
-
-```
-dokku apps:create api
-```
-
-[Application Management Reference →](docs/reference/apps.md)
 
 ### Domains
 
@@ -333,24 +327,6 @@ apps:
 ```
 dokku scheduler:set api selected docker-local
 ```
-
-### Environment Variables
-
-Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset.
-
-```yaml
-apps:
-  api:
-    env:
-      APP_ENV: production
-      APP_SECRET: "${SECRET_KEY}"
-```
-
-```
-dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
-```
-
-[Environment Variables Reference →](docs/reference/config.md)
 
 ### Dockerfile Builder
 
