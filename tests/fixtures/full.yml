@@ -35,7 +35,7 @@ apps:
     build_dir: apps/funqtion-api
     ports:
       - "https:4001:4000"
-    ssl: certs/funqtion.co
+    certs: certs/funqtion.co
     links:
       - funqtion-postgres
       - funqtion-redis
@@ -48,7 +48,7 @@ apps:
     build_dir: apps/studio-api
     ports:
       - "https:4002:4000"
-    ssl: certs/strates.io
+    certs: certs/strates.io
     links:
       - studio-postgres
       - studio-redis
@@ -59,7 +59,7 @@ apps:
     build_dir: apps/qultr-api
     ports:
       - "https:4003:4000"
-    ssl: certs/qultr.dev
+    certs: certs/qultr.dev
     links:
       - qultr-postgres
       - qultr-redis

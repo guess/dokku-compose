@@ -25,7 +25,7 @@ teardown() {
 
     # Override yaml_app_get to return our mock path
     yaml_app_get() {
-        if [[ "$2" == ".ssl" ]]; then
+        if [[ "$2" == ".certs" ]]; then
             echo "${cert_dir}"
         fi
     }
@@ -36,7 +36,7 @@ teardown() {
 
 @test "ensure_app_certs errors on missing cert files" {
     yaml_app_get() {
-        if [[ "$2" == ".ssl" ]]; then
+        if [[ "$2" == ".certs" ]]; then
             echo "/nonexistent/path"
         fi
     }
