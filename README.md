@@ -7,6 +7,8 @@
 - 🏗️ **Modular** -- One file per Dokku namespace. Easy to read, extend, and debug
 
 [![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/github/license/guess/dokku-compose)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/guess/dokku-compose)](https://github.com/guess/dokku-compose/releases/latest)
 
 <p align="center">
   <img src="assets/dokku-compose.png" alt="dokku-compose" width="300">
