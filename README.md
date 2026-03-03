@@ -43,6 +43,29 @@ curl -fsSL "https://github.com/guess/dokku-compose/releases/download/v${VERSION}
 | [yq](https://github.com/mikefarah/yq) | >= 4.0 | Auto-installed on servers if running as root |
 | [Dokku](https://dokku.com) | any | Local or remote via `DOKKU_HOST` |
 
+## Quick Start
+
+```bash
+# Install
+curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku-compose \
+  | sudo install /dev/stdin /usr/local/bin/dokku-compose
+
+# Copy the example config and edit it
+cp dokku-compose.yml.example dokku-compose.yml
+
+# Install Dokku on a fresh server (optional, requires root)
+dokku-compose setup
+
+# Preview what will happen
+dokku-compose up --dry-run
+
+# Apply configuration (locally on the Dokku server)
+dokku-compose up
+
+# Or apply to a remote server over SSH
+DOKKU_HOST=my-server.example.com dokku-compose up
+```
+
 ## Features
 
 Features are listed roughly in execution order — the sequence `dokku-compose up` follows.
@@ -60,7 +83,7 @@ dokku:
 [dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
 ```
 
-Use `dokku-compose setup` to install Dokku at the declared version on a fresh server.
+Use `dokku-compose setup` to install Dokku at the declared version on a fresh Ubuntu/Debian server. It only handles fresh installs — if Dokku is already installed at a different version, it will print an upgrade link and exit. Requires root.
 
 ### Plugin Management
 
@@ -187,7 +210,7 @@ dokku nginx:set api proxy-read-timeout 120s
 
 ### Environment Variables
 
-Set config vars in a single `config:set` call. Values containing `${VAR}` are resolved from your shell environment at runtime.
+Set config vars in a single `config:set` call. Values containing `${VAR}` are resolved from your shell environment at runtime via `envsubst`. Unset variables resolve to empty strings.
 
 ```yaml
 apps:
@@ -256,7 +279,7 @@ dokku redis:create api-redis
 dokku redis:link api-redis api --no-restart
 ```
 
-For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON) variables set.
+For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON of the app's config for this plugin) variables set.
 
 ```yaml
 dokku:
@@ -264,6 +287,26 @@ dokku:
     letsencrypt:
       url: https://github.com/dokku/dokku-letsencrypt.git
       script: scripts/letsencrypt.sh
+
+apps:
+  web:
+    letsencrypt:
+      email: admin@example.com
+```
+
+Example handler (`scripts/letsencrypt.sh`):
+
+```bash
+#!/usr/bin/env bash
+local email
+email=$(echo "$SERVICE_CONFIG" | yq -r '.email')
+
+if [[ "$SERVICE_ACTION" == "up" ]]; then
+    dokku_cmd letsencrypt:set "$SERVICE_APP" email "$email"
+    dokku_cmd letsencrypt:enable "$SERVICE_APP"
+elif [[ "$SERVICE_ACTION" == "down" ]]; then
+    dokku_cmd letsencrypt:disable "$SERVICE_APP"
+fi
 ```
 
 ### Commands
@@ -273,7 +316,27 @@ dokku:
 | `dokku-compose up` | Create/update apps and services to match config |
 | `dokku-compose down --force` | Destroy apps and services (requires `--force`) |
 | `dokku-compose ps` | Show status of configured apps |
-| `dokku-compose setup` | Install Dokku at declared version |
+| `dokku-compose setup` | Install Dokku at declared version (fresh Ubuntu/Debian only) |
+
+#### `ps` — Show Status
+
+Queries each configured app and prints its deploy status:
+
+```
+$ dokku-compose ps
+api                  running
+worker               running
+web                  not created
+```
+
+#### `down` — Tear Down
+
+Destroys apps and their linked services. Requires `--force` as a safety measure. For each app, services are unlinked and destroyed first, then the app itself is destroyed. You can target a single app or tear down everything:
+
+```bash
+dokku-compose down --force myapp     # Destroy one app and its services
+dokku-compose down --force           # Destroy all configured apps
+```
 
 ### Options
 
@@ -304,6 +367,8 @@ dokku-compose up
 # Run remotely over SSH
 DOKKU_HOST=my-server.example.com dokku-compose up
 ```
+
+When `DOKKU_HOST` is set, all Dokku commands are sent over SSH. This is the typical workflow — you keep `dokku-compose.yml` in your project repo and apply it from your local machine. SSH key access to the Dokku server is required.
 
 ### What `up` Does
 
