@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/dokku-compose.png" alt="dokku-compose" width="200">
+</p>
+
 # dokku-compose
 
 A declarative Dokku deployment orchestrator. Define your apps, services, and infrastructure in a single YAML file and let `dokku-compose` idempotently configure your Dokku server.
