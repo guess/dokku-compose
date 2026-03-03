@@ -34,20 +34,6 @@ ln -s /opt/dokku-compose/bin/dokku-compose /usr/local/bin/dokku-compose
 dokku-compose --version
 ```
 
-### On macOS / development machine
-
-```bash
-# Clone with submodules (needed for test framework)
-git clone --recurse-submodules https://github.com/your-org/dokku-compose.git
-cd dokku-compose
-
-# Install yq
-brew install yq
-
-# Run against a remote Dokku server over SSH
-DOKKU_HOST=my-server.example.com bin/dokku-compose up --dry-run
-```
-
 ### Requirements
 
 | Dependency | Version | Notes |
@@ -391,7 +377,23 @@ dokku-compose/
 
 Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*()` / `destroy_*()` functions.
 
-## Testing
+## Development
+
+### macOS setup
+
+```bash
+# Clone with submodules (needed for test framework)
+git clone --recurse-submodules https://github.com/your-org/dokku-compose.git
+cd dokku-compose
+
+# Install yq
+brew install yq
+
+# Run against a remote Dokku server over SSH
+DOKKU_HOST=my-server.example.com bin/dokku-compose up --dry-run
+```
+
+### Running tests
 
 Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cmd` wrapper -- no real Dokku server needed.
 
@@ -403,3 +405,8 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/postgres.bats
 ```
 
+CI runs unit tests on every push and PR ([![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)).
+
+## License
+
+[MIT](LICENSE)
