@@ -138,7 +138,7 @@ Networks are created once globally, then attached per-app.
 
 ### Application Management
 
-Create and destroy Dokku apps idempotently. If the app already exists, it's skipped. ([full reference](docs/reference/apps.md))
+Create and destroy Dokku apps idempotently. If the app already exists, it's skipped.
 
 ```yaml
 apps:
@@ -150,9 +150,11 @@ apps:
 dokku apps:create api
 ```
 
+[Application Management Reference →](docs/reference/apps.md)
+
 ### Domains
 
-Configure custom domains per app or globally. ([full reference](docs/reference/domains.md))
+Configure custom domains per app or globally.
 
 ```yaml
 dokku:
@@ -172,6 +174,8 @@ dokku domains:set-global example.com
 dokku domains:enable api
 dokku domains:set api api.example.com api.example.co
 ```
+
+[Domains Reference →](docs/reference/domains.md)
 
 ### Port Mappings
 
@@ -332,7 +336,7 @@ dokku scheduler:set api selected docker-local
 
 ### Environment Variables
 
-Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset. ([full reference](docs/reference/config.md))
+Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset.
 
 ```yaml
 apps:
@@ -345,6 +349,8 @@ apps:
 ```
 dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 ```
+
+[Environment Variables Reference →](docs/reference/config.md)
 
 ### Dockerfile Builder
 

@@ -73,7 +73,7 @@ Tests use BATS (Bash Automated Testing System), installed as git submodules unde
 ## Documentation
 
 - `docs/reference/` contains per-module user-facing reference docs (see `docs/reference/CLAUDE.md` for the template)
-- When adding or updating a feature in the README, keep the README section brief and link to the corresponding `docs/reference/*.md` file for full details (e.g., `([full reference](docs/reference/apps.md))`)
+- When adding or updating a feature in the README, keep the README section brief and link to the corresponding `docs/reference/*.md` file at the end of the section (e.g., `[Environment Variables Reference →](docs/reference/config.md)`)
 
 ## Code Conventions
 
