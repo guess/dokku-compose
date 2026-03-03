@@ -6,6 +6,8 @@
 - 🔌 **Zero dependencies** -- Just bash and yq. No Python, no Ruby, no Ansible
 - 🏗️ **Modular** -- One file per Dokku namespace. Easy to read, extend, and debug
 
+[![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)
+
 <p align="center">
   <img src="assets/dokku-compose.png" alt="dokku-compose" width="300">
 </p>
@@ -385,7 +387,7 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/services.bats
 ```
 
-CI runs unit tests on every push and PR ([![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)).
+CI runs unit tests on every push and PR.
 
 ### Releasing
 
