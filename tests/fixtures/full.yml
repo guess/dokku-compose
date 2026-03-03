@@ -57,6 +57,8 @@ apps:
     links:
       - studio-postgres
       - studio-redis
+    logs:
+      max-size: "10m"
     networks:
       - studio-net
 
