@@ -27,8 +27,13 @@ Configuring a Dokku server means running dozens of imperative commands in the ri
 curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku-compose \
   | sudo install /dev/stdin /usr/local/bin/dokku-compose
 
-# Copy the example config and edit it
-cp dokku-compose.yml.example dokku-compose.yml
+# Create a config file
+cat > dokku-compose.yml <<'EOF'
+apps:
+  api:
+    env:
+      APP_ENV: production
+EOF
 
 # Preview what will happen
 dokku-compose up --dry-run
