@@ -143,12 +143,28 @@ Create and destroy Dokku apps idempotently. If the app already exists, it's skip
 ```yaml
 apps:
   api:
-    build_dir: apps/api       # sets APP_PATH build arg
+    # per-app configuration goes here
 ```
 
 ```
 dokku apps:create api
-dokku domains:disable api     # vhosts disabled by default
+```
+
+### Domains
+
+Configure custom domains per app. When domains are declared, vhosts are enabled and the domains are set atomically. When omitted, vhosts are disabled.
+
+```yaml
+apps:
+  api:
+    domains:
+      - api.example.com
+      - api.example.co
+```
+
+```
+dokku domains:enable api
+dokku domains:set api api.example.com api.example.co
 ```
 
 ### Port Mappings
@@ -180,7 +196,7 @@ Point to a directory containing `cert.crt` and `cert.key`. The files are tarred 
 ```yaml
 apps:
   api:
-    ssl: certs/example.com
+    certs: certs/example.com
 ```
 
 ```
@@ -188,6 +204,43 @@ tar cf - -C certs/example.com cert.crt cert.key | dokku certs:add api
 ```
 
 In `--dry-run` mode, cert file existence is not checked so you can preview without having certs locally.
+
+### Proxy
+
+Enable or disable the proxy for an app.
+
+```yaml
+apps:
+  api:
+    proxy:
+      enabled: true
+
+  worker:
+    proxy:
+      enabled: false
+```
+
+```
+dokku proxy:enable api
+dokku proxy:disable worker
+```
+
+### Persistent Storage
+
+Mount host directories into containers. Existing mounts are detected and skipped.
+
+```yaml
+apps:
+  api:
+    storage:
+      - "/var/lib/dokku/data/storage/api/uploads:/app/uploads"
+```
+
+```
+dokku storage:mount api /var/lib/dokku/data/storage/api/uploads:/app/uploads
+```
+
+Storage mounts are reconciled during `down` — declared mounts are unmounted when destroying an app.
 
 ### Nginx Configuration
 
@@ -206,6 +259,69 @@ apps:
 dokku nginx:set api client-max-body-size 15m
 dokku nginx:set api proxy-buffer-size 8k
 dokku nginx:set api proxy-read-timeout 120s
+```
+
+### Zero-Downtime Checks
+
+Configure zero-downtime deploy check settings.
+
+```yaml
+apps:
+  api:
+    checks:
+      wait-to-retire: 60
+      attempts: 5
+```
+
+```
+dokku checks:set api wait-to-retire 60
+dokku checks:set api attempts 5
+```
+
+### Log Management
+
+Configure log shipping and retention settings.
+
+```yaml
+apps:
+  api:
+    logs:
+      max-size: "10m"
+```
+
+```
+dokku logs:set api max-size 10m
+```
+
+### Registry
+
+Configure container registry push settings.
+
+```yaml
+apps:
+  api:
+    registry:
+      push-on-release: true
+      server: registry.example.com
+```
+
+```
+dokku registry:set api push-on-release true
+dokku registry:set api server registry.example.com
+```
+
+### Scheduler
+
+Select the scheduler for an app.
+
+```yaml
+apps:
+  api:
+    scheduler: docker-local
+```
+
+```
+dokku scheduler:set api selected docker-local
 ```
 
 ### Environment Variables
@@ -227,27 +343,44 @@ dokku config:set --no-restart api APP_ENV=production SECRET_KEY=abc123 DATABASE_
 
 ### Dockerfile Builder
 
-Configure Dokku's Dockerfile builder: custom Dockerfile path, app.json location, and build args.
+Configure Dokku's Dockerfile builder: custom Dockerfile path, build directory, app.json location, and build args.
 
 ```yaml
 apps:
   api:
-    dockerfile: docker/prod/api/Dockerfile
-    app_json: docker/prod/api/app.json
-    build_dir: apps/api
-    build_args:
-      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+    builder:
+      dockerfile: docker/prod/api/Dockerfile
+      build_dir: apps/api
+      app_json: docker/prod/api/app.json
+      build_args:
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
 ```
 
 ```
 dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
+dokku builder:set api build-dir apps/api
 dokku app-json:set api appjson-path docker/prod/api/app.json
-dokku docker-options:add api build --build-arg APP_PATH=apps/api
-dokku docker-options:add api build --build-arg APP_NAME=api
 dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 ```
 
-`build_dir` is automatically passed as `APP_PATH` and `APP_NAME` build args.
+### Docker Options
+
+Add custom Docker options per build phase (`build`, `deploy`, `run`).
+
+```yaml
+apps:
+  api:
+    docker_options:
+      deploy:
+        - "--shm-size 256m"
+      run:
+        - "--ulimit nofile=12"
+```
+
+```
+dokku docker-options:add api deploy --shm-size 256m
+dokku docker-options:add api run --ulimit nofile=12
+```
 
 ### Services
 
@@ -439,15 +572,22 @@ Idempotently ensures desired state, in order:
 4. Create service instances (from top-level `services:`)
 5. For each app:
    - Create app (if not exists)
-   - Disable vhosts
+   - Set domains (or disable vhosts)
    - Link/unlink services (from `links:`)
    - Run custom plugin scripts
    - Attach to networks
+   - Enable/disable proxy
    - Set port mappings
    - Add SSL certificate
+   - Mount persistent storage
    - Configure nginx properties
+   - Configure zero-downtime checks
+   - Configure log settings
+   - Configure registry settings
+   - Set scheduler
    - Set environment variables
-   - Configure build settings (dockerfile path, build args)
+   - Configure builder (dockerfile path, build dir, build args)
+   - Add docker options (per phase)
 
 Running `up` twice produces no changes -- every step checks current state before acting.
 
@@ -461,12 +601,16 @@ Running `up` twice produces no changes -- every step checks current state before
 [services  ] Creating api-redis (redis)... done
 [services  ] Creating shared-cache (redis)... done
 [api       ] Creating app... done
+[api       ] Setting domains: api.example.com... done
 [api       ] Linking api-postgres... done
 [api       ] Linking api-redis... done
 [api       ] Linking shared-cache... done
 [api       ] Setting ports https:4001:4000... done
 [api       ] Adding SSL certificate... done
-[api       ] Setting 2 env vars... done
+[api       ] Mounting /var/lib/dokku/data/storage/api/uploads:/app/uploads... done
+[api       ] Setting nginx client-max-body-size=15m... done
+[api       ] Setting checks wait-to-retire=60... done
+[api       ] Setting 2 env var(s)... done
 [worker    ] Creating app... already configured
 [worker    ] Linking shared-cache... already configured
 ```
@@ -478,18 +622,26 @@ dokku-compose/
 ├── bin/
 │   └── dokku-compose         # Entry point: arg parsing, command dispatch
 ├── lib/
-│   ├── core.sh               # Logging, colors, dokku_cmd wrapper
+│   ├── core.sh               # Logging, colors, dokku_cmd wrapper, helpers
 │   ├── yaml.sh               # YAML helpers wrapping yq
-│   ├── apps.sh               # dokku apps:*, domains:*
-│   ├── builder.sh            # dokku builder-dockerfile:*, app-json:*
+│   ├── apps.sh               # dokku apps:*
+│   ├── builder.sh            # dokku builder-dockerfile:*, builder:*, app-json:*
 │   ├── certs.sh              # dokku certs:*
+│   ├── checks.sh             # dokku checks:*
 │   ├── config.sh             # dokku config:*
+│   ├── docker_options.sh     # dokku docker-options:*
 │   ├── dokku.sh              # Dokku version check, installation
+│   ├── domains.sh            # dokku domains:*
+│   ├── logs.sh               # dokku logs:*
 │   ├── network.sh            # dokku network:*
 │   ├── nginx.sh              # dokku nginx:*
 │   ├── plugins.sh            # dokku plugin:*
 │   ├── ports.sh              # dokku ports:*
-│   └── services.sh           # Service instances, links, and plugin scripts
+│   ├── proxy.sh              # dokku proxy:*
+│   ├── registry.sh           # dokku registry:*
+│   ├── scheduler.sh          # dokku scheduler:*
+│   ├── services.sh           # Service instances, links, and plugin scripts
+│   └── storage.sh            # dokku storage:*
 ├── tests/
 │   ├── test_helper.bash      # Mock dokku_cmd, assertion helpers
 │   ├── fixtures/             # Test YAML configs
