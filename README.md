@@ -387,6 +387,14 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 
 CI runs unit tests on every push and PR ([![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)).
 
+### Releasing
+
+```bash
+scripts/release.sh 0.2.0
+```
+
+This verifies CI passed on the current commit, then creates and pushes a git tag. The release workflow bundles the script and publishes a GitHub Release automatically.
+
 ## License
 
 [MIT](LICENSE)

@@ -23,6 +23,11 @@ dokku-compose is a Bash-based declarative orchestrator for Dokku servers. Users 
 
 There is no build step, linter, or compilation — it's all bash scripts.
 
+```bash
+# Cut a release (checks CI passed first)
+scripts/release.sh 0.2.0
+```
+
 ## Architecture
 
 **Entry point:** `bin/dokku-compose` — CLI parser and command dispatcher.
