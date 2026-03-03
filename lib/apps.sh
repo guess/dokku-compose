@@ -1,7 +1,6 @@
-# lib/apps.sh — Application and domain management
+# lib/apps.sh — Application management
 # Dokku docs: https://dokku.com/docs/deployment/application-management/
-#              https://dokku.com/docs/configuration/domains/
-# Commands: apps:*, domains:*
+# Commands: apps:*
 
 #!/usr/bin/env bash
 # Dokku application management
@@ -18,11 +17,6 @@ ensure_app() {
     log_action "$app" "Creating app"
     dokku_cmd apps:create "$app"
     log_done
-}
-
-ensure_vhosts_disabled() {
-    local app="$1"
-    dokku_cmd domains:disable "$app" >/dev/null 2>&1 || true
 }
 
 destroy_app() {

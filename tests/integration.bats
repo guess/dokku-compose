@@ -5,7 +5,7 @@ setup() {
     setup_mocks
 
     # Source all modules
-    for module in apps network plugins services ports certs nginx config builder dokku; do
+    for module in apps domains network plugins services ports certs nginx config builder dokku; do
         source "${PROJECT_ROOT}/lib/${module}.sh"
     done
 
@@ -49,7 +49,7 @@ teardown() {
     # Run all ensure functions (same order as cmd_up: services first, then configure_app)
     ensure_services
     ensure_app "$app"
-    ensure_vhosts_disabled "$app"
+    ensure_app_domains "$app"
     ensure_app_links "$app"
     ensure_app_ports "$app"
     ensure_app_config "$app"
@@ -57,7 +57,7 @@ teardown() {
 
     # Verify key commands were called
     assert_dokku_called "apps:create funqtion"
-    assert_dokku_called "domains:disable funqtion"
+    assert_dokku_called "domains:enable funqtion"
     assert_dokku_called "postgres:create funqtion-postgres -I 17-3.5 -i postgis/postgis"
     assert_dokku_called "postgres:link funqtion-postgres funqtion --no-restart"
     assert_dokku_called "redis:create funqtion-redis -I 7.2-alpine"

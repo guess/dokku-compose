@@ -30,6 +30,9 @@ services:
 
 apps:
   funqtion:
+    domains:
+      - funqtion.example.com
+      - api.funqtion.co
     builder:
       dockerfile: docker/prod/api/Dockerfile
       app_json: docker/prod/api/app.json

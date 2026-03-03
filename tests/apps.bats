@@ -23,11 +23,6 @@ teardown() {
     refute_dokku_called "apps:create myapp"
 }
 
-@test "ensure_vhosts_disabled calls domains:disable" {
-    ensure_vhosts_disabled "myapp"
-    assert_dokku_called "domains:disable myapp"
-}
-
 @test "destroy_app destroys with force when app exists" {
     mock_dokku_exit "apps:exists myapp" 0
     destroy_app "myapp"
