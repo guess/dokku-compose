@@ -12,7 +12,7 @@ source "${LIB_DIR}/core.sh"
 source "${LIB_DIR}/yaml.sh"
 
 # Source module files (each maps to a Dokku command namespace)
-for module in apps network plugins postgres redis ports certs nginx config builder dokku; do
+for module in apps network plugins services ports certs nginx config builder dokku; do
     if [[ -f "${LIB_DIR}/${module}.sh" ]]; then
         source "${LIB_DIR}/${module}.sh"
     fi
@@ -164,8 +164,7 @@ configure_app() {
     # They are called in dependency order
     if type ensure_app &>/dev/null; then ensure_app "$app"; fi
     if type ensure_vhosts_disabled &>/dev/null; then ensure_vhosts_disabled "$app"; fi
-    if type ensure_app_postgres &>/dev/null; then ensure_app_postgres "$app"; fi
-    if type ensure_app_redis &>/dev/null; then ensure_app_redis "$app"; fi
+    if type ensure_app_services &>/dev/null; then ensure_app_services "$app"; fi
     if type ensure_app_networks &>/dev/null; then ensure_app_networks "$app"; fi
     if type ensure_app_ports &>/dev/null; then ensure_app_ports "$app"; fi
     if type ensure_app_certs &>/dev/null; then ensure_app_certs "$app"; fi

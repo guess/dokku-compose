@@ -31,12 +31,9 @@ destroy_app() {
 
     log_action "$app" "Destroying app"
 
-    # Unlink services before destroying
-    if type destroy_app_postgres &>/dev/null; then
-        destroy_app_postgres "$app"
-    fi
-    if type destroy_app_redis &>/dev/null; then
-        destroy_app_redis "$app"
+    # Destroy services before destroying app
+    if type destroy_app_services &>/dev/null; then
+        destroy_app_services "$app"
     fi
 
     dokku_cmd apps:destroy "$app" --force

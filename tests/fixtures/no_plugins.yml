@@ -1,0 +1,8 @@
+networks:
+  - app-net
+
+apps:
+  myapp:
+    build_dir: apps/myapp
+    ports:
+      - "http:5000:5000"

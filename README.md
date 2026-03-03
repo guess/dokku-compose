@@ -45,7 +45,7 @@ dokku-compose --version
 
 ## Features
 
-Features are listed in execution order — this is the sequence `dokku-compose up` follows.
+Features are listed roughly in execution order — the sequence `dokku-compose up` follows.
 
 ### Dokku Version Check
 
@@ -126,53 +126,6 @@ apps:
 ```
 dokku apps:create api
 dokku domains:disable api     # vhosts disabled by default
-```
-
-### PostgreSQL
-
-Provision a PostgreSQL service and link it to an app. Use `true` for defaults or an object for version/image control.
-
-```yaml
-apps:
-  api:
-    # Simple — default version
-    postgres: true
-
-  analytics:
-    # Advanced — pin version, use PostGIS image
-    postgres:
-      version: "17-3.5"
-      image: postgis/postgis
-```
-
-```
-dokku postgres:create api-db
-dokku postgres:link api-db api --no-restart
-
-dokku postgres:create analytics-db -I 17-3.5 -i postgis/postgis
-dokku postgres:link analytics-db analytics --no-restart
-```
-
-### Redis
-
-Same pattern as PostgreSQL. Use `true` for defaults or specify a version.
-
-```yaml
-apps:
-  api:
-    redis: true
-
-  cache:
-    redis:
-      version: "7.2-alpine"
-```
-
-```
-dokku redis:create api-redis
-dokku redis:link api-redis api --no-restart
-
-dokku redis:create cache-redis -I 7.2-alpine
-dokku redis:link cache-redis cache --no-restart
 ```
 
 ### Port Mappings
@@ -273,6 +226,46 @@ dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 
 `build_dir` is automatically passed as `APP_PATH` and `APP_NAME` build args.
 
+### Service Plugins
+
+Any plugin declared in `dokku.plugins` can be configured per-app. If an app has a key matching a plugin name, dokku-compose automatically creates and links the service. This works with all official Dokku service plugins (postgres, redis, mongo, mysql, mariadb, elasticsearch, rabbitmq, memcached, etc.) — they all share the same command API.
+
+Use `true` for defaults or an object for version/image control. Service names follow the pattern `{app}-{plugin}`.
+
+```yaml
+dokku:
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+
+apps:
+  api:
+    postgres:
+      version: "17-3.5"
+      image: postgis/postgis
+    redis: true
+```
+
+```
+dokku postgres:create api-postgres -I 17-3.5 -i postgis/postgis
+dokku postgres:link api-postgres api --no-restart
+
+dokku redis:create api-redis
+dokku redis:link api-redis api --no-restart
+```
+
+For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON) variables set.
+
+```yaml
+dokku:
+  plugins:
+    letsencrypt:
+      url: https://github.com/dokku/dokku-letsencrypt.git
+      script: scripts/letsencrypt.sh
+```
+
 ### Commands
 
 | Command | Description |
@@ -322,8 +315,7 @@ Idempotently ensures desired state, in order:
 4. For each app:
    - Create app (if not exists)
    - Disable vhosts
-   - Create + link PostgreSQL (if configured)
-   - Create + link Redis (if configured)
+   - Create + link services (postgres, redis, mongo, etc.)
    - Attach to networks
    - Set port mappings
    - Add SSL certificate
@@ -365,8 +357,7 @@ dokku-compose/
 │   ├── nginx.sh              # dokku nginx:*
 │   ├── plugins.sh            # dokku plugin:*
 │   ├── ports.sh              # dokku ports:*
-│   ├── postgres.sh           # dokku postgres:* (plugin)
-│   └── redis.sh              # dokku redis:* (plugin)
+│   └── services.sh           # Generic service plugins (postgres, redis, mongo, etc.)
 ├── tests/
 │   ├── test_helper.bash      # Mock dokku_cmd, assertion helpers
 │   ├── fixtures/             # Test YAML configs
@@ -402,7 +393,7 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/
 
 # Run a specific module's tests
-./tests/bats/bin/bats tests/postgres.bats
+./tests/bats/bin/bats tests/services.bats
 ```
 
 CI runs unit tests on every push and PR ([![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)).

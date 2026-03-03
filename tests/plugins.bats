@@ -25,7 +25,7 @@ teardown() {
 }
 
 @test "ensure_plugins skips when no plugins declared" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/no_plugins.yml"
     ensure_plugins
     refute_dokku_called "plugin:install"
     refute_dokku_called "plugin:list"

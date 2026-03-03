@@ -5,7 +5,7 @@ setup() {
     setup_mocks
 
     # Source all modules
-    for module in apps network plugins postgres redis ports certs nginx config builder dokku; do
+    for module in apps network plugins services ports certs nginx config builder dokku; do
         source "${PROJECT_ROOT}/lib/${module}.sh"
     done
 
@@ -29,8 +29,8 @@ teardown() {
 
     # Mock everything as not existing
     mock_dokku_exit "apps:exists $app" 1
-    mock_dokku_exit "postgres:exists ${app}-db" 1
-    mock_dokku_exit "postgres:linked ${app}-db $app" 1
+    mock_dokku_exit "postgres:exists ${app}-postgres" 1
+    mock_dokku_exit "postgres:linked ${app}-postgres $app" 1
     mock_dokku_exit "redis:exists ${app}-redis" 1
     mock_dokku_exit "redis:linked ${app}-redis $app" 1
     mock_dokku_output "ports:report $app --ports-map" ""
@@ -38,8 +38,7 @@ teardown() {
     # Run all ensure functions (same order as configure_app)
     ensure_app "$app"
     ensure_vhosts_disabled "$app"
-    ensure_app_postgres "$app"
-    ensure_app_redis "$app"
+    ensure_app_services "$app"
     ensure_app_ports "$app"
     ensure_app_config "$app"
     ensure_app_builder "$app"
@@ -47,8 +46,8 @@ teardown() {
     # Verify key commands were called
     assert_dokku_called "apps:create funqtion"
     assert_dokku_called "domains:disable funqtion"
-    assert_dokku_called "postgres:create funqtion-db -I 17-3.5 -i postgis/postgis"
-    assert_dokku_called "postgres:link funqtion-db funqtion --no-restart"
+    assert_dokku_called "postgres:create funqtion-postgres -I 17-3.5 -i postgis/postgis"
+    assert_dokku_called "postgres:link funqtion-postgres funqtion --no-restart"
     assert_dokku_called "redis:create funqtion-redis -I 7.2-alpine"
     assert_dokku_called "redis:link funqtion-redis funqtion --no-restart"
     assert_dokku_called "ports:set funqtion https:4001:4000"
@@ -62,15 +61,14 @@ teardown() {
 
     # Mock everything as already existing/configured
     mock_dokku_exit "apps:exists $app" 0
-    mock_dokku_exit "postgres:exists ${app}-db" 0
-    mock_dokku_exit "postgres:linked ${app}-db $app" 0
+    mock_dokku_exit "postgres:exists ${app}-postgres" 0
+    mock_dokku_exit "postgres:linked ${app}-postgres $app" 0
     mock_dokku_exit "redis:exists ${app}-redis" 0
     mock_dokku_exit "redis:linked ${app}-redis $app" 0
     mock_dokku_output "ports:report $app --ports-map" "https:4002:4000"
 
     ensure_app "$app"
-    ensure_app_postgres "$app"
-    ensure_app_redis "$app"
+    ensure_app_services "$app"
     ensure_app_ports "$app"
 
     # Should NOT have created/linked anything
@@ -86,15 +84,15 @@ teardown() {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
 
     mock_dokku_exit "apps:exists myapp" 1
-    mock_dokku_exit "postgres:exists myapp-db" 1
-    mock_dokku_exit "postgres:linked myapp-db myapp" 1
+    mock_dokku_exit "postgres:exists myapp-postgres" 1
+    mock_dokku_exit "postgres:linked myapp-postgres myapp" 1
     mock_dokku_output "ports:report myapp --ports-map" ""
 
     ensure_app "myapp"
-    ensure_app_postgres "myapp"
+    ensure_app_services "myapp"
     ensure_app_ports "myapp"
 
     assert_dokku_called "apps:create myapp"
-    assert_dokku_called "postgres:create myapp-db"
+    assert_dokku_called "postgres:create myapp-postgres"
     assert_dokku_called "ports:set myapp http:5000:5000"
 }

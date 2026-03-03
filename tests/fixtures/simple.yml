@@ -1,3 +1,8 @@
+dokku:
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+
 networks:
   - app-net
 

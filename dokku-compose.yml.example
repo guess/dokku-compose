@@ -9,6 +9,11 @@ dokku:
       url: https://github.com/dokku/dokku-postgres.git
     redis:
       url: https://github.com/dokku/dokku-redis.git
+    mongo:
+      url: https://github.com/dokku/dokku-mongo.git
+    letsencrypt:
+      url: https://github.com/dokku/dokku-letsencrypt.git
+      script: scripts/letsencrypt.sh   # custom handler (not a service plugin)
 
 # Shared Docker networks for inter-app communication
 networks:
@@ -40,19 +45,22 @@ apps:
     networks:
       - backend-net
 
-  # Minimal example
+  # Minimal example — any service plugin works with just `true`
   worker:
     build_dir: apps/worker
     ports:
       - "http:5001:5000"
     postgres: true
+    mongo: true
     networks:
       - backend-net
 
-  # Web frontend — no database
+  # Web frontend — no database, but uses letsencrypt custom script
   web:
     dockerfile: docker/prod/web/Dockerfile
     build_dir: apps/web
     ports:
       - "https:3000:3000"
     ssl: certs/example.com
+    letsencrypt:
+      email: admin@example.com

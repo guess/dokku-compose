@@ -1,0 +1,13 @@
+dokku:
+  plugins:
+    letsencrypt:
+      url: https://github.com/dokku/dokku-letsencrypt.git
+      script: scripts/letsencrypt.sh
+
+apps:
+  api:
+    build_dir: apps/api
+    ports:
+      - "https:4001:4000"
+    letsencrypt:
+      email: admin@example.com
