@@ -49,9 +49,24 @@ setup_mocks() {
         return 0
     }
 
-    # Override dokku_cmd_check similarly
+    # Override dokku_cmd_check — does NOT log, since checks are queries not mutations
     dokku_cmd_check() {
-        dokku_cmd "$@" >/dev/null 2>&1
+        local cmd_key
+        cmd_key=$(echo "$*" | tr ' ' '_' | tr ':' '_')
+
+        # Check for mock exit code by full command key
+        if [[ -f "${MOCK_DIR}/exitcode_${cmd_key}" ]]; then
+            return "$(cat "${MOCK_DIR}/exitcode_${cmd_key}")"
+        fi
+
+        # Check for mock exit code by command prefix
+        local prefix
+        prefix=$(echo "$1" | tr ':' '_')
+        if [[ -f "${MOCK_DIR}/exitcode_${prefix}" ]]; then
+            return "$(cat "${MOCK_DIR}/exitcode_${prefix}")"
+        fi
+
+        return 0
     }
 
     export -f dokku_cmd dokku_cmd_check
