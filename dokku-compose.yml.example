@@ -1,0 +1,58 @@
+# dokku-compose.yml
+# Declarative Dokku deployment configuration
+
+# Optional: Dokku version and plugins
+dokku:
+  version: "0.35.12"
+  plugins:
+    postgres:
+      url: https://github.com/dokku/dokku-postgres.git
+    redis:
+      url: https://github.com/dokku/dokku-redis.git
+
+# Shared Docker networks for inter-app communication
+networks:
+  - backend-net
+
+# Application definitions
+apps:
+  # Full example with all options
+  api:
+    dockerfile: docker/prod/api/Dockerfile
+    app_json: docker/prod/api/app.json
+    build_dir: apps/api
+    ports:
+      - "https:4001:4000"
+    ssl: certs/example.com
+    postgres:
+      version: "17-3.5"
+      image: postgis/postgis
+    redis:
+      version: "7.2-alpine"
+    nginx:
+      client-max-body-size: "15m"
+      proxy-buffer-size: "8k"
+    env:
+      APP_ENV: "${APP_ENV}"
+      SECRET_KEY: "${SECRET_KEY}"
+    build_args:
+      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+    networks:
+      - backend-net
+
+  # Minimal example
+  worker:
+    build_dir: apps/worker
+    ports:
+      - "http:5001:5000"
+    postgres: true
+    networks:
+      - backend-net
+
+  # Web frontend — no database
+  web:
+    dockerfile: docker/prod/web/Dockerfile
+    build_dir: apps/web
+    ports:
+      - "https:3000:3000"
+    ssl: certs/example.com
