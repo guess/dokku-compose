@@ -265,18 +265,23 @@ apps:
 
 ### Proxy
 
-Enable or disable the proxy for an app.
+Enable or disable the proxy for an app, and optionally select the proxy implementation (nginx, caddy, haproxy, traefik). All operations are idempotent.
 
 ```yaml
 apps:
   api:
-    proxy:
-      enabled: true
+    proxy: true               # shorthand enable
 
   worker:
+    proxy: false              # shorthand disable
+
+  caddy-app:
     proxy:
-      enabled: false
+      enabled: true
+      type: caddy             # proxy:set caddy-app caddy
 ```
+
+[Proxy Reference →](docs/reference/proxy.md)
 
 ### Persistent Storage
 

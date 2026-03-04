@@ -27,7 +27,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 10 | plugin | plugins.sh | supported | [link](https://dokku.com/docs/advanced-usage/plugin-management/) |
 | 11 | version | dokku.sh | supported | [link](https://dokku.com/docs/getting-started/installation/) |
 | 12 | git | git.sh | skipped | [link](https://dokku.com/docs/deployment/methods/git/) |
-| 13 | proxy | proxy.sh | partial | [link](https://dokku.com/docs/networking/proxy-management/) |
+| 13 | proxy | proxy.sh | supported | [link](https://dokku.com/docs/networking/proxy-management/) |
 | 14 | ps | — | planned | [link](https://dokku.com/docs/processes/process-management/) |
 | 15 | storage | storage.sh | partial | [link](https://dokku.com/docs/advanced-usage/persistent-storage/) |
 | 16 | resource | — | planned | [link](https://dokku.com/docs/advanced-usage/resource-management/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 10 namespaces (apps, certs, checks, config, docker-options, network, nginx, plugin, ports, version)
-- **Partial:** 8 namespaces (domains, builder-*, proxy, storage, registry, scheduler, logs, app-json)
+- **Supported:** 11 namespaces (apps, certs, checks, config, docker-options, network, nginx, plugin, ports, proxy, version)
+- **Partial:** 7 namespaces (domains, builder-*, storage, registry, scheduler, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -504,41 +504,44 @@ None. Clear+add pattern provides idempotency and convergence.
 
 **Doc:** https://dokku.com/docs/networking/proxy-management/
 **Module:** `lib/proxy.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| proxy:set | declarative | no | Set proxy implementation (nginx, caddy, etc.) |
-| proxy:disable | declarative | yes | `ensure_app_proxy()` when `enabled: false` |
-| proxy:enable | declarative | yes | `ensure_app_proxy()` when `enabled: true` |
-| proxy:build-config | imperative | no | Required after nginx/ports changes |
-| proxy:clear-config | imperative | no | Clear proxy config |
-| proxy:report | read-only | no | Check proxy state |
+| proxy:set | declarative | yes | `ensure_app_proxy()` via `proxy.type` |
+| proxy:disable | declarative | yes | `ensure_app_proxy()` when `enabled: false` or `proxy: false` |
+| proxy:enable | declarative | yes | `ensure_app_proxy()` when `enabled: true` or `proxy: true` |
+| proxy:build-config | imperative | no | Intentionally deferred (same as nginx module) |
+| proxy:clear-config | imperative | no | Imperative operation, out of scope |
+| proxy:report | read-only | yes | Used for idempotency checks |
 
 ### YAML Keys
 
 ```yaml
 apps:
+  # Shorthand: just enable or disable
   myapp:
-    proxy:
-      enabled: true           # proxy:enable / proxy:disable
+    proxy: true               # proxy:enable
 
   worker-app:
+    proxy: false              # proxy:disable -- no web traffic
+
+  # Map form: enable/disable + set proxy type
+  caddy-app:
     proxy:
-      enabled: false          # proxy:disable -- no web traffic
+      enabled: true           # proxy:enable / proxy:disable
+      type: caddy             # proxy:set caddy-app caddy
 ```
 
 ### Gaps in Existing Code
 
-- No `proxy:set` for selecting proxy implementation (nginx, caddy, etc.).
-- No idempotency check — enables/disables every run.
-- No `proxy:build-config` trigger after nginx/ports changes.
+- No `proxy:build-config` trigger after nginx/ports changes (intentionally deferred; same gap exists in the nginx module).
 
 ### Decision
 
-**Partial.** Enable/disable proxy per app is implemented. Gaps: no `proxy:set` for proxy type selection, no idempotency, no `proxy:build-config` trigger.
+**Supported.** Enable/disable proxy and proxy type selection are implemented with full idempotency. `proxy:build-config` and `proxy:clear-config` are imperative operations intentionally deferred.
 
 ---
 
