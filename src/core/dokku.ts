@@ -1,4 +1,5 @@
 import { execa } from 'execa'
+import { createHash } from 'crypto'
 import * as os from 'os'
 import * as path from 'path'
 
@@ -23,9 +24,11 @@ export interface Runner {
 export function createRunner(opts: RunnerOptions = {}): Runner {
   const log: string[] = []
 
-  // SSH ControlMaster socket path — one per host
+  // SSH ControlMaster socket path — one per host.
+  // Hash the hostname so the path is always a fixed short length and stays
+  // well under macOS UNIX_PATH_MAX (104 chars): "dc-" + 16 hex chars + ".sock" = 24 chars.
   const controlPath = opts.host
-    ? path.join(os.tmpdir(), `dokku-compose-${opts.host}.sock`)
+    ? path.join(os.tmpdir(), `dc-${createHash('sha1').update(opts.host).digest('hex').slice(0, 16)}.sock`)
     : null
 
   const sshControlFlags = controlPath

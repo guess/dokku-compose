@@ -1,3 +1,5 @@
+// NOTE: This file uses bun:test (not vitest) because bun:test's mock.module()
+// is required for module-level ESM mocking of execa. Run with: bun test
 import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
 // Mock the execa module before any imports that use it
@@ -19,14 +21,16 @@ describe('createRunner with host', () => {
   it('includes ControlMaster flags in SSH args', async () => {
     const runner = createRunner({ host: 'myserver.com' })
     await runner.query('apps:list')
-    expect(mockExecaFn).toHaveBeenCalledWith(
-      'ssh',
-      expect.arrayContaining([
-        '-o', 'ControlMaster=auto',
-        '-o', expect.stringContaining('ControlPath='),
-        '-o', 'ControlPersist=60',
-      ])
-    )
+    const callArgs = mockExecaFn.mock.calls[0][1] as string[]
+    const controlMasterIdx = callArgs.indexOf('ControlMaster=auto')
+    const controlPathIdx = callArgs.findIndex(a => a.startsWith('ControlPath='))
+    const controlPersistIdx = callArgs.indexOf('ControlPersist=60')
+    expect(callArgs[controlMasterIdx - 1]).toBe('-o')
+    expect(callArgs[controlPathIdx - 1]).toBe('-o')
+    expect(callArgs[controlPersistIdx - 1]).toBe('-o')
+    expect(controlMasterIdx).toBeGreaterThan(-1)
+    expect(controlPathIdx).toBeGreaterThan(-1)
+    expect(controlPersistIdx).toBeGreaterThan(-1)
   })
 
   it('runner has a close() method', () => {
@@ -42,6 +46,20 @@ describe('createRunner with host', () => {
       'ssh',
       expect.arrayContaining(['-O', 'exit'])
     )
+  })
+})
+
+describe('close() with no host', () => {
+  beforeEach(() => {
+    mockExecaFn.mockClear()
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '' }))
+  })
+
+  it('close() is a no-op when no host is configured', async () => {
+    const runner = createRunner({})  // no host
+    mockExecaFn.mockClear()
+    await runner.close()
+    expect(mockExecaFn).not.toHaveBeenCalled()
   })
 })
 
