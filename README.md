@@ -16,9 +16,80 @@
 
 ## Why
 
-Configuring a Dokku server means running dozens of imperative commands in the right order: create apps, install plugins, link databases, set ports, add certs, configure nginx, set env vars. Miss one and your deploy breaks. Change a server and you're doing it all over again.
+Configuring a Dokku server means running dozens of imperative commands in the right order. Miss one and your deploy breaks. Change servers and you're starting over.
 
-`dokku-compose` replaces that with a single YAML file. Describe what you want, run `dokku-compose up`, and it figures out what needs to change. Like Docker Compose, but for Dokku.
+`dokku-compose` replaces that with a single YAML file. Like Docker Compose, but for Dokku.
+
+## A Complete Example
+
+```yaml
+dokku:
+  version: "0.35.12"
+
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+    version: "1.41.0"
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
+
+services:
+  api-postgres:
+    plugin: postgres
+    version: "17-3.5"
+  shared-cache:
+    plugin: redis
+
+networks:
+  - backend-net
+
+domains:
+  - example.com
+
+nginx:
+  client-max-body-size: "50m"
+
+logs:
+  max-size: "50m"
+
+apps:
+  api:
+    build:
+      context: apps/api
+      dockerfile: docker/prod/api/Dockerfile
+    env:
+      APP_ENV: production
+      APP_SECRET: "${SECRET_KEY}"
+    domains:
+      - api.example.com
+    links:
+      - api-postgres
+      - shared-cache
+    networks:
+      - backend-net
+    ports:
+      - "https:4001:4000"
+    ssl:
+      certfile: certs/example.com/fullchain.pem
+      keyfile: certs/example.com/privkey.pem
+    storage:
+      - "/var/lib/dokku/data/storage/api/uploads:/app/uploads"
+    nginx:
+      client-max-body-size: "15m"
+      proxy-read-timeout: "120s"
+    checks:
+      wait-to-retire: 60
+      disabled:
+        - worker
+
+  worker:
+    links:
+      - api-postgres
+      - shared-cache
+    checks: false
+    proxy:
+      enabled: false
+```
 
 ## Quick Start
 
@@ -59,7 +130,7 @@ dokku:
 [dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
 ```
 
-Use `dokku-compose setup` to install Dokku at the declared version on a fresh Ubuntu/Debian server. It only handles fresh installs — if Dokku is already installed at a different version, it will print an upgrade link and exit. Requires root.
+Use `dokku-compose setup` to install Dokku at the declared version on a fresh Ubuntu/Debian server.
 
 ### Application Management
 
@@ -69,10 +140,6 @@ Create and destroy Dokku apps idempotently. If the app already exists, it's skip
 apps:
   api:
     # per-app configuration goes here
-```
-
-```
-dokku apps:create api
 ```
 
 [Application Management Reference →](docs/reference/apps.md)
@@ -87,10 +154,6 @@ apps:
     env:
       APP_ENV: production
       APP_SECRET: "${SECRET_KEY}"
-```
-
-```
-dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 ```
 
 [Environment Variables Reference →](docs/reference/config.md)
@@ -110,13 +173,6 @@ apps:
         SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
 ```
 
-```
-dokku builder:set api build-dir apps/api
-dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
-dokku app-json:set api appjson-path docker/prod/api/app.json
-dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
-```
-
 [Build Reference →](docs/reference/builder.md)
 
 ### Docker Options
@@ -131,13 +187,6 @@ apps:
         - "--shm-size 256m"
       run:
         - "--ulimit nofile=12"
-```
-
-```
-dokku docker-options:clear api deploy
-dokku docker-options:add api deploy --shm-size 256m
-dokku docker-options:clear api run
-dokku docker-options:add api run --ulimit nofile=12
 ```
 
 [Docker Options Reference →](docs/reference/docker_options.md)
@@ -179,13 +228,6 @@ apps:
     domains:
       - api.example.com
       - api.example.co
-```
-
-```
-dokku domains:enable --all
-dokku domains:set-global example.com
-dokku domains:enable api
-dokku domains:set api api.example.com api.example.co
 ```
 
 [Domains Reference →](docs/reference/domains.md)
@@ -234,11 +276,6 @@ apps:
   worker:
     proxy:
       enabled: false
-```
-
-```
-dokku proxy:enable api
-dokku proxy:disable worker
 ```
 
 ### Persistent Storage
@@ -291,14 +328,6 @@ apps:
     checks: false                     # disable all checks (causes downtime)
 ```
 
-```
-dokku checks:set api wait-to-retire 60
-dokku checks:set api attempts 5
-dokku checks:disable api worker
-dokku checks:skip api cron
-dokku checks:disable worker
-```
-
 [Zero-Downtime Checks Reference →](docs/reference/checks.md)
 
 ### Log Management
@@ -338,15 +367,9 @@ apps:
       - api-postgres
 ```
 
-```
-dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0 --name postgres
-dokku postgres:create api-postgres
-dokku postgres:link api-postgres api --no-restart
-```
-
 [Plugins and Services Reference →](docs/reference/plugins.md)
 
-### Commands
+## Commands
 
 | Command | Description |
 |---------|-------------|
@@ -356,7 +379,7 @@ dokku postgres:link api-postgres api --no-restart
 | `dokku-compose ps` | Show status of configured apps |
 | `dokku-compose setup` | Install Dokku at declared version (fresh Ubuntu/Debian only) |
 
-#### `ps` — Show Status
+### `ps` — Show Status
 
 Queries each configured app and prints its deploy status:
 
@@ -367,16 +390,16 @@ worker               running
 web                  not created
 ```
 
-#### `down` — Tear Down
+### `down` — Tear Down
 
-Destroys apps and their linked services. Requires `--force` as a safety measure. For each app, services are unlinked first, then the app is destroyed. Service instances from the top-level `services:` section are destroyed after all apps. You can target a single app or tear down everything:
+Destroys apps and their linked services. Requires `--force` as a safety measure. For each app, services are unlinked first, then the app is destroyed. Service instances from the top-level `services:` section are destroyed after all apps.
 
 ```bash
 dokku-compose down --force myapp     # Destroy one app and its services
 dokku-compose down --force           # Destroy all configured apps
 ```
 
-### Options
+## Options
 
 | Option | Description |
 |--------|-------------|
@@ -387,7 +410,7 @@ dokku-compose down --force           # Destroy all configured apps
 | `--help` | Show usage |
 | `--version` | Show version |
 
-### Examples
+## Examples
 
 ```bash
 dokku-compose up                      # Configure all apps
@@ -397,7 +420,7 @@ dokku-compose down --force myapp      # Destroy an app
 dokku-compose ps                      # Show status
 ```
 
-### Execution Modes
+## Execution Modes
 
 ```bash
 # Run locally on the Dokku server
@@ -407,9 +430,9 @@ dokku-compose up
 DOKKU_HOST=my-server.example.com dokku-compose up
 ```
 
-When `DOKKU_HOST` is set, all Dokku commands are sent over SSH. This is the typical workflow — you keep `dokku-compose.yml` in your project repo and apply it from your local machine. SSH key access to the Dokku server is required.
+When `DOKKU_HOST` is set, all Dokku commands are sent over SSH. This is the typical workflow — keep `dokku-compose.yml` in your project repo and apply it from your local machine. SSH key access to the Dokku server is required.
 
-### What `up` Does
+## What `up` Does
 
 Idempotently ensures desired state, in order:
 
@@ -421,26 +444,15 @@ Idempotently ensures desired state, in order:
 6. For each app:
    - Create app (if not exists)
    - Lock/unlock app (if declared)
-   - Set domains (if declared)
-   - Link/unlink services (from `links:`)
-   - Run custom plugin scripts
-   - Attach to networks
-   - Enable/disable proxy
-   - Set port mappings
-   - Add SSL certificate
-   - Mount persistent storage
-   - Configure nginx properties
-   - Configure zero-downtime checks
-   - Configure log settings
-   - Set environment variables
-   - Configure build (context, dockerfile path, app.json, build args)
-   - Add docker options (per phase)
+   - Set domains, link/unlink services, attach networks
+   - Enable/disable proxy, set ports, add SSL, mount storage
+   - Configure nginx, checks, logs, env vars, build, and docker options
 
-Running `up` twice produces no changes -- every step checks current state before acting.
+Running `up` twice produces no changes — every step checks current state before acting.
 
-**Note:** `up` is mostly additive. It creates and updates configuration to match your YAML, but removing a key (e.g. deleting a `ports:` block) won't remove the corresponding setting from Dokku. The exception is `links:`, which is fully declarative -- services not in the list are unlinked. To fully reset an app, use `down --force` and re-run `up`. Use `--remove-orphans` to destroy services and networks that are no longer in the config file.
+`up` is mostly additive. Removing a key (e.g. deleting a `ports:` block) won't remove the corresponding setting from Dokku. The exception is `links:`, which is fully declarative — services not in the list are unlinked. Use `down --force` to fully reset an app, or `--remove-orphans` to destroy services and networks no longer in config.
 
-### Output
+## Output
 
 ```
 [networks  ] Creating backend-net... done
@@ -463,6 +475,9 @@ Running `up` twice produces no changes -- every step checks current state before
 ```
 
 ## Architecture
+
+<details>
+<summary>File structure</summary>
 
 ```
 dokku-compose/
@@ -495,22 +510,16 @@ dokku-compose/
 └── dokku-compose.yml.example
 ```
 
-Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*()` / `destroy_*()` functions.
+Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*()` / `destroy_*()` functions. See [CLAUDE.md](CLAUDE.md) for development conventions.
+
+</details>
 
 ## Development
-
-### Setup
 
 ```bash
 git clone --recurse-submodules https://github.com/guess/dokku-compose.git
 cd dokku-compose
-```
 
-### Running tests
-
-Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cmd` wrapper -- no real Dokku server needed.
-
-```bash
 # Run all tests
 ./tests/bats/bin/bats tests/
 
@@ -518,15 +527,12 @@ Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cm
 ./tests/bats/bin/bats tests/services.bats
 ```
 
-CI runs unit tests on every push and PR.
-
-### Releasing
+Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cmd` — no real Dokku server needed.
 
 ```bash
+# Cut a release (checks CI passed first)
 scripts/release.sh 0.2.0
 ```
-
-This verifies CI passed on the current commit, then creates and pushes a git tag. The release workflow bundles the script and publishes a GitHub Release automatically.
 
 ## License
 
