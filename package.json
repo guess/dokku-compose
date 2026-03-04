@@ -16,8 +16,8 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "bun src/index.ts"
   },

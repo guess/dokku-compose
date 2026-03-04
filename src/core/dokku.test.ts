@@ -1,19 +1,25 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { execa } from 'execa'
+import { describe, it, expect, beforeEach, mock } from 'bun:test'
 
-vi.mock('execa')
-const mockExeca = vi.mocked(execa)
+// Mock the execa module before any imports that use it
+const mockExecaFn = mock(async (..._args: any[]) => ({ stdout: '', stderr: '' }))
+
+mock.module('execa', () => ({
+  execa: mockExecaFn,
+}))
+
+// Import after mocking so the module sees the mock
+const { createRunner } = await import('./dokku.js')
 
 describe('createRunner with host', () => {
   beforeEach(() => {
-    mockExeca.mockResolvedValue({ stdout: '', stderr: '' } as any)
+    mockExecaFn.mockClear()
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '' }))
   })
 
   it('includes ControlMaster flags in SSH args', async () => {
-    const { createRunner } = await import('./dokku.js')
     const runner = createRunner({ host: 'myserver.com' })
     await runner.query('apps:list')
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExecaFn).toHaveBeenCalledWith(
       'ssh',
       expect.arrayContaining([
         '-o', 'ControlMaster=auto',
@@ -23,18 +29,16 @@ describe('createRunner with host', () => {
     )
   })
 
-  it('runner has a close() method', async () => {
-    const { createRunner } = await import('./dokku.js')
+  it('runner has a close() method', () => {
     const runner = createRunner({ host: 'myserver.com' })
     expect(typeof runner.close).toBe('function')
   })
 
   it('close() sends ssh -O exit to the control socket', async () => {
-    const { createRunner } = await import('./dokku.js')
     const runner = createRunner({ host: 'myserver.com' })
-    mockExeca.mockClear()
+    mockExecaFn.mockClear()
     await runner.close()
-    expect(mockExeca).toHaveBeenCalledWith(
+    expect(mockExecaFn).toHaveBeenCalledWith(
       'ssh',
       expect.arrayContaining(['-O', 'exit'])
     )
@@ -43,21 +47,18 @@ describe('createRunner with host', () => {
 
 describe('DryRun runner', () => {
   it('records commands without executing', async () => {
-    const { createRunner } = await import('./dokku.js')
     const runner = createRunner({ dryRun: true })
     await runner.run('apps:create', 'myapp')
     expect(runner.dryRunLog).toEqual(['apps:create myapp'])
   })
 
   it('query() works in dry-run (returns empty string)', async () => {
-    const { createRunner } = await import('./dokku.js')
     const runner = createRunner({ dryRun: true })
     const result = await runner.query('apps:exists', 'myapp')
     expect(result).toBe('')
   })
 
   it('check() returns false in dry-run', async () => {
-    const { createRunner } = await import('./dokku.js')
     const runner = createRunner({ dryRun: true })
     const ok = await runner.check('apps:exists', 'myapp')
     expect(ok).toBe(false)
