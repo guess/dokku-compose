@@ -1,0 +1,4 @@
+apps:
+  myapp:
+    links:
+      - nonexistent-postgres

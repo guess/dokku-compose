@@ -1,0 +1,4 @@
+apps:
+  myapp:
+    ports:
+      - "80:3000"
