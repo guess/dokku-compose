@@ -2,6 +2,9 @@
 import { Command } from 'commander'
 import * as fs from 'fs'
 import * as yaml from 'js-yaml'
+import { createRequire } from 'module'
+const require = createRequire(import.meta.url)
+const { version } = require('../package.json')
 import { loadConfig } from './core/config.js'
 import { createRunner } from './core/dokku.js'
 import { runUp } from './commands/up.js'
@@ -12,7 +15,7 @@ import { validate } from './commands/validate.js'
 
 const program = new Command()
   .name('dokku-compose')
-  .version('0.3.0')
+  .version(version)
 
 function makeRunner(opts: { dryRun?: boolean }) {
   return createRunner({
