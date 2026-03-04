@@ -12,16 +12,16 @@ dokku-compose is a declarative orchestrator for Dokku servers. Users define infr
 
 ```bash
 # Run all tests
-cd src && npm test
+npm test
 
 # Run a single test file
-cd src && npx vitest run modules/apps.test.ts
+npx vitest run src/modules/apps.test.ts
 
 # Run the tool (local or via DOKKU_HOST for remote)
 ./bin/dokku-compose up --dry-run
 
 # Build the CLI
-cd src && npm run build
+npm run build
 ```
 
 ## Architecture
@@ -76,8 +76,8 @@ cd src && npm run build
 Tests use Vitest.
 
 ```bash
-cd src && npm test          # run all tests
-cd src && npm run test:watch  # watch mode
+npm test          # run all tests
+npm run test:watch  # watch mode
 ```
 
 **Test conventions:**
