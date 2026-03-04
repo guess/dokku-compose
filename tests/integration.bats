@@ -55,7 +55,6 @@ teardown() {
     ensure_app "$app"
     ensure_app_domains "$app"
     ensure_app_links "$app"
-    ensure_app_scripts "$app"
     ensure_app_networks "$app"
     ensure_app_proxy "$app"
     ensure_app_ports "$app"
