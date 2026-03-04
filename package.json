@@ -1,7 +1,7 @@
 {
   "name": "dokku-compose",
   "version": "0.2.0",
-  "description": "Declarative orchestrator for Dokku servers. Like Docker Compose, but for Dokku.",
+  "description": "Docker Compose for Dokku — declare your entire server in a single YAML file.",
   "main": "dist/index.js",
   "exports": "./dist/index.js",
   "bin": {
