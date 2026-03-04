@@ -1,0 +1,107 @@
+dokku:
+  version: "0.35.12"
+
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+    version: "1.41.0"
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
+
+networks:
+  - studio-net
+  - qultr-net
+
+services:
+  funqtion-postgres:
+    plugin: postgres
+    version: "17-3.5"
+    image: postgis/postgis
+  funqtion-redis:
+    plugin: redis
+    version: "7.2-alpine"
+  studio-postgres:
+    plugin: postgres
+  studio-redis:
+    plugin: redis
+  qultr-postgres:
+    plugin: postgres
+  qultr-redis:
+    plugin: redis
+
+apps:
+  funqtion:
+    domains:
+      - funqtion.example.com
+      - api.funqtion.co
+    build:
+      dockerfile: docker/prod/api/Dockerfile
+      app_json: docker/prod/api/app.json
+      context: apps/funqtion-api
+      args:
+        SENTRY_AUTH_TOKEN: "test-token"
+    ports:
+      - "https:4001:4000"
+    ssl:
+      certfile: certs/funqtion.co/server.crt
+      keyfile: certs/funqtion.co/server.key
+    links:
+      - funqtion-postgres
+      - funqtion-redis
+    checks:
+      wait-to-retire: 60
+      attempts: 5
+    storage:
+      - "/var/lib/dokku/data/storage/funqtion/uploads:/app/uploads"
+    registry:
+      push-on-release: true
+      server: registry.example.com
+    env:
+      APP_ENV: staging
+
+  studio:
+    build:
+      context: apps/studio-api
+    ports:
+      - "https:4002:4000"
+    ssl:
+      certfile: certs/strates.io/server.crt
+      keyfile: certs/strates.io/server.key
+    links:
+      - studio-postgres
+      - studio-redis
+    logs:
+      max-size: "10m"
+    networks:
+      - studio-net
+
+  qultr:
+    build:
+      context: apps/qultr-api
+    ports:
+      - "https:4003:4000"
+    ssl:
+      certfile: certs/qultr.dev/server.crt
+      keyfile: certs/qultr.dev/server.key
+    links:
+      - qultr-postgres
+      - qultr-redis
+    nginx:
+      client-max-body-size: "15m"
+    scheduler: docker-local
+    docker_options:
+      deploy:
+        - "--shm-size 256m"
+    networks:
+      - qultr-net
+
+  qultr-sandbox:
+    build:
+      dockerfile: docker/prod/sandbox/Dockerfile
+      context: apps/qultr-sandbox
+    ports:
+      - "http:4004:4000"
+    proxy:
+      enabled: false
+    networks:
+      - qultr-net
