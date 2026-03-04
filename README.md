@@ -121,7 +121,7 @@ dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 
 ### Docker Options
 
-Add custom Docker options per build phase (`build`, `deploy`, `run`).
+Add custom Docker options per build phase (`build`, `deploy`, `run`). Each phase is cleared and re-populated on every `up` for idempotent convergence.
 
 ```yaml
 apps:
@@ -134,9 +134,13 @@ apps:
 ```
 
 ```
+dokku docker-options:clear api deploy
 dokku docker-options:add api deploy --shm-size 256m
+dokku docker-options:clear api run
 dokku docker-options:add api run --ulimit nofile=12
 ```
+
+[Docker Options Reference →](docs/reference/docker-options.md)
 
 ### Networks
 

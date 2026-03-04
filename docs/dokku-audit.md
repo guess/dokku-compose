@@ -23,7 +23,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 6 | ports | ports.sh | partial | [link](https://dokku.com/docs/networking/port-management/) |
 | 7 | nginx | nginx.sh | partial | [link](https://dokku.com/docs/networking/proxies/nginx/) |
 | 8 | builder-* | builder.sh | partial | [link](https://dokku.com/docs/deployment/builders/builder-management/) |
-| 9 | docker-options | docker_options.sh | partial | [link](https://dokku.com/docs/advanced-usage/docker-options/) |
+| 9 | docker-options | docker_options.sh | supported | [link](https://dokku.com/docs/advanced-usage/docker-options/) |
 | 10 | plugin | plugins.sh | supported | [link](https://dokku.com/docs/advanced-usage/plugin-management/) |
 | 11 | version | dokku.sh | supported | [link](https://dokku.com/docs/getting-started/installation/) |
 | 12 | git | git.sh | skipped | [link](https://dokku.com/docs/deployment/methods/git/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 4 namespaces (apps, config, plugin, version)
-- **Partial:** 14 namespaces (domains, certs, network, ports, nginx, builder-*, docker-options, proxy, storage, registry, scheduler, checks, logs, app-json)
+- **Supported:** 5 namespaces (apps, config, docker-options, plugin, version)
+- **Partial:** 13 namespaces (domains, certs, network, ports, nginx, builder-*, proxy, storage, registry, scheduler, checks, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -393,16 +393,16 @@ Note: Dockerfile builder is assumed. No `selected` key — opinionated choice to
 
 **Doc:** https://dokku.com/docs/advanced-usage/docker-options/
 **Module:** `lib/docker_options.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| docker-options:add | declarative | yes | `ensure_app_docker_options()` adds per-phase options |
-| docker-options:remove | declarative | no | Not implemented |
-| docker-options:clear | imperative | no | Not implemented |
-| docker-options:report | read-only | no | Not implemented |
+| docker-options:add | declarative | yes | Adds per-phase options after clearing |
+| docker-options:remove | declarative | no | Not needed — clear+add provides convergence |
+| docker-options:clear | declarative | yes | Clears phase before re-adding declared options |
+| docker-options:report | read-only | no | Not needed — clear+add is idempotent |
 
 ### YAML Keys
 
@@ -419,15 +419,15 @@ apps:
         - "--ulimit nofile=12"
 ```
 
+Each declared phase is cleared then re-populated, providing idempotency and convergence. Undeclared phases are untouched.
+
 ### Gaps in Existing Code
 
-- No idempotency check — adds options every run (may produce duplicates).
-- No `docker-options:remove` for convergence when options are removed from YAML.
-- No teardown function.
+None. Clear+add pattern provides idempotency and convergence.
 
 ### Decision
 
-**Partial.** Users can declare arbitrary per-phase docker options (build, deploy, run) via dedicated `lib/docker_options.sh` module. Gaps: no idempotency, no convergence for removed options, no teardown.
+**Supported.** Declares arbitrary per-phase docker options (build, deploy, run). Each phase is atomically cleared and re-populated for idempotent convergence.
 
 ---
 

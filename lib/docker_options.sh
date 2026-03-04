@@ -14,11 +14,13 @@ ensure_app_docker_options() {
     for phase in build deploy run; do
         yaml_app_has "$app" ".docker_options.$phase" || continue
 
+        log_action "$app" "Setting docker options ($phase)"
+        dokku_cmd docker-options:clear "$app" "$phase"
+
         while IFS= read -r option; do
             [[ -z "$option" ]] && continue
-            log_action "$app" "Adding docker option ($phase): $option"
             dokku_cmd docker-options:add "$app" "$phase" "$option"
-            log_done
         done <<< "$(yaml_app_list "$app" ".docker_options.${phase}[]")"
+        log_done
     done
 }
