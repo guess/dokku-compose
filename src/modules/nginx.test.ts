@@ -19,13 +19,28 @@ describe('exportAppNginx', () => {
     expect(result).toBeUndefined()
   })
 
-  it('returns parsed nginx properties', async () => {
+  it('returns only app-level properties with real values', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(
-      '       Nginx client max body size: 15m\n       Nginx proxy read timeout: 60s'
-    )
+    runner.query = vi.fn().mockResolvedValue([
+      '       Nginx client max body size: 15m',
+      '       Nginx computed client max body size: 15m',
+      '       Nginx global client max body size: 1m',
+      '       Nginx access log format:  ',
+      '       Nginx computed access log format:  ',
+      '       Nginx last visited at:  ',
+    ].join('\n'))
     const result = await exportAppNginx(runner, 'myapp')
-    expect(result).toBeDefined()
-    expect(result).toHaveProperty('client-max-body-size', '15m')
+    expect(result).toEqual({ 'client-max-body-size': '15m' })
+  })
+
+  it('returns undefined when all app-level values are empty', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue([
+      '       Nginx access log format:  ',
+      '       Nginx computed access log format: default',
+      '       Nginx global access log format: default',
+    ].join('\n'))
+    const result = await exportAppNginx(runner, 'myapp')
+    expect(result).toBeUndefined()
   })
 })

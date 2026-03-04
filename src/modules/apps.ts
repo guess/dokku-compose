@@ -19,5 +19,6 @@ export async function destroyApp(runner: Runner, app: string): Promise<void> {
 
 export async function exportApps(runner: Runner): Promise<string[]> {
   const output = await runner.query('apps:list')
-  return output.split('\n').map(s => s.trim()).filter(Boolean)
+  return output.split('\n').map(s => s.trim()).filter(s => s && !s.startsWith('=====>')
+  )
 }

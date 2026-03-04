@@ -37,9 +37,11 @@ describe('ensureAppNetworks', () => {
 })
 
 describe('exportNetworks', () => {
-  it('returns list of networks', async () => {
+  it('returns user-defined networks, filtering header and built-ins', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue('app-net\nstudio-net')
+    runner.query = vi.fn().mockResolvedValue(
+      '=====> Networks\nbridge\nhost\nnone\napp-net\nstudio-net'
+    )
     const result = await exportNetworks(runner)
     expect(result).toEqual(['app-net', 'studio-net'])
   })

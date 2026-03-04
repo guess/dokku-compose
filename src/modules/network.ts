@@ -48,9 +48,13 @@ export async function ensureAppNetwork(
   }
 }
 
+const DOCKER_BUILTIN_NETWORKS = new Set(['bridge', 'host', 'none'])
+
 export async function exportNetworks(runner: Runner): Promise<string[]> {
   const output = await runner.query('network:list')
-  return output.split('\n').map(s => s.trim()).filter(Boolean)
+  return output.split('\n')
+    .map(s => s.trim())
+    .filter(s => s && !s.startsWith('=====>' ) && !DOCKER_BUILTIN_NETWORKS.has(s))
 }
 
 export async function exportAppNetwork(

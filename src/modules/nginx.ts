@@ -31,7 +31,10 @@ export async function exportAppNginx(
     const match = line.match(/^\s*Nginx\s+(.+?):\s*(.+?)\s*$/)
     if (match) {
       const key = match[1].toLowerCase().replace(/\s+/g, '-')
-      result[key] = match[2]
+      if (key.startsWith('computed-') || key.startsWith('global-') || key === 'last-visited-at') continue
+      const value = match[2].trim()
+      if (!value) continue
+      result[key] = value
     }
   }
   return Object.keys(result).length > 0 ? result : undefined

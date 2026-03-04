@@ -39,9 +39,9 @@ describe('destroyApp', () => {
 })
 
 describe('exportApps', () => {
-  it('returns list of apps', async () => {
+  it('returns list of apps, filtering out header', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue('myapp\notherapp')
+    runner.query = vi.fn().mockResolvedValue('=====> My Apps\nmyapp\notherapp')
     const result = await exportApps(runner)
     expect(result).toEqual(['myapp', 'otherapp'])
   })
