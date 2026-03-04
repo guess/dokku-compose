@@ -309,37 +309,6 @@ apps:
 dokku logs:set api max-size 10m
 ```
 
-### Registry
-
-Configure container registry push settings.
-
-```yaml
-apps:
-  api:
-    registry:
-      push-on-release: true
-      server: registry.example.com
-```
-
-```
-dokku registry:set api push-on-release true
-dokku registry:set api server registry.example.com
-```
-
-### Scheduler
-
-Select the scheduler for an app.
-
-```yaml
-apps:
-  api:
-    scheduler: docker-local
-```
-
-```
-dokku scheduler:set api selected docker-local
-```
-
 ### Plugins and Services
 
 Install plugins and declare service instances. Services are created before apps during `up` and linked on demand.
@@ -454,8 +423,6 @@ Idempotently ensures desired state, in order:
    - Configure nginx properties
    - Configure zero-downtime checks
    - Configure log settings
-   - Configure registry settings
-   - Set scheduler
    - Set environment variables
    - Configure build (context, dockerfile path, app.json, build args)
    - Add docker options (per phase)
@@ -509,8 +476,6 @@ dokku-compose/
 │   ├── plugins.sh            # dokku plugin:*
 │   ├── ports.sh              # dokku ports:*
 │   ├── proxy.sh              # dokku proxy:*
-│   ├── registry.sh           # dokku registry:*
-│   ├── scheduler.sh          # dokku scheduler:*
 │   ├── services.sh           # Service instances, links, and plugin scripts
 │   └── storage.sh            # dokku storage:*
 ├── tests/

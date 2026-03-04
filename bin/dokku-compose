@@ -139,12 +139,15 @@ cmd_up() {
         ensure_plugins
     fi
 
-    # Phase 3: Global config (domains, env)
+    # Phase 3: Global config (domains, env, logs)
     if type ensure_global_domains &>/dev/null; then
         ensure_global_domains
     fi
     if type ensure_global_config &>/dev/null; then
         ensure_global_config
+    fi
+    if type ensure_global_logs &>/dev/null; then
+        ensure_global_logs
     fi
 
     # Phase 4: Shared networks
