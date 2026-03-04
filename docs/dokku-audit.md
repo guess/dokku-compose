@@ -33,7 +33,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 16 | resource | — | planned | [link](https://dokku.com/docs/advanced-usage/resource-management/) |
 | 17 | registry | registry.sh | partial | [link](https://dokku.com/docs/advanced-usage/registry-management/) |
 | 18 | scheduler | scheduler.sh | partial | [link](https://dokku.com/docs/deployment/schedulers/scheduler-management/) |
-| 19 | checks | checks.sh | partial | [link](https://dokku.com/docs/deployment/zero-downtime-deploys/) |
+| 19 | checks | checks.sh | supported | [link](https://dokku.com/docs/deployment/zero-downtime-deploys/) |
 | 20 | logs | logs.sh | partial | [link](https://dokku.com/docs/deployment/logs/) |
 | 21 | cron | — | planned | [link](https://dokku.com/docs/processes/scheduled-cron-tasks/) |
 | 22 | run | — | skipped | [link](https://dokku.com/docs/processes/one-off-tasks/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 8 namespaces (apps, certs, config, docker-options, network, plugin, ports, version)
-- **Partial:** 10 namespaces (domains, nginx, builder-*, proxy, storage, registry, scheduler, checks, logs, app-json)
+- **Supported:** 9 namespaces (apps, certs, checks, config, docker-options, network, plugin, ports, version)
+- **Partial:** 9 namespaces (domains, nginx, builder-*, proxy, storage, registry, scheduler, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -732,21 +732,21 @@ apps:
 
 **Doc:** https://dokku.com/docs/deployment/zero-downtime-deploys/
 **Module:** `lib/checks.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| checks:set wait-to-retire | declarative | yes | Via `dokku_set_properties` helper |
-| checks:set attempts | declarative | yes | Via `dokku_set_properties` helper |
-| checks:set timeout | declarative | yes | Via `dokku_set_properties` helper |
-| checks:set wait | declarative | yes | Via `dokku_set_properties` helper |
-| checks:disable | declarative | no | Per-process-type disable |
-| checks:enable | declarative | no | Per-process-type enable |
-| checks:skip | declarative | no | Per-process-type skip |
+| checks:set wait-to-retire | declarative | yes | Idempotent via `checks:report` |
+| checks:set attempts | declarative | yes | Idempotent via `checks:report` |
+| checks:set timeout | declarative | yes | Idempotent via `checks:report` |
+| checks:set wait | declarative | yes | Idempotent via `checks:report` |
+| checks:disable | declarative | yes | Per-process-type or all via `checks: false` |
+| checks:enable | declarative | yes | Via `disabled: false` or `skipped: false` |
+| checks:skip | declarative | yes | Per-process-type skip |
 | checks:run | imperative | no | Manual healthcheck trigger |
-| checks:report | read-only | no | Could enable idempotency |
+| checks:report | read-only | yes | Used for idempotency checks |
 
 ### YAML Keys
 
@@ -754,20 +754,31 @@ apps:
 apps:
   myapp:
     checks:
-      wait-to-retire: 60
-      attempts: 5
-      timeout: 10
-      wait: 5
+      wait-to-retire: 60             # checks:set property (idempotent)
+      attempts: 5                    # checks:set property (idempotent)
+      timeout: 10                    # checks:set property (idempotent)
+      wait: 5                       # checks:set property (idempotent)
+      disabled:                      # checks:disable per process type
+        - worker
+      skipped:                       # checks:skip per process type
+        - cron
+
+  otherapp:
+    checks: false                    # checks:disable (all process types)
+
+  resetapp:
+    checks:
+      disabled: false                # checks:enable (re-enable all)
+      skipped: false                 # checks:enable (clear skipped list)
 ```
 
 ### Gaps in Existing Code
 
-- No idempotency check — re-sets all properties every run.
-- No `checks:disable`/`checks:enable`/`checks:skip` per process type.
+None. All declarative commands are supported with idempotency.
 
 ### Decision
 
-**Partial.** Key-value `checks:set` properties implemented via passthrough helper. Gaps: no idempotency, no per-process-type enable/disable/skip tri-state.
+**Supported.** Properties set via `checks:set` with idempotency via `checks:report`. Per-process-type `checks:disable`/`checks:skip`/`checks:enable` supported via `disabled`/`skipped` sub-keys with list/false/absent tri-state pattern.
 
 ---
 
@@ -781,7 +792,7 @@ apps:
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| logs:set | declarative | yes | `ensure_app_logs()` via `dokku_set_properties` helper |
+| logs:set | declarative | yes | `ensure_app_logs()` and `ensure_global_logs()` via map passthrough |
 | logs:report | read-only | no | Could enable idempotency |
 | logs / logs:failed | imperative | no | Log viewers |
 | logs:vector-start / stop | imperative | no | Vector container management |
@@ -789,21 +800,26 @@ apps:
 ### YAML Keys
 
 ```yaml
+logs:                          # top-level: map = set global properties; absent = no action
+  max-size: "50m"
+  vector-image: "timberio/vector:0.36.0-alpine"
+  vector-sink: "console://?encoding[codec]=json"
+  app-label-alias: "app"
+
 apps:
   myapp:
-    logs:
-      max-size: "50m"
-      vector-sink: "console://?encoding[codec]=json"
+    logs:                      # per-app: map = set properties; absent = no action
+      max-size: "10m"
+      vector-sink: "file://?path=/tmp/app.log"
 ```
 
 ### Gaps in Existing Code
 
 - No idempotency check — re-sets all properties every run.
-- No global log settings.
 
 ### Decision
 
-**Partial.** Per-app `logs:set` properties implemented via key-value passthrough helper. Gaps: no idempotency, no global support.
+**Partial.** Per-app `logs:set` and global `logs:set --global` properties implemented via key-value map passthrough. `ensure_global_logs()` wired into Phase 3 (global config). Gap: no idempotency.
 
 ---
 

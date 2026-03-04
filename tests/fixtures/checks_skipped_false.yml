@@ -1,0 +1,4 @@
+apps:
+  myapp:
+    checks:
+      skipped: false

@@ -279,7 +279,7 @@ dokku nginx:set api proxy-read-timeout 120s
 
 ### Zero-Downtime Checks
 
-Configure zero-downtime deploy check settings.
+Configure zero-downtime deploy check properties, disable checks entirely, or control per process type. Properties are idempotent — current values are checked before setting.
 
 ```yaml
 apps:
@@ -287,27 +287,40 @@ apps:
     checks:
       wait-to-retire: 60
       attempts: 5
+      disabled:
+        - worker
+      skipped:
+        - cron
+  worker:
+    checks: false                     # disable all checks (causes downtime)
 ```
 
 ```
 dokku checks:set api wait-to-retire 60
 dokku checks:set api attempts 5
+dokku checks:disable api worker
+dokku checks:skip api cron
+dokku checks:disable worker
 ```
+
+[Zero-Downtime Checks Reference →](docs/reference/checks.md)
 
 ### Log Management
 
-Configure log shipping and retention settings.
+Configure log retention and shipping globally or per-app.
 
 ```yaml
+logs:                            # global defaults
+  max-size: "50m"
+  vector-sink: "console://?encoding[codec]=json"
+
 apps:
   api:
-    logs:
+    logs:                        # per-app overrides
       max-size: "10m"
 ```
 
-```
-dokku logs:set api max-size 10m
-```
+[Log Management Reference →](docs/reference/logs.md)
 
 ### Plugins and Services
 
