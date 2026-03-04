@@ -27,6 +27,8 @@ jobs:
 
       - name: Build
         run: bun run build
+        env:
+          NODE_ENV: production
 
       - name: Publish to npm
         run: |
