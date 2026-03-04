@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Tag and release a new version after verifying CI passed
+# Bump version, tag, and push — CI runs tests before publishing
 set -euo pipefail
 
 VERSION="${1:-}"
 
 if [[ -z "$VERSION" ]]; then
     echo "Usage: scripts/release.sh <version>" >&2
-    echo "Example: scripts/release.sh 0.2.0" >&2
+    echo "Example: scripts/release.sh 0.3.0" >&2
     exit 1
 fi
 
@@ -17,33 +17,25 @@ if git rev-parse "$TAG" &>/dev/null; then
     exit 1
 fi
 
-# Ensure we're on main and up to date
 BRANCH="$(git branch --show-current)"
 if [[ "$BRANCH" != "main" ]]; then
     echo "Error: must be on main branch (currently on $BRANCH)" >&2
     exit 1
 fi
 
-SHA="$(git rev-parse HEAD)"
-
-echo "Checking CI status for $(git log --oneline -1 HEAD)..."
-
-STATUS="$(gh run list --branch main --commit "$SHA" --workflow tests.yml --json conclusion --jq '.[0].conclusion')"
-
-if [[ -z "$STATUS" ]]; then
-    echo "Error: no CI run found for commit $SHA" >&2
-    echo "Push to main first and wait for CI to complete." >&2
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Error: working tree is dirty — commit or stash changes first" >&2
     exit 1
 fi
 
-if [[ "$STATUS" != "success" ]]; then
-    echo "Error: CI status is '$STATUS' — cannot release" >&2
-    exit 1
-fi
+echo "Bumping version to $VERSION..."
+npm version "$VERSION" --no-git-tag-version
+git add package.json package-lock.json
+git commit -m "chore: release $TAG"
 
-echo "CI passed. Tagging $TAG..."
+echo "Tagging $TAG..."
 git tag "$TAG"
-git push origin "$TAG"
+git push origin main "$TAG"
 
-echo "Done. Release workflow will create the GitHub release."
+echo "Done. Release workflow will run tests and publish to npm."
 echo "Track it: gh run list --workflow=release.yml --limit=1"
