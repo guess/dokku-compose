@@ -1,4 +1,6 @@
 import { execa } from 'execa'
+import * as os from 'os'
+import * as path from 'path'
 
 export interface RunnerOptions {
   host?: string    // DOKKU_HOST for SSH
@@ -14,15 +16,26 @@ export interface Runner {
   check(...args: string[]): Promise<boolean>
   /** In dry-run mode, the list of commands that would have run */
   dryRunLog: string[]
+  /** Close the SSH control socket (no-op if not using SSH) */
+  close(): Promise<void>
 }
 
 export function createRunner(opts: RunnerOptions = {}): Runner {
   const log: string[] = []
 
+  // SSH ControlMaster socket path — one per host
+  const controlPath = opts.host
+    ? path.join(os.tmpdir(), `dokku-compose-${opts.host}.sock`)
+    : null
+
+  const sshControlFlags = controlPath
+    ? ['-o', 'ControlMaster=auto', '-o', `ControlPath=${controlPath}`, '-o', 'ControlPersist=60']
+    : []
+
   async function execDokku(args: string[]): Promise<{ stdout: string; ok: boolean }> {
     if (opts.host) {
       try {
-        const result = await execa('ssh', [`dokku@${opts.host}`, ...args])
+        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, ...args])
         return { stdout: result.stdout, ok: true }
       } catch (e: any) {
         return { stdout: e.stdout ?? '', ok: false }
@@ -58,6 +71,15 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
       if (opts.dryRun) return false
       const { ok } = await execDokku(args)
       return ok
+    },
+
+    async close(): Promise<void> {
+      if (!opts.host || !controlPath) return
+      try {
+        await execa('ssh', ['-O', 'exit', '-o', `ControlPath=${controlPath}`, `dokku@${opts.host}`])
+      } catch {
+        // Socket may not exist yet (e.g. dry-run or no commands ran) — ignore
+      }
     },
   }
 }
