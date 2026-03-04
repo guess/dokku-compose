@@ -1573,7 +1573,8 @@ export async function runUp(
     }
 
     // All other resources via registry
-    const skipKeys = new Set(['_app', 'domains'])
+    // git is handled explicitly below (merges app-level with global config)
+    const skipKeys = new Set(['_app', 'domains', 'git'])
     for (const resource of APP_RESOURCES) {
       if (skipKeys.has(resource.key)) continue
       const desired = (appConfig as any)[resource.key]
