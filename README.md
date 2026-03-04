@@ -95,6 +95,49 @@ dokku config:set --no-restart api APP_ENV=production APP_SECRET=abc123
 
 [Environment Variables Reference →](docs/reference/config.md)
 
+### Build
+
+Configure Dockerfile builds: build context, Dockerfile path, app.json location, and build args. Key names follow docker-compose conventions.
+
+```yaml
+apps:
+  api:
+    build:
+      context: apps/api
+      dockerfile: docker/prod/api/Dockerfile
+      app_json: docker/prod/api/app.json
+      args:
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+```
+
+```
+dokku builder:set api build-dir apps/api
+dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
+dokku app-json:set api appjson-path docker/prod/api/app.json
+dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
+```
+
+[Build Reference →](docs/reference/builder.md)
+
+### Docker Options
+
+Add custom Docker options per build phase (`build`, `deploy`, `run`).
+
+```yaml
+apps:
+  api:
+    docker_options:
+      deploy:
+        - "--shm-size 256m"
+      run:
+        - "--ulimit nofile=12"
+```
+
+```
+dokku docker-options:add api deploy --shm-size 256m
+dokku docker-options:add api run --ulimit nofile=12
+```
+
 ### Networks
 
 Create shared Docker networks for inter-app communication and attach apps to them.
@@ -303,49 +346,6 @@ apps:
 
 ```
 dokku scheduler:set api selected docker-local
-```
-
-### Build
-
-Configure Dockerfile builds: build context, Dockerfile path, app.json location, and build args. Key names follow docker-compose conventions.
-
-```yaml
-apps:
-  api:
-    build:
-      context: apps/api
-      dockerfile: docker/prod/api/Dockerfile
-      app_json: docker/prod/api/app.json
-      args:
-        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
-```
-
-```
-dokku builder:set api build-dir apps/api
-dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
-dokku app-json:set api appjson-path docker/prod/api/app.json
-dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
-```
-
-[Build Reference →](docs/reference/builder.md)
-
-### Docker Options
-
-Add custom Docker options per build phase (`build`, `deploy`, `run`).
-
-```yaml
-apps:
-  api:
-    docker_options:
-      deploy:
-        - "--shm-size 256m"
-      run:
-        - "--ulimit nofile=12"
-```
-
-```
-dokku docker-options:add api deploy --shm-size 256m
-dokku docker-options:add api run --ulimit nofile=12
 ```
 
 ### Plugins and Services
