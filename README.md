@@ -348,126 +348,33 @@ dokku docker-options:add api deploy --shm-size 256m
 dokku docker-options:add api run --ulimit nofile=12
 ```
 
-### Plugins
+### Plugins and Services
 
-Declare required plugins with optional version pinning. Plugins are installed on first run and updated automatically when the declared version changes. Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
+Install plugins and declare service instances. Services are created before apps during `up` and linked on demand.
 
 ```yaml
 plugins:
   postgres:
     url: https://github.com/dokku/dokku-postgres.git
-    version: "1.41.0"            # updated automatically when version changes
-  redis:
-    url: https://github.com/dokku/dokku-redis.git
+    version: "1.41.0"
 
 services:
   api-postgres:
     plugin: postgres
-    version: "17-3.5"
-    image: postgis/postgis       # custom image (e.g., PostGIS)
-  api-redis:
-    plugin: redis
-  shared-cache:
-    plugin: redis                # shared between multiple apps
-```
 
-```
-dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0 --name postgres
-dokku plugin:install https://github.com/dokku/dokku-redis.git --name redis
-dokku postgres:create api-postgres -I 17-3.5 -i postgis/postgis
-dokku redis:create api-redis
-dokku redis:create shared-cache
-```
-
-Plugins are installed first, then services are created before apps during `up`, so they are ready to be linked.
-
-[Plugins Reference →](docs/reference/plugins.md)
-
-#### Linking Services to Apps
-
-Apps reference services by name using `links:`. This connects the service to the app and injects the service's connection URL as an environment variable.
-
-```yaml
 apps:
   api:
     links:
       - api-postgres
-      - api-redis
-      - shared-cache
-
-  worker:
-    links:
-      - shared-cache
 ```
 
 ```
+dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0 --name postgres
+dokku postgres:create api-postgres
 dokku postgres:link api-postgres api --no-restart
-dokku redis:link api-redis api --no-restart
-dokku redis:link shared-cache api --no-restart
-
-dokku redis:link shared-cache worker --no-restart
 ```
 
-Link reconciliation is declarative:
-
-| `links:` value | Behavior |
-|-----------------|----------|
-| Present with values | Link listed services, unlink any others |
-| Present but empty (`links: []`) | Unlink all services from the app |
-| Absent (key omitted) | Skip -- do not change links |
-
-This means you can safely remove a service from an app by removing it from the `links` list and re-running `up`. Any services currently linked to the app that are not in the list will be unlinked.
-
-#### Shared Services
-
-Because services are named independently from apps, multiple apps can link to the same service:
-
-```yaml
-services:
-  shared-cache:
-    plugin: redis
-
-apps:
-  api:
-    links:
-      - shared-cache
-  worker:
-    links:
-      - shared-cache
-```
-
-Both `api` and `worker` will receive the same Redis connection URL.
-
-#### Custom Plugin Scripts
-
-For plugins that don't follow the standard service API (like letsencrypt), add a `script:` key pointing to a custom handler. The script is sourced with `SERVICE_ACTION` (`up`/`down`), `SERVICE_APP`, and `SERVICE_CONFIG` (JSON of the app's config for this plugin) variables set.
-
-```yaml
-plugins:
-  letsencrypt:
-    url: https://github.com/dokku/dokku-letsencrypt.git
-    script: scripts/letsencrypt.sh
-
-apps:
-  web:
-    letsencrypt:
-      email: admin@example.com
-```
-
-Example handler (`scripts/letsencrypt.sh`):
-
-```bash
-#!/usr/bin/env bash
-local email
-email=$(echo "$SERVICE_CONFIG" | yq -r '.email')
-
-if [[ "$SERVICE_ACTION" == "up" ]]; then
-    dokku_cmd letsencrypt:set "$SERVICE_APP" email "$email"
-    dokku_cmd letsencrypt:enable "$SERVICE_APP"
-elif [[ "$SERVICE_ACTION" == "down" ]]; then
-    dokku_cmd letsencrypt:disable "$SERVICE_APP"
-fi
-```
+[Plugins and Services Reference →](docs/reference/plugins.md)
 
 ### Commands
 
