@@ -3,7 +3,7 @@
 - 📄 **Declarative** -- Define your entire Dokku server in a single YAML file
 - 🔁 **Idempotent** -- Run it twice, nothing changes. Safe to re-run anytime
 - 👀 **Dry-run** -- Preview every command before it touches your server
-- 🔌 **Zero dependencies** -- Just bash and yq. No Python, no Ruby, no Ansible
+- 🔍 **Diff** -- See exactly what's out of sync before applying changes
 - 🏗️ **Modular** -- One file per Dokku namespace. Easy to read, extend, and debug
 
 [![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)
@@ -95,8 +95,7 @@ apps:
 
 ```bash
 # Install
-curl -fsSL https://github.com/guess/dokku-compose/releases/latest/download/dokku-compose \
-  | sudo install /dev/stdin /usr/local/bin/dokku-compose
+npm install -g dokku-compose
 
 # Create a starter config
 dokku-compose init myapp
@@ -111,7 +110,7 @@ dokku-compose up
 DOKKU_HOST=my-server.example.com dokku-compose up
 ```
 
-Requires bash >= 4.0 and [yq](https://github.com/mikefarah/yq) >= 4.0. See the [Installation Reference →](docs/reference/install.md) for version pinning, requirements, and remote execution details.
+Requires Node.js >= 18. See the [Installation Reference →](docs/reference/install.md) for version pinning, requirements, and remote execution details.
 
 ## Features
 
@@ -130,7 +129,7 @@ dokku:
 [dokku      ] WARN: Version mismatch: running 0.34.0, config expects 0.35.12
 ```
 
-Use `dokku-compose setup` to install Dokku at the declared version on a fresh Ubuntu/Debian server.
+Dokku must be pre-installed on the target server.
 
 ### Application Management
 
@@ -146,7 +145,7 @@ apps:
 
 ### Environment Variables
 
-Set config vars per app or globally. Vars prefixed with `APP_` (default) are converged — orphaned vars are automatically unset.
+Set config vars per app or globally. All declared vars are converged — orphaned vars are automatically unset.
 
 ```yaml
 apps:
@@ -382,7 +381,9 @@ apps:
 | `dokku-compose up` | Create/update apps and services to match config |
 | `dokku-compose down --force` | Destroy apps and services (requires `--force`) |
 | `dokku-compose ps` | Show status of configured apps |
-| `dokku-compose setup` | Install Dokku at declared version (fresh Ubuntu/Debian only) |
+| `dokku-compose validate` | Validate config file offline (no server contact) |
+| `dokku-compose export` | Reverse-engineer server state into YAML |
+| `dokku-compose diff` | Show what's out of sync between config and server |
 
 ### `ps` — Show Status
 
@@ -448,7 +449,6 @@ Idempotently ensures desired state, in order:
 5. Create service instances (from top-level `services:`)
 6. For each app:
    - Create app (if not exists)
-   - Lock/unlock app (if declared)
    - Set domains, link/unlink services, attach networks
    - Enable/disable proxy, set ports, add SSL, mount storage
    - Configure nginx, checks, logs, env vars, build, and docker options
@@ -487,52 +487,63 @@ Running `up` twice produces no changes — every step checks current state befor
 ```
 dokku-compose/
 ├── bin/
-│   └── dokku-compose         # Entry point: arg parsing, command dispatch
-├── lib/
-│   ├── core.sh               # Logging, colors, dokku_cmd wrapper, helpers
-│   ├── yaml.sh               # YAML helpers wrapping yq
-│   ├── apps.sh               # dokku apps:*
-│   ├── builder.sh            # dokku builder:*, builder-dockerfile:*, app-json:*
-│   ├── certs.sh              # dokku certs:*
-│   ├── checks.sh             # dokku checks:*
-│   ├── config.sh             # dokku config:*
-│   ├── docker_options.sh     # dokku docker-options:*
-│   ├── dokku.sh              # Dokku version check, installation
-│   ├── domains.sh            # dokku domains:*
-│   ├── logs.sh               # dokku logs:*
-│   ├── network.sh            # dokku network:*
-│   ├── nginx.sh              # dokku nginx:*
-│   ├── plugins.sh            # dokku plugin:*
-│   ├── ports.sh              # dokku ports:*
-│   ├── proxy.sh              # dokku proxy:*
-│   ├── services.sh           # Service instances, links, and plugin scripts
-│   └── storage.sh            # dokku storage:*
-├── tests/
-│   ├── test_helper.bash      # Mock dokku_cmd, assertion helpers
-│   ├── fixtures/             # Test YAML configs
-│   ├── *.bats                # Unit tests per module
-│   └── integration.bats      # End-to-end tests
+│   └── dokku-compose         # Entry point (delegates to src/index.ts via tsx)
+├── src/
+│   ├── index.ts              # CLI entry point (Commander.js)
+│   ├── core/
+│   │   ├── schema.ts         # Zod config schema and types
+│   │   ├── config.ts         # YAML loading and parsing
+│   │   ├── dokku.ts          # Runner interface and factory
+│   │   └── logger.ts         # Colored output helpers
+│   ├── modules/              # One file per Dokku namespace
+│   │   ├── apps.ts           # dokku apps:*
+│   │   ├── builder.ts        # dokku builder:*, builder-dockerfile:*, app-json:*
+│   │   ├── certs.ts          # dokku certs:*
+│   │   ├── checks.ts         # dokku checks:*
+│   │   ├── config.ts         # dokku config:*
+│   │   ├── docker_options.ts # dokku docker-options:*
+│   │   ├── domains.ts        # dokku domains:*
+│   │   ├── logs.ts           # dokku logs:*
+│   │   ├── network.ts        # dokku network:*
+│   │   ├── nginx.ts          # dokku nginx:*
+│   │   ├── plugins.ts        # dokku plugin:*
+│   │   ├── ports.ts          # dokku ports:*
+│   │   ├── proxy.ts          # dokku proxy:*
+│   │   ├── registry.ts       # dokku registry:*
+│   │   ├── scheduler.ts      # dokku scheduler:*
+│   │   ├── services.ts       # Service instances, links, plugin scripts
+│   │   └── storage.ts        # dokku storage:*
+│   ├── commands/
+│   │   ├── up.ts             # up command orchestration
+│   │   ├── down.ts           # down command orchestration
+│   │   ├── export.ts         # export command
+│   │   ├── diff.ts           # diff command
+│   │   └── validate.ts       # validate command (offline)
+│   └── tests/
+│       ├── fixtures/         # Test YAML configs
+│       └── *.test.ts         # Unit tests per module
 └── dokku-compose.yml.example
 ```
 
-Each `lib/*.sh` file maps to one Dokku command namespace and contains `ensure_*()` / `destroy_*()` functions. See [CLAUDE.md](CLAUDE.md) for development conventions.
+Each `src/modules/*.ts` file maps to one Dokku command namespace and exports `ensure*()`, `destroy*()`, and `export*()` functions. See [CLAUDE.md](CLAUDE.md) for development conventions.
 
 </details>
 
 ## Development
 
 ```bash
-git clone --recurse-submodules https://github.com/guess/dokku-compose.git
+git clone https://github.com/guess/dokku-compose.git
 cd dokku-compose
+npm install
 
 # Run all tests
-./tests/bats/bin/bats tests/
+npm test
 
 # Run a specific module's tests
-./tests/bats/bin/bats tests/services.bats
+npx vitest run src/tests/services.test.ts
 ```
 
-Tests use [BATS](https://github.com/bats-core/bats-core) with a mocked `dokku_cmd` — no real Dokku server needed.
+Tests use [Vitest](https://vitest.dev/) with a mocked `Runner` — no real Dokku server needed.
 
 ```bash
 # Cut a release (checks CI passed first)
