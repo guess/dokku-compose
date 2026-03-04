@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
-import { ensureAppChecks } from './checks.js'
+import { ensureAppChecks, exportAppChecks } from './checks.js'
 
 describe('ensureAppChecks', () => {
   it('disables all checks when checks: false', async () => {
@@ -16,5 +16,14 @@ describe('ensureAppChecks', () => {
     await ensureAppChecks(runner, 'myapp', { 'wait-to-retire': 60, attempts: 5 })
     expect(runner.run).toHaveBeenCalledWith('checks:set', 'myapp', 'wait-to-retire', '60')
     expect(runner.run).toHaveBeenCalledWith('checks:set', 'myapp', 'attempts', '5')
+  })
+})
+
+describe('exportAppChecks', () => {
+  it('returns undefined (simplified stub)', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('some checks output')
+    const result = await exportAppChecks(runner, 'myapp')
+    expect(result).toBeUndefined()
   })
 })

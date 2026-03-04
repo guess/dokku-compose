@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
-import { ensureApp, destroyApp } from './apps.js'
+import { ensureApp, destroyApp, exportApps } from './apps.js'
 
 describe('ensureApp', () => {
   it('creates app when it does not exist', async () => {
@@ -35,5 +35,21 @@ describe('destroyApp', () => {
     runner.run = vi.fn()
     await destroyApp(runner, 'myapp')
     expect(runner.run).not.toHaveBeenCalled()
+  })
+})
+
+describe('exportApps', () => {
+  it('returns list of apps', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('myapp\notherapp')
+    const result = await exportApps(runner)
+    expect(result).toEqual(['myapp', 'otherapp'])
+  })
+
+  it('returns empty array when no apps', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('')
+    const result = await exportApps(runner)
+    expect(result).toEqual([])
   })
 })

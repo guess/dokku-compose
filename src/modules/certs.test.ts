@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
-import { ensureAppCerts } from './certs.js'
+import { ensureAppCerts, exportAppCerts } from './certs.js'
 
 describe('ensureAppCerts', () => {
   it('adds cert when ssl not enabled', async () => {
@@ -25,5 +25,21 @@ describe('ensureAppCerts', () => {
     runner.run = vi.fn()
     await ensureAppCerts(runner, 'myapp', false)
     expect(runner.run).toHaveBeenCalledWith('certs:remove', 'myapp')
+  })
+})
+
+describe('exportAppCerts', () => {
+  it('returns true when SSL is enabled', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('true')
+    const result = await exportAppCerts(runner, 'myapp')
+    expect(result).toBe(true)
+  })
+
+  it('returns undefined when SSL is disabled', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('false')
+    const result = await exportAppCerts(runner, 'myapp')
+    expect(result).toBeUndefined()
   })
 })

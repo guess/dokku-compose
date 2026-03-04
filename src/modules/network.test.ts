@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
-import { ensureNetworks, ensureAppNetworks, exportNetworks } from './network.js'
+import { ensureNetworks, ensureAppNetworks, exportNetworks, exportAppNetwork } from './network.js'
 
 describe('ensureNetworks', () => {
   it('creates network that does not exist', async () => {
@@ -42,5 +42,23 @@ describe('exportNetworks', () => {
     runner.query = vi.fn().mockResolvedValue('app-net\nstudio-net')
     const result = await exportNetworks(runner)
     expect(result).toEqual(['app-net', 'studio-net'])
+  })
+})
+
+describe('exportAppNetwork', () => {
+  it('returns networks from attach-post-deploy field', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue(
+      'Network attach post deploy: app-net studio-net\nNetwork attach post create: \n'
+    )
+    const result = await exportAppNetwork(runner, 'myapp')
+    expect(result).toEqual({ networks: ['app-net', 'studio-net'] })
+  })
+
+  it('returns undefined when no network info', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue('')
+    const result = await exportAppNetwork(runner, 'myapp')
+    expect(result).toBeUndefined()
   })
 })

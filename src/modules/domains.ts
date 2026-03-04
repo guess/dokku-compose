@@ -34,7 +34,9 @@ export async function ensureGlobalDomains(
 export async function exportAppDomains(
   runner: Runner,
   app: string
-): Promise<string[] | undefined> {
+): Promise<string[] | false | undefined> {
+  const enabledRaw = await runner.query('domains:report', app, '--domains-app-enabled')
+  if (enabledRaw.trim() === 'false') return false
   const raw = await runner.query('domains:report', app, '--domains-app-vhosts')
   const vhosts = raw.split('\n').map(s => s.trim()).filter(Boolean)
   if (vhosts.length === 0) return undefined
