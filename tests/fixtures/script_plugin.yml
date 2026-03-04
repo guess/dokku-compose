@@ -5,7 +5,8 @@ plugins:
 
 apps:
   api:
-    build_dir: apps/api
+    build:
+      context: apps/api
     ports:
       - "https:4001:4000"
     letsencrypt:

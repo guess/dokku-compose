@@ -58,7 +58,8 @@ teardown() {
     cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
 YAML
     ensure_services
     [[ ! -s "$DOKKU_CMD_LOG" ]]
@@ -116,7 +117,8 @@ services:
 
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
     links:
 YAML
     mock_dokku_exit "postgres:linked mydb myapp" 0
@@ -272,7 +274,8 @@ SCRIPT
     cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
 YAML
     destroy_services
     [[ ! -s "$DOKKU_CMD_LOG" ]]

@@ -305,27 +305,29 @@ apps:
 dokku scheduler:set api selected docker-local
 ```
 
-### Dockerfile Builder
+### Build
 
-Configure Dokku's Dockerfile builder: custom Dockerfile path, build directory, app.json location, and build args.
+Configure Dockerfile builds: build context, Dockerfile path, app.json location, and build args. Key names follow docker-compose conventions.
 
 ```yaml
 apps:
   api:
-    builder:
+    build:
+      context: apps/api
       dockerfile: docker/prod/api/Dockerfile
-      build_dir: apps/api
       app_json: docker/prod/api/app.json
-      build_args:
+      args:
         SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
 ```
 
 ```
-dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
 dokku builder:set api build-dir apps/api
+dokku builder-dockerfile:set api dockerfile-path docker/prod/api/Dockerfile
 dokku app-json:set api appjson-path docker/prod/api/app.json
 dokku docker-options:add api build --build-arg SENTRY_AUTH_TOKEN=xyz
 ```
+
+[Build Reference →](docs/reference/builder.md)
 
 ### Docker Options
 
@@ -348,13 +350,13 @@ dokku docker-options:add api run --ulimit nofile=12
 
 ### Plugins
 
-Declare required plugins with optional version pinning — already-installed plugins are skipped. Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
+Declare required plugins with optional version pinning. Plugins are installed on first run and updated automatically when the declared version changes. Services are declared in a top-level `services:` section rather than inline on apps. Each service has a unique name and specifies which plugin to use. This enables sharing a single service instance between multiple apps.
 
 ```yaml
 plugins:
   postgres:
     url: https://github.com/dokku/dokku-postgres.git
-    version: "1.41.0"
+    version: "1.41.0"            # updated automatically when version changes
   redis:
     url: https://github.com/dokku/dokku-redis.git
 
@@ -370,14 +372,16 @@ services:
 ```
 
 ```
-dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0
-dokku plugin:install https://github.com/dokku/dokku-redis.git
+dokku plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0 --name postgres
+dokku plugin:install https://github.com/dokku/dokku-redis.git --name redis
 dokku postgres:create api-postgres -I 17-3.5 -i postgis/postgis
 dokku redis:create api-redis
 dokku redis:create shared-cache
 ```
 
 Plugins are installed first, then services are created before apps during `up`, so they are ready to be linked.
+
+[Plugins Reference →](docs/reference/plugins.md)
 
 #### Linking Services to Apps
 
@@ -554,7 +558,7 @@ Idempotently ensures desired state, in order:
    - Configure registry settings
    - Set scheduler
    - Set environment variables
-   - Configure builder (dockerfile path, build dir, build args)
+   - Configure build (context, dockerfile path, app.json, build args)
    - Add docker options (per phase)
 
 Running `up` twice produces no changes -- every step checks current state before acting.
@@ -593,7 +597,7 @@ dokku-compose/
 │   ├── core.sh               # Logging, colors, dokku_cmd wrapper, helpers
 │   ├── yaml.sh               # YAML helpers wrapping yq
 │   ├── apps.sh               # dokku apps:*
-│   ├── builder.sh            # dokku builder-dockerfile:*, builder:*, app-json:*
+│   ├── builder.sh            # dokku builder:*, builder-dockerfile:*, app-json:*
 │   ├── certs.sh              # dokku certs:*
 │   ├── checks.sh             # dokku checks:*
 │   ├── config.sh             # dokku config:*

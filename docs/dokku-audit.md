@@ -354,39 +354,38 @@ nginx:                           # NEW: global nginx defaults
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| builder:set selected | declarative | no | Choose builder type (opinionated: dockerfile assumed) |
-| builder:set build-dir | declarative | yes | Via `builder.build_dir` YAML key |
-| builder-dockerfile:set dockerfile-path | declarative | yes | Via `builder.dockerfile` YAML key |
-| builder-herokuish:set allowed | declarative | no | Force-enable herokuish |
-| builder-pack:set projecttoml-path | declarative | no | CNB project.toml path |
-| builder-nixpacks:set nixpackstoml-path | declarative | no | Nixpacks config path |
-| builder-railpack:set railpackjson-path | declarative | no | Railpack config path |
-| builder-lambda:set lambdayml-path | declarative | no | Lambda config path |
+| builder:set selected | declarative | no | Opinionated: dockerfile-only |
+| builder:set build-dir | declarative | yes | Via `build.context` YAML key |
+| builder-dockerfile:set dockerfile-path | declarative | yes | Via `build.dockerfile` YAML key |
+| builder-herokuish:set allowed | declarative | no | Opinionated: dockerfile-only |
+| builder-pack:set projecttoml-path | declarative | no | Opinionated: dockerfile-only |
+| builder-nixpacks:set nixpackstoml-path | declarative | no | Opinionated: dockerfile-only |
+| builder-railpack:set railpackjson-path | declarative | no | Opinionated: dockerfile-only |
+| builder-lambda:set lambdayml-path | declarative | no | Opinionated: dockerfile-only |
 
 ### YAML Keys
 
 ```yaml
 apps:
   myapp:
-    builder:                          # all build config nested here
+    build:                            # all build config nested here
+      context: apps/myapp             # builder:set build-dir
       dockerfile: path/to/Dockerfile  # builder-dockerfile:set dockerfile-path
-      build_dir: apps/myapp           # builder:set build-dir
-      build_args:                     # docker-options:add --build-arg (convenience)
-        KEY: value
       app_json: docker/prod/app.json  # app-json:set appjson-path
+      args:                           # docker-options:add --build-arg (convenience)
+        KEY: value
 ```
 
-Note: Dockerfile builder is assumed. No `selected` key — opinionated choice to keep things simple.
+Note: Dockerfile builder is assumed. No `selected` key — opinionated choice to keep things simple. YAML key names follow docker-compose conventions (`build.context`, `build.args`).
 
 ### Gaps in Existing Code
 
-- `builder:set selected` not supported -- opinionated dockerfile-only.
-- No non-dockerfile builder support.
-- No idempotency checks.
+- `builder:set selected` not supported — opinionated dockerfile-only.
+- No non-dockerfile builder support — opinionated dockerfile-only.
 
 ### Decision
 
-**Partial.** Handles dockerfile path, app_json path, build_dir (native `builder:set build-dir`), and build_args. All config nested under `builder:` key. Opinionated: assumes dockerfile builder, no `selected` key. Missing all non-dockerfile builder settings.
+**Partial.** Handles dockerfile path, app_json path, context (maps to `builder:set build-dir`), and build args. All config nested under `build:` key with docker-compose-style naming. Opinionated: assumes dockerfile builder, no `selected` key. Non-dockerfile builder settings intentionally excluded.
 
 ---
 
@@ -442,20 +441,20 @@ apps:
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| plugin:install | declarative | yes | With optional --committish version pinning |
-| plugin:list | read-only | yes | Used for idempotency check |
-| plugin:update | imperative | no | Intentionally omitted; re-run with new version |
+| plugin:install | declarative | yes | With `--committish` version pinning and `--name` from YAML key |
+| plugin:installed | read-only | yes | Used for per-plugin presence check |
+| plugin:list | read-only | yes | Used to read installed version for comparison |
+| plugin:update | declarative | yes | Called when installed version differs from declared version |
 | plugin:uninstall | imperative | no | Rare destructive operation |
 | plugin:enable / disable | declarative | no | Niche; most users install or don't |
 
 ### Gaps in Existing Code
 
-- Minor: could use `plugin:installed` instead of grepping `plugin:list` for cleaner check.
 - No `plugin:enable`/`plugin:disable` (low priority).
 
 ### Decision
 
-**Supported.** Covers the primary declarative use case with proper idempotency. Missing commands are either imperative or niche.
+**Supported.** Full declarative lifecycle: install on first run, update when version changes, skip when current. Missing commands are either imperative or niche.
 
 ---
 
@@ -927,7 +926,7 @@ No formal Dokku command namespace. Describes manual `tar` backup/restore procedu
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| app-json:set appjson-path | declarative | yes | Via `app_json` YAML key |
+| app-json:set appjson-path | declarative | yes | Via `build.app_json` YAML key |
 | app-json:report | read-only | no | Could enable idempotency |
 
 ### Gaps in Existing Code

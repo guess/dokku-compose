@@ -12,15 +12,37 @@ teardown() {
 }
 
 @test "ensure_plugins installs missing plugins" {
-    mock_dokku_output "plugin:list" "  00_dokku-standard    0.35.12 true   dokku core standard plugin"
+    mock_dokku_exit "plugin:installed postgres" 1
+    mock_dokku_exit "plugin:installed redis" 1
     ensure_plugins
-    assert_dokku_called "plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0"
-    assert_dokku_called "plugin:install https://github.com/dokku/dokku-redis.git"
+    assert_dokku_called "plugin:install https://github.com/dokku/dokku-postgres.git --committish 1.41.0 --name postgres"
+    assert_dokku_called "plugin:install https://github.com/dokku/dokku-redis.git --name redis"
 }
 
-@test "ensure_plugins skips already installed plugins" {
+@test "ensure_plugins skips already installed plugins with matching version" {
+    mock_dokku_exit "plugin:installed postgres" 0
+    mock_dokku_exit "plugin:installed redis" 0
     mock_dokku_output "plugin:list" "  postgres    1.41.0 true   dokku postgres plugin\n  redis    7.0.0 true   dokku redis plugin"
     ensure_plugins
+    refute_dokku_called "plugin:install"
+    refute_dokku_called "plugin:update"
+}
+
+@test "ensure_plugins updates plugin when installed version differs" {
+    mock_dokku_exit "plugin:installed postgres" 0
+    mock_dokku_exit "plugin:installed redis" 0
+    mock_dokku_output "plugin:list" "  postgres    1.40.0 true   dokku postgres plugin\n  redis    7.0.0 true   dokku redis plugin"
+    ensure_plugins
+    assert_dokku_called "plugin:update postgres 1.41.0"
+    refute_dokku_called "plugin:install"
+}
+
+@test "ensure_plugins does not update plugin with no version pinned" {
+    mock_dokku_exit "plugin:installed postgres" 0
+    mock_dokku_exit "plugin:installed redis" 0
+    mock_dokku_output "plugin:list" "  postgres    1.41.0 true   dokku postgres plugin\n  redis    7.0.0 true   dokku redis plugin"
+    ensure_plugins
+    refute_dokku_called "plugin:update redis"
     refute_dokku_called "plugin:install"
 }
 

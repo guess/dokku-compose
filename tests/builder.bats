@@ -21,7 +21,7 @@ teardown() {
     assert_dokku_called "app-json:set funqtion appjson-path docker/prod/api/app.json"
 }
 
-@test "ensure_app_builder sets build_dir via builder:set" {
+@test "ensure_app_builder sets context via builder:set build-dir" {
     ensure_app_builder "funqtion"
     assert_dokku_called "builder:set funqtion build-dir apps/funqtion-api"
 }
@@ -31,15 +31,15 @@ teardown() {
     assert_dokku_called "docker-options:add funqtion build --build-arg SENTRY_AUTH_TOKEN=test-token"
 }
 
-@test "ensure_app_builder handles app with only build_dir" {
+@test "ensure_app_builder handles app with only context" {
     ensure_app_builder "studio"
     assert_dokku_called "builder:set studio build-dir apps/studio-api"
     refute_dokku_called "builder-dockerfile:set studio"
     refute_dokku_called "app-json:set studio"
 }
 
-@test "ensure_app_builder skips when no builder config" {
-    local tmpfile="${MOCK_DIR}/no_builder.yml"
+@test "ensure_app_builder skips when no build config" {
+    local tmpfile="${MOCK_DIR}/no_build.yml"
     cat > "$tmpfile" <<'EOF'
 apps:
   bare:

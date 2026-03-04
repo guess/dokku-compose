@@ -14,11 +14,13 @@ services:
 
 apps:
   api:
-    build_dir: apps/api
+    build:
+      context: apps/api
     links:
       - shared-db
       - shared-cache
   worker:
-    build_dir: apps/worker
+    build:
+      context: apps/worker
     links:
       - shared-db

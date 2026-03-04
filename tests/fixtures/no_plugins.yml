@@ -3,6 +3,7 @@ networks:
 
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
     ports:
       - "http:5000:5000"

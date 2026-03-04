@@ -21,7 +21,8 @@ teardown() {
     cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
 YAML
     ! yaml_has ".services"
 }
@@ -40,7 +41,8 @@ YAML
     cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
 YAML
     run yaml_service_names
     assert_output ""
@@ -83,7 +85,8 @@ YAML
     cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
 apps:
   myapp:
-    build_dir: apps/myapp
+    build:
+      context: apps/myapp
     links:
 YAML
     yaml_app_key_exists "myapp" "links"
