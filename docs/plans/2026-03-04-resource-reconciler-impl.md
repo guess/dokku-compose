@@ -1693,16 +1693,145 @@ git commit -m "feat: wire resource registry into up command"
 
 ---
 
-### Task 8: Rewrite export.ts and diff.ts using resources
+### Task 8: Update CLI entry points, down.ts, and custom function signatures
+
+Custom functions (plugins, services, networks, apps) still take `Runner`. Update them to `Context` first — this unblocks Tasks 9+ which pass `ctx` directly.
+
+**Files:**
+- Modify: `src/index.ts`
+- Modify: `src/commands/down.ts`
+- Modify: `src/modules/plugins.ts` (Runner → Context)
+- Modify: `src/modules/services.ts` (Runner → Context)
+- Modify: `src/modules/network.ts` (Runner → Context, for ensureNetworks/exportNetworks)
+- Modify: `src/modules/apps.ts` (Runner → Context, for exportApps)
+
+**Step 1: Read the current index.ts to understand CLI wiring**
+
+Read `src/index.ts` to see how Runner is created and passed to commands.
+
+**Step 2: Update custom function signatures (Runner → Context)**
+
+This is mechanical — replace `runner: Runner` with `ctx: Context`, then replace `runner.query(` → `ctx.query(`, `runner.run(` → `ctx.run(`, `runner.check(` → `ctx.check(` in each file.
+
+For `src/modules/plugins.ts`:
+```typescript
+import type { Context } from '../core/context.js'
+// Change: runner: Runner → ctx: Context
+export async function ensurePlugins(
+  ctx: Context,
+  plugins: Record<string, PluginConfig>
+): Promise<void> {
+  const listOutput = await ctx.query('plugin:list')
+  // ... rest unchanged, just s/runner./ctx./g
+}
+```
+
+For `src/modules/services.ts` — same pattern for all exported functions:
+```typescript
+export async function ensureServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function ensureServiceBackups(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function ensureAppLinks(ctx: Context, app: string, desiredLinks: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function destroyAppLinks(ctx: Context, app: string, links: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function destroyServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function exportServices(ctx: Context): Promise<Record<string, ServiceConfig>> { ... }
+export async function exportAppLinks(ctx: Context, app: string, services: Record<string, ServiceConfig>): Promise<string[]> { ... }
+```
+
+For `src/modules/network.ts` (ensureNetworks, exportNetworks) and `src/modules/apps.ts` (exportApps) — same mechanical change.
+
+Update corresponding test files to pass Context instead of Runner where tests mock `runner.query`/`runner.run` etc.
+
+**Step 3: Update index.ts**
+
+```typescript
+import { createContext } from './core/context.js'
+// ...
+const runner = createRunner({ host: process.env.DOKKU_HOST, dryRun: opts.dryRun })
+const ctx = createContext(runner)
+await runUp(ctx, config, appFilter)
+// ... same for runExport, runDiff, runDown
+await ctx.close()
+```
+
+**Step 4: Update down.ts**
+
+```typescript
+// src/commands/down.ts
+import type { Context } from '../core/context.js'
+import type { Config } from '../core/schema.js'
+import { reconcile } from '../core/reconcile.js'
+import { Apps } from '../resources/lifecycle.js'
+import { destroyAppLinks, destroyServices } from '../modules/services.js'
+import { logAction, logDone, logSkip } from '../core/logger.js'
+
+export interface DownOptions {
+  force: boolean
+}
+
+export async function runDown(
+  ctx: Context,
+  config: Config,
+  appFilter: string[],
+  opts: DownOptions
+): Promise<void> {
+  const apps = appFilter.length > 0
+    ? appFilter
+    : Object.keys(config.apps)
+
+  for (const app of apps) {
+    const appConfig = config.apps[app]
+    if (!appConfig) continue
+
+    if (config.services && appConfig.links) {
+      await destroyAppLinks(ctx, app, appConfig.links, config.services)
+    }
+
+    await reconcile(Apps, ctx, app, false)
+  }
+
+  if (config.services) {
+    await destroyServices(ctx, config.services)
+  }
+
+  if (config.networks) {
+    for (const net of config.networks) {
+      logAction('network', `Destroying ${net}`)
+      const exists = await ctx.check('network:exists', net)
+      if (!exists) { logSkip(); continue }
+      await ctx.run('network:destroy', net, '--force')
+      logDone()
+    }
+  }
+}
+```
+
+**Step 5: Run full test suite**
+
+Run: `bun test`
+Expected: PASS (all tests)
+
+**Step 6: Commit**
+
+```bash
+git add src/index.ts src/commands/down.ts src/modules/plugins.ts src/modules/services.ts src/modules/network.ts src/modules/apps.ts
+git commit -m "feat: unify on Context everywhere, remove Runner passthrough"
+```
+
+---
+
+### Task 9: Rewrite export.ts and diff.ts using resources
+
+Now that all functions take Context, rewrite export and diff to use the resource registry.
 
 **Files:**
 - Modify: `src/commands/export.ts`
 - Modify: `src/commands/diff.ts`
+- Create: `src/commands/export.test.ts`
 
 **Step 1: Write failing test for export**
 
 ```typescript
-// Add to an existing or new test file: src/commands/export.test.ts
+// src/commands/export.test.ts
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
@@ -1730,7 +1859,7 @@ describe('runExport', () => {
 **Step 2: Run test to verify it fails**
 
 Run: `bun test src/commands/export.test.ts`
-Expected: FAIL (export.ts takes Runner, not Context)
+Expected: FAIL (export.ts still takes Runner)
 
 **Step 3: Rewrite export.ts**
 
@@ -1743,8 +1872,6 @@ import { exportApps } from '../modules/apps.js'
 import { exportServices, exportAppLinks } from '../modules/services.js'
 import { exportNetworks } from '../modules/network.js'
 
-// These functions are updated to take Context in Task 9.
-
 export interface ExportOptions {
   appFilter?: string[]
 }
@@ -1756,12 +1883,12 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
   const versionMatch = versionOutput.match(/(\d+\.\d+\.\d+)/)
   if (versionMatch) config.dokku = { version: versionMatch[1] }
 
-  const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(ctx.runner)
+  const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(ctx)
 
-  const networks = await exportNetworks(ctx.runner)
+  const networks = await exportNetworks(ctx)
   if (networks.length > 0) config.networks = networks
 
-  const services = await exportServices(ctx.runner)
+  const services = await exportServices(ctx)
   if (Object.keys(services).length > 0) config.services = services
 
   for (const app of apps) {
@@ -1780,7 +1907,7 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
 
     // Links (custom read)
     if (Object.keys(services).length > 0) {
-      const links = await exportAppLinks(ctx.runner, app, services)
+      const links = await exportAppLinks(ctx, app, services)
       if (links.length > 0) appConfig.links = links
     }
 
@@ -1791,7 +1918,7 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
 }
 ```
 
-Rewrite `src/commands/diff.ts` to use resources:
+**Step 4: Rewrite diff.ts**
 
 ```typescript
 // src/commands/diff.ts
@@ -1862,134 +1989,9 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 // (copy them from the existing diff.ts into this rewritten version)
 ```
 
-Note: `formatSummary` and `formatVerbose` stay defined in the same file (do NOT re-export from themselves — that would be a circular import). They operate on the `DiffResult` type which doesn't change. The only change is that `computeDiff` now takes `Context` and uses resources instead of a pre-exported Config.
+Note: `formatSummary` and `formatVerbose` stay defined in the same file (do NOT re-export from themselves). They operate on `DiffResult` which doesn't change.
 
-**Step 4: Run tests**
-
-Run: `bun test`
-Expected: Passing for new tests; old tests may need signature updates (Task 9)
-
-**Step 5: Commit**
-
-```bash
-git add src/commands/export.ts src/commands/diff.ts src/commands/export.test.ts
-git commit -m "feat: rewrite export and diff commands using resource registry"
-```
-
----
-
-### Task 9: Update CLI entry points, down.ts, and custom function signatures
-
-The CLI (`src/index.ts`) creates a Runner and passes it to commands. Now everything takes Context. Update the CLI to create a Context wrapping the Runner, update `down.ts`, and change all custom functions (plugins, services, networks, apps) from `Runner` to `Context`.
-
-**Files:**
-- Modify: `src/index.ts`
-- Modify: `src/commands/down.ts`
-- Modify: `src/modules/plugins.ts` (Runner → Context)
-- Modify: `src/modules/services.ts` (Runner → Context)
-- Modify: `src/modules/network.ts` (Runner → Context, for ensureNetworks/exportNetworks)
-- Modify: `src/modules/apps.ts` (Runner → Context, for exportApps)
-
-**Step 1: Read the current index.ts to understand CLI wiring**
-
-Read `src/index.ts` to see how Runner is created and passed to commands.
-
-**Step 2: Update index.ts**
-
-```typescript
-import { createContext } from './core/context.js'
-// ...
-const runner = createRunner({ host: process.env.DOKKU_HOST, dryRun: opts.dryRun })
-const ctx = createContext(runner)
-await runUp(ctx, config, appFilter)
-// ... same for runExport, runDiff, runDown
-await ctx.close()
-```
-
-**Step 3: Update custom function signatures (Runner → Context)**
-
-This is mechanical — replace `runner: Runner` with `ctx: Context`, then replace `runner.query(` → `ctx.query(`, `runner.run(` → `ctx.run(`, `runner.check(` → `ctx.check(` in each file.
-
-For `src/modules/plugins.ts`:
-```typescript
-// Change: runner: Runner → ctx: Context
-export async function ensurePlugins(
-  ctx: Context,
-  plugins: Record<string, PluginConfig>
-): Promise<void> {
-  const listOutput = await ctx.query('plugin:list')
-  // ... rest unchanged, just s/runner./ctx./g
-}
-```
-
-For `src/modules/services.ts` — same pattern for all exported functions:
-```typescript
-export async function ensureServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
-export async function ensureServiceBackups(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
-export async function ensureAppLinks(ctx: Context, app: string, desiredLinks: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
-export async function destroyAppLinks(ctx: Context, app: string, links: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
-export async function destroyServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
-export async function exportServices(ctx: Context): Promise<Record<string, ServiceConfig>> { ... }
-export async function exportAppLinks(ctx: Context, app: string, services: Record<string, ServiceConfig>): Promise<string[]> { ... }
-```
-
-For `src/modules/network.ts` (ensureNetworks, exportNetworks) and `src/modules/apps.ts` (exportApps) — same mechanical change.
-
-Update corresponding test files to pass Context instead of Runner where tests mock `runner.query`/`runner.run` etc.
-
-**Step 4: Update down.ts (already uses Context from Task 8)**
-
-```typescript
-// src/commands/down.ts
-import type { Context } from '../core/context.js'
-import type { Config } from '../core/schema.js'
-import { reconcile } from '../core/reconcile.js'
-import { Apps } from '../resources/lifecycle.js'
-import { destroyAppLinks, destroyServices } from '../modules/services.js'
-import { logAction, logDone, logSkip } from '../core/logger.js'
-
-export interface DownOptions {
-  force: boolean
-}
-
-export async function runDown(
-  ctx: Context,
-  config: Config,
-  appFilter: string[],
-  opts: DownOptions
-): Promise<void> {
-  const apps = appFilter.length > 0
-    ? appFilter
-    : Object.keys(config.apps)
-
-  for (const app of apps) {
-    const appConfig = config.apps[app]
-    if (!appConfig) continue
-
-    if (config.services && appConfig.links) {
-      await destroyAppLinks(ctx, app, appConfig.links, config.services)
-    }
-
-    await reconcile(Apps, ctx, app, false)
-  }
-
-  if (config.services) {
-    await destroyServices(ctx, config.services)
-  }
-
-  if (config.networks) {
-    for (const net of config.networks) {
-      logAction('network', `Destroying ${net}`)
-      const exists = await ctx.check('network:exists', net)
-      if (!exists) { logSkip(); continue }
-      await ctx.run('network:destroy', net, '--force')
-      logDone()
-    }
-  }
-}
-```
-
-**Step 5: Run full test suite**
+**Step 5: Run tests**
 
 Run: `bun test`
 Expected: PASS (all tests)
@@ -1997,8 +1999,8 @@ Expected: PASS (all tests)
 **Step 6: Commit**
 
 ```bash
-git add src/index.ts src/commands/down.ts src/modules/plugins.ts src/modules/services.ts src/modules/network.ts src/modules/apps.ts
-git commit -m "feat: unify on Context everywhere, remove Runner passthrough"
+git add src/commands/export.ts src/commands/diff.ts src/commands/export.test.ts
+git commit -m "feat: rewrite export and diff commands using resource registry"
 ```
 
 ---
