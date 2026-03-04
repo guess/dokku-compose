@@ -198,7 +198,6 @@ const ServiceSchema = z.object({
   plugin: z.string(),
   version: z.string().optional(),
   image: z.string().optional(),
-  handler: z.string().optional(),
 })
 
 const PluginSchema = z.object({
@@ -1065,7 +1064,7 @@ git commit -m "feat: add up command wiring all modules"
 - Create: `src/commands/down.ts`
 - Create: `src/commands/down.test.ts`
 
-Mirror the bash `cmd_down` flow: unlink services, remove certs/storage/domains/ports/network, destroy app, then destroy services and networks.
+Per-app: unlink services, remove certs/storage/domains/ports/network/nginx, destroy app. Then destroy services (only if no apps still linked), then destroy networks.
 
 ```typescript
 it('destroys app and services in order', async () => {
