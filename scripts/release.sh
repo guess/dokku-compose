@@ -30,7 +30,7 @@ fi
 
 echo "Bumping version to $VERSION..."
 npm version "$VERSION" --no-git-tag-version
-git add package.json package-lock.json
+git add package.json
 git commit -m "chore: release $TAG"
 
 echo "Tagging $TAG..."
