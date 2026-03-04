@@ -8,12 +8,12 @@
 ensure_app_certs() {
     local app="$1"
 
-    yaml_app_key_exists "$app" "certs" || return 0
+    yaml_app_key_exists "$app" "ssl" || return 0
 
     local raw
-    raw=$(yq eval ".apps.${app}.certs" "$DOKKU_COMPOSE_FILE")
+    raw=$(yq eval ".apps.${app}.ssl" "$DOKKU_COMPOSE_FILE")
 
-    # certs: false — remove certificate if currently enabled
+    # ssl: false — remove certificate if currently enabled
     if [[ "$raw" == "false" ]]; then
         local ssl_enabled
         ssl_enabled=$(dokku_cmd certs:report "$app" --ssl-enabled 2>/dev/null || true)
@@ -28,9 +28,7 @@ ensure_app_certs() {
         return 0
     fi
 
-    # certs: "path/to/certs" — add certificate if not already enabled
-    local cert_path="$raw"
-
+    # ssl: {certfile: ..., keyfile: ...} — add certificate if not already enabled
     local ssl_enabled
     ssl_enabled=$(dokku_cmd certs:report "$app" --ssl-enabled 2>/dev/null || true)
     if [[ "$ssl_enabled" == "true" ]]; then
@@ -39,23 +37,36 @@ ensure_app_certs() {
         return 0
     fi
 
-    local cert_file="${cert_path}/cert.crt"
-    local key_file="${cert_path}/cert.key"
+    local cert_file key_file
+    cert_file=$(yq eval ".apps.${app}.ssl.certfile" "$DOKKU_COMPOSE_FILE")
+    key_file=$(yq eval ".apps.${app}.ssl.keyfile" "$DOKKU_COMPOSE_FILE")
 
-    if [[ ! -f "$cert_file" || ! -f "$key_file" ]]; then
-        if [[ "$DOKKU_COMPOSE_DRY_RUN" == "true" ]]; then
-            log_action "$app" "Adding SSL certificate from ${cert_path}"
-            echo "[dry-run] dokku certs:add $app < ${cert_path}/{cert.crt,cert.key}"
-            log_done
-            return 0
-        fi
-        log_error "$app" "SSL cert files not found in: $cert_path (expected cert.crt and cert.key)"
+    if [[ "$cert_file" == "null" || "$key_file" == "null" ]]; then
+        log_error "$app" "SSL config requires both certfile and keyfile"
         return 0
     fi
 
+    if [[ ! -f "$cert_file" || ! -f "$key_file" ]]; then
+        if [[ "$DOKKU_COMPOSE_DRY_RUN" == "true" ]]; then
+            log_action "$app" "Adding SSL certificate"
+            echo "[dry-run] dokku certs:add $app < tar($cert_file, $key_file)"
+            log_done
+            return 0
+        fi
+        log_error "$app" "SSL cert files not found: certfile=$cert_file keyfile=$key_file"
+        return 0
+    fi
+
+    local tmpdir
+    tmpdir=$(mktemp -d)
+    cp "$cert_file" "$tmpdir/server.crt"
+    cp "$key_file" "$tmpdir/server.key"
+
     log_action "$app" "Adding SSL certificate"
-    tar cf - -C "$cert_path" cert.crt cert.key | dokku_cmd certs:add "$app"
+    tar cf - -C "$tmpdir" server.crt server.key | dokku_cmd certs:add "$app"
     log_done
+
+    rm -rf "$tmpdir"
 }
 
 destroy_app_certs() {

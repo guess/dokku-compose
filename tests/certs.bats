@@ -12,7 +12,7 @@ teardown() {
 
 # --- ensure_app_certs ---
 
-@test "ensure_app_certs skips when no certs key configured" {
+@test "ensure_app_certs skips when no ssl key configured" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/simple.yml"
     ensure_app_certs "myapp"
     refute_dokku_called "certs:add"
@@ -21,17 +21,19 @@ teardown() {
 
 @test "ensure_app_certs adds certificate when not already enabled" {
     # Create mock cert files
-    local cert_dir="${MOCK_DIR}/certs/example.com"
+    local cert_dir="${MOCK_DIR}/certs"
     mkdir -p "$cert_dir"
-    echo "CERT" > "$cert_dir/cert.crt"
-    echo "KEY" > "$cert_dir/cert.key"
+    echo "CERT" > "$cert_dir/fullchain.pem"
+    echo "KEY" > "$cert_dir/privkey.pem"
 
-    # Create fixture pointing to mock cert dir
-    local tmpfile="${MOCK_DIR}/certs_test.yml"
+    # Create fixture pointing to mock files
+    local tmpfile="${MOCK_DIR}/ssl_test.yml"
     cat > "$tmpfile" <<EOF
 apps:
   myapp:
-    certs: ${cert_dir}
+    ssl:
+      certfile: ${cert_dir}/fullchain.pem
+      keyfile: ${cert_dir}/privkey.pem
 EOF
     DOKKU_COMPOSE_FILE="$tmpfile"
 
@@ -43,7 +45,15 @@ EOF
 }
 
 @test "ensure_app_certs skips when cert already enabled" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/certs_path.yml"
+    local tmpfile="${MOCK_DIR}/ssl_skip.yml"
+    cat > "$tmpfile" <<'EOF'
+apps:
+  myapp:
+    ssl:
+      certfile: certs/cert.pem
+      keyfile: certs/key.pem
+EOF
+    DOKKU_COMPOSE_FILE="$tmpfile"
 
     # SSL already enabled
     mock_dokku_output "certs:report myapp --ssl-enabled" "true"
@@ -52,7 +62,7 @@ EOF
     refute_dokku_called "certs:add"
 }
 
-@test "ensure_app_certs removes certificate when certs: false" {
+@test "ensure_app_certs removes certificate when ssl: false" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/certs_false.yml"
 
     # SSL currently enabled
@@ -63,7 +73,7 @@ EOF
     refute_dokku_called "certs:add"
 }
 
-@test "ensure_app_certs skips remove when certs: false and ssl already disabled" {
+@test "ensure_app_certs skips remove when ssl: false and ssl already disabled" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/certs_false.yml"
 
     # SSL not currently enabled
@@ -75,11 +85,13 @@ EOF
 }
 
 @test "ensure_app_certs errors on missing cert files" {
-    local tmpfile="${MOCK_DIR}/certs_missing.yml"
+    local tmpfile="${MOCK_DIR}/ssl_missing.yml"
     cat > "$tmpfile" <<EOF
 apps:
   myapp:
-    certs: /nonexistent/path
+    ssl:
+      certfile: /nonexistent/cert.pem
+      keyfile: /nonexistent/key.pem
 EOF
     DOKKU_COMPOSE_FILE="$tmpfile"
 
@@ -91,10 +103,27 @@ EOF
     [[ "$DOKKU_COMPOSE_ERRORS" -gt 0 ]]
 }
 
+@test "ensure_app_certs errors when certfile or keyfile missing from yaml" {
+    local tmpfile="${MOCK_DIR}/ssl_incomplete.yml"
+    cat > "$tmpfile" <<'EOF'
+apps:
+  myapp:
+    ssl:
+      certfile: certs/cert.pem
+EOF
+    DOKKU_COMPOSE_FILE="$tmpfile"
+
+    mock_dokku_output "certs:report myapp --ssl-enabled" "false"
+
+    ensure_app_certs "myapp"
+    refute_dokku_called "certs:add"
+    [[ "$DOKKU_COMPOSE_ERRORS" -gt 0 ]]
+}
+
 # --- destroy_app_certs ---
 
 @test "destroy_app_certs removes certificate" {
-    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/certs_path.yml"
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/certs_false.yml"
     destroy_app_certs "myapp"
     assert_dokku_called "certs:remove myapp"
 }

@@ -207,19 +207,19 @@ Comparison is order-insensitive. `down --force` clears port mappings before dest
 
 ### SSL Certificates
 
-Point to a directory containing `cert.crt` and `cert.key`. The files are tarred and piped to Dokku.
+Specify cert and key file paths. Idempotent — skips if SSL is already enabled. Set to `false` to remove an existing certificate.
 
 ```yaml
 apps:
   api:
-    certs: certs/example.com
+    ssl:                                  # add cert (idempotent)
+      certfile: certs/example.com/fullchain.pem
+      keyfile: certs/example.com/privkey.pem
+  worker:
+    ssl: false                            # remove cert
 ```
 
-```
-tar cf - -C certs/example.com cert.crt cert.key | dokku certs:add api
-```
-
-In `--dry-run` mode, cert file existence is not checked so you can preview without having certs locally.
+[SSL Certificates Reference →](docs/reference/certs.md)
 
 ### Proxy
 

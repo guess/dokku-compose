@@ -42,7 +42,9 @@ apps:
         SENTRY_AUTH_TOKEN: "test-token"
     ports:
       - "https:4001:4000"
-    certs: certs/funqtion.co
+    ssl:
+      certfile: certs/funqtion.co/server.crt
+      keyfile: certs/funqtion.co/server.key
     links:
       - funqtion-postgres
       - funqtion-redis
@@ -62,7 +64,9 @@ apps:
       context: apps/studio-api
     ports:
       - "https:4002:4000"
-    certs: certs/strates.io
+    ssl:
+      certfile: certs/strates.io/server.crt
+      keyfile: certs/strates.io/server.key
     links:
       - studio-postgres
       - studio-redis
@@ -76,7 +80,9 @@ apps:
       context: apps/qultr-api
     ports:
       - "https:4003:4000"
-    certs: certs/qultr.dev
+    ssl:
+      certfile: certs/qultr.dev/server.crt
+      keyfile: certs/qultr.dev/server.key
     links:
       - qultr-postgres
       - qultr-redis

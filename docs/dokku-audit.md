@@ -188,22 +188,22 @@ apps:
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| certs:add | declarative | yes | Tars cert.crt + cert.key and pipes to Dokku; idempotent via certs:report |
+| certs:add | declarative | yes | Tars certfile + keyfile as server.crt/server.key; idempotent via certs:report |
 | certs:update | declarative | no | Functionally identical to certs:add; not needed separately |
-| certs:remove | declarative | yes | Called when `certs: false` or during `down` |
+| certs:remove | declarative | yes | Called when `ssl: false` or during `down` |
 | certs:generate | imperative | no | Interactive self-signed cert; not declarative |
 | certs:report | read-only | yes | Used for idempotency check (--ssl-enabled) |
 | certs:show | read-only | no | Export cert; not needed |
 
 ### YAML Keys
 
-- `certs: "path/to/certs"` — adds SSL cert from directory (idempotent, skips if already enabled)
-- `certs: false` — removes SSL cert (idempotent, skips if already disabled)
+- `ssl: {certfile: ..., keyfile: ...}` — adds SSL cert (idempotent, skips if already enabled)
+- `ssl: false` — removes SSL cert (idempotent, skips if already disabled)
 - absent — no action
 
 ### Decision
 
-**Supported.** Full scalar/false/absent pattern with idempotency via `certs:report --ssl-enabled`. Supports `certs:add` (path), `certs:remove` (false), and `destroy_app_certs` for `down`. Dry-run bug fixed.
+**Supported.** Map/false/absent pattern with idempotency via `certs:report --ssl-enabled`. YAML key is `ssl` (not `certs`) for readability. Supports `certs:add` (map), `certs:remove` (false), and `destroy_app_certs` for `down`.
 
 ---
 
