@@ -1,6 +1,6 @@
 {
   "name": "dokku-compose",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "description": "Declarative orchestrator for Dokku servers. Like Docker Compose, but for Dokku.",
   "main": "dist/index.js",
   "exports": "./dist/index.js",
