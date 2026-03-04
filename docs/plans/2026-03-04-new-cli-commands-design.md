@@ -236,14 +236,14 @@ The internal refactoring opportunity is that `--dry-run` could eventually use th
 
 ---
 
-## Open Questions
+## Decisions (resolved)
 
-1. **Export: how to handle SSL certs?** We can detect if SSL is enabled but can't export the actual cert/key files. Options: emit `ssl: true` as a boolean marker, or omit entirely with a comment.
+1. **Export: SSL certs** → Emit `ssl: true` as a boolean marker. Can't export cert files, but preserves the signal that SSL was configured. User must re-add cert paths manually.
 
-2. **Export: config var prefix filtering?** The `ensure_app_config` convergence logic only manages vars with a prefix (default `APP_`). Should export include all env vars or only prefixed ones? Leaning toward all — the user can filter after.
+2. **Export: config var filtering** → Export ALL env vars. The user can filter after. Matches what the server actually has.
 
-3. **Export: service-to-app link discovery?** For each service, we'd need to check `<plugin>:linked <service> <app>` for every app. This is O(services * apps) queries. Acceptable for typical setups but could be slow for large deployments.
+3. **Export: service-to-app link discovery** → Just do it (O(services × apps) queries). Typical setups have <20 apps and <10 services. Warn if it looks like it'll be slow.
 
-4. **Diff: how to handle features not in YAML?** If the server has config that the YAML doesn't mention at all (e.g., YAML has no `nginx:` section but server has custom nginx settings), should diff show this? Leaning toward no — only diff what's declared.
+4. **Diff: undeclared server state** → Only diff what's declared in YAML. If the YAML doesn't mention nginx, diff ignores server's nginx state. Prevents noise, respects "I don't care about this."
 
-5. **Validate: strict vs permissive for unknown keys?** Should unknown keys under `.apps.<name>` be errors or warnings? Warnings are safer for forward-compat with new modules.
+5. **Validate: unknown keys** → Warnings, not errors. Forward-compatible — new modules can add keys without breaking validation. Still flags typos visually.
