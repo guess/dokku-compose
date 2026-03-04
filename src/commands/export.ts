@@ -1,4 +1,5 @@
 import type { Runner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { exportApps } from '../modules/apps.js'
 import { exportAppDomains } from '../modules/domains.js'
@@ -20,32 +21,33 @@ export interface ExportOptions {
 }
 
 export async function runExport(runner: Runner, opts: ExportOptions): Promise<Config> {
+  const ctx = createContext(runner)
   const config: Config = { apps: {} }
 
   // Dokku version
-  const versionOutput = await runner.query('version')
+  const versionOutput = await ctx.query('version')
   const versionMatch = versionOutput.match(/(\d+\.\d+\.\d+)/)
   if (versionMatch) config.dokku = { version: versionMatch[1] }
 
   // Apps
-  const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(runner)
+  const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(ctx)
 
   // Networks
-  const networks = await exportNetworks(runner)
+  const networks = await exportNetworks(ctx)
   if (networks.length > 0) config.networks = networks
 
   // Services
-  const services = await exportServices(runner)
+  const services = await exportServices(ctx)
   if (Object.keys(services).length > 0) config.services = services
 
   // Per-app
   for (const app of apps) {
     const appConfig: Config['apps'][string] = {}
 
-    const domains = await exportAppDomains(runner, app)
+    const domains = await exportAppDomains(ctx, app)
     if (domains !== undefined) appConfig.domains = domains
 
-    const links = await exportAppLinks(runner, app, services)
+    const links = await exportAppLinks(ctx, app, services)
     if (links.length > 0) appConfig.links = links
 
     const ports = await exportAppPorts(runner, app)
@@ -60,13 +62,13 @@ export async function runExport(runner: Runner, opts: ExportOptions): Promise<Co
     const storage = await exportAppStorage(runner, app)
     if (storage?.length) appConfig.storage = storage
 
-    const nginx = await exportAppNginx(runner, app)
+    const nginx = await exportAppNginx(ctx, app)
     if (nginx && Object.keys(nginx).length) appConfig.nginx = nginx
 
     const checks = await exportAppChecks(runner, app)
     if (checks !== undefined) appConfig.checks = checks
 
-    const logs = await exportAppLogs(runner, app)
+    const logs = await exportAppLogs(ctx, app)
     if (logs && Object.keys(logs).length) appConfig.logs = logs
 
     const registry = await exportAppRegistry(runner, app)
@@ -75,11 +77,11 @@ export async function runExport(runner: Runner, opts: ExportOptions): Promise<Co
     const scheduler = await exportAppScheduler(runner, app)
     if (scheduler) appConfig.scheduler = scheduler
 
-    const networkCfg = await exportAppNetwork(runner, app)
+    const networkCfg = await exportAppNetwork(ctx, app)
     if (networkCfg?.networks?.length) appConfig.networks = networkCfg.networks
     if (networkCfg?.network) appConfig.network = networkCfg.network
 
-    const env = await exportAppConfig(runner, app)
+    const env = await exportAppConfig(ctx, app)
     if (env && Object.keys(env).length) appConfig.env = env
 
     config.apps[app] = appConfig

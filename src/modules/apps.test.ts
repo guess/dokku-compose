@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
 import { ensureApp, destroyApp, exportApps } from './apps.js'
 
 describe('ensureApp', () => {
@@ -7,7 +8,8 @@ describe('ensureApp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)  // apps:exists returns false
     runner.run = vi.fn()
-    await ensureApp(runner, 'myapp')
+    const ctx = createContext(runner)
+    await ensureApp(ctx, 'myapp')
     expect(runner.run).toHaveBeenCalledWith('apps:create', 'myapp')
   })
 
@@ -15,7 +17,8 @@ describe('ensureApp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)  // apps:exists returns true
     runner.run = vi.fn()
-    await ensureApp(runner, 'myapp')
+    const ctx = createContext(runner)
+    await ensureApp(ctx, 'myapp')
     expect(runner.run).not.toHaveBeenCalled()
   })
 })
@@ -25,7 +28,8 @@ describe('destroyApp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
     runner.run = vi.fn()
-    await destroyApp(runner, 'myapp')
+    const ctx = createContext(runner)
+    await destroyApp(ctx, 'myapp')
     expect(runner.run).toHaveBeenCalledWith('apps:destroy', 'myapp', '--force')
   })
 
@@ -33,7 +37,8 @@ describe('destroyApp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    await destroyApp(runner, 'myapp')
+    const ctx = createContext(runner)
+    await destroyApp(ctx, 'myapp')
     expect(runner.run).not.toHaveBeenCalled()
   })
 })
@@ -42,14 +47,16 @@ describe('exportApps', () => {
   it('returns list of apps, filtering out header', async () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('=====> My Apps\nmyapp\notherapp')
-    const result = await exportApps(runner)
+    const ctx = createContext(runner)
+    const result = await exportApps(ctx)
     expect(result).toEqual(['myapp', 'otherapp'])
   })
 
   it('returns empty array when no apps', async () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('')
-    const result = await exportApps(runner)
+    const ctx = createContext(runner)
+    const result = await exportApps(ctx)
     expect(result).toEqual([])
   })
 })

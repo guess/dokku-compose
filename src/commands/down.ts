@@ -1,4 +1,4 @@
-import type { Runner } from '../core/dokku.js'
+import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { destroyApp } from '../modules/apps.js'
 import { destroyAppLinks, destroyServices } from '../modules/services.js'
@@ -9,7 +9,7 @@ export interface DownOptions {
 }
 
 export async function runDown(
-  runner: Runner,
+  ctx: Context,
   config: Config,
   appFilter: string[],
   opts: DownOptions
@@ -25,25 +25,25 @@ export async function runDown(
 
     // Unlink services first
     if (config.services && appConfig.links) {
-      await destroyAppLinks(runner, app, appConfig.links, config.services)
+      await destroyAppLinks(ctx, app, appConfig.links, config.services)
     }
 
     // Destroy the app
-    await destroyApp(runner, app)
+    await destroyApp(ctx, app)
   }
 
   // Phase 2: Destroy services (if no remaining apps link to them)
   if (config.services) {
-    await destroyServices(runner, config.services)
+    await destroyServices(ctx, config.services)
   }
 
   // Phase 3: Destroy networks
   if (config.networks) {
     for (const net of config.networks) {
       logAction('network', `Destroying ${net}`)
-      const exists = await runner.check('network:exists', net)
+      const exists = await ctx.check('network:exists', net)
       if (!exists) { logSkip(); continue }
-      await runner.run('network:destroy', net, '--force')
+      await ctx.run('network:destroy', net, '--force')
       logDone()
     }
   }

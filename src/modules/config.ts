@@ -1,10 +1,10 @@
-import type { Runner } from '../core/dokku.js'
+import type { Context } from '../core/context.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 const MANAGED_KEYS_VAR = 'DOKKU_COMPOSE_MANAGED_KEYS'
 
 export async function ensureAppConfig(
-  runner: Runner,
+  ctx: Context,
   app: string,
   env: Record<string, string | number | boolean> | false
 ): Promise<void> {
@@ -16,7 +16,7 @@ export async function ensureAppConfig(
   }
 
   // 1. Read previously managed keys
-  const prevManagedRaw = await runner.query('config:get', app, MANAGED_KEYS_VAR)
+  const prevManagedRaw = await ctx.query('config:get', app, MANAGED_KEYS_VAR)
   const prevManaged = prevManagedRaw.trim()
     ? prevManagedRaw.trim().split(',').filter(Boolean)
     : []
@@ -27,13 +27,13 @@ export async function ensureAppConfig(
 
   // 3. Unset orphaned keys
   if (toUnset.length > 0) {
-    await runner.run('config:unset', '--no-restart', app, ...toUnset)
+    await ctx.run('config:unset', '--no-restart', app, ...toUnset)
   }
 
   // 4. Set desired vars + update managed keys list
   const pairs = Object.entries(env).map(([k, v]) => `${k}=${v}`)
   const newManagedKeys = desiredKeys.join(',')
-  await runner.run(
+  await ctx.run(
     'config:set', '--no-restart', app,
     ...pairs,
     `${MANAGED_KEYS_VAR}=${newManagedKeys}`
@@ -43,19 +43,19 @@ export async function ensureAppConfig(
 }
 
 export async function ensureGlobalConfig(
-  runner: Runner,
+  ctx: Context,
   env: Record<string, string | number | boolean> | false
 ): Promise<void> {
   if (env === false) return
   const pairs = Object.entries(env).map(([k, v]) => `${k}=${v}`)
-  await runner.run('config:set', '--global', ...pairs)
+  await ctx.run('config:set', '--global', ...pairs)
 }
 
 export async function exportAppConfig(
-  runner: Runner,
+  ctx: Context,
   app: string
 ): Promise<Record<string, string> | undefined> {
-  const raw = await runner.query('config:export', app, '--format', 'shell')
+  const raw = await ctx.query('config:export', app, '--format', 'shell')
   if (!raw) return undefined
   const result: Record<string, string> = {}
   for (const line of raw.split('\n')) {

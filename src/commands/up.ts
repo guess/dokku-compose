@@ -30,20 +30,20 @@ export async function runUp(
     : Object.keys(config.apps)
 
   // Phase 1: Plugins
-  if (config.plugins) await ensurePlugins(ctx.runner, config.plugins)
+  if (config.plugins) await ensurePlugins(ctx, config.plugins)
 
-  // Phase 2: Global config (still uses old module functions for now)
-  if (config.domains !== undefined) await ensureGlobalDomains(ctx.runner, config.domains)
-  if (config.env !== undefined) await ensureGlobalConfig(ctx.runner, config.env)
-  if (config.logs !== undefined) await ensureGlobalLogs(ctx.runner, config.logs)
-  if (config.nginx !== undefined) await ensureGlobalNginx(ctx.runner, config.nginx)
+  // Phase 2: Global config
+  if (config.domains !== undefined) await ensureGlobalDomains(ctx, config.domains)
+  if (config.env !== undefined) await ensureGlobalConfig(ctx, config.env)
+  if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
+  if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)
 
   // Phase 3: Networks
-  if (config.networks) await ensureNetworks(ctx.runner, config.networks)
+  if (config.networks) await ensureNetworks(ctx, config.networks)
 
   // Phase 4: Services
-  if (config.services) await ensureServices(ctx.runner, config.services)
-  if (config.services) await ensureServiceBackups(ctx.runner, config.services)
+  if (config.services) await ensureServices(ctx, config.services)
+  if (config.services) await ensureServiceBackups(ctx, config.services)
 
   // Phase 5: Per-app
   for (const app of apps) {
@@ -62,7 +62,7 @@ export async function runUp(
 
     // Links (between networking and config)
     if (config.services) {
-      await ensureAppLinks(ctx.runner, app, appConfig.links ?? [], config.services)
+      await ensureAppLinks(ctx, app, appConfig.links ?? [], config.services)
     }
 
     // Configuration

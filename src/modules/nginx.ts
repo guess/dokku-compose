@@ -1,23 +1,23 @@
-import type { Runner } from '../core/dokku.js'
+import type { Context } from '../core/context.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export async function ensureAppNginx(
-  runner: Runner,
+  ctx: Context,
   app: string,
   nginx: Record<string, string | number>
 ): Promise<void> {
   logAction(app, 'Configuring nginx')
-  const current = await exportAppNginx(runner, app) ?? {}
+  const current = await exportAppNginx(ctx, app) ?? {}
   let changed = false
 
   for (const [key, value] of Object.entries(nginx)) {
     if (String(value) === current[key]) continue
-    await runner.run('nginx:set', app, key, String(value))
+    await ctx.run('nginx:set', app, key, String(value))
     changed = true
   }
 
   if (changed) {
-    await runner.run('proxy:build-config', app)
+    await ctx.run('proxy:build-config', app)
     logDone()
   } else {
     logSkip()
@@ -25,19 +25,19 @@ export async function ensureAppNginx(
 }
 
 export async function ensureGlobalNginx(
-  runner: Runner,
+  ctx: Context,
   nginx: Record<string, string | number>
 ): Promise<void> {
   for (const [key, value] of Object.entries(nginx)) {
-    await runner.run('nginx:set', '--global', key, String(value))
+    await ctx.run('nginx:set', '--global', key, String(value))
   }
 }
 
 export async function exportAppNginx(
-  runner: Runner,
+  ctx: Context,
   app: string
 ): Promise<Record<string, string> | undefined> {
-  const raw = await runner.query('nginx:report', app)
+  const raw = await ctx.query('nginx:report', app)
   if (!raw) return undefined
   const result: Record<string, string> = {}
   for (const line of raw.split('\n')) {

@@ -1,43 +1,43 @@
-import type { Runner } from '../core/dokku.js'
+import type { Context } from '../core/context.js'
 import { logAction, logDone } from '../core/logger.js'
 
 export async function ensureAppDomains(
-  runner: Runner,
+  ctx: Context,
   app: string,
   domains: string[] | false | undefined
 ): Promise<void> {
   if (domains === undefined) return
   logAction(app, 'Configuring domains')
   if (domains === false) {
-    await runner.run('domains:disable', app)
-    await runner.run('domains:clear', app)
+    await ctx.run('domains:disable', app)
+    await ctx.run('domains:clear', app)
   } else {
-    await runner.run('domains:enable', app)
-    await runner.run('domains:set', app, ...domains)
+    await ctx.run('domains:enable', app)
+    await ctx.run('domains:set', app, ...domains)
   }
   logDone()
 }
 
 export async function ensureGlobalDomains(
-  runner: Runner,
+  ctx: Context,
   domains: string[] | false
 ): Promise<void> {
   logAction('global', 'Configuring domains')
   if (domains === false) {
-    await runner.run('domains:clear-global')
+    await ctx.run('domains:clear-global')
   } else {
-    await runner.run('domains:set-global', ...domains)
+    await ctx.run('domains:set-global', ...domains)
   }
   logDone()
 }
 
 export async function exportAppDomains(
-  runner: Runner,
+  ctx: Context,
   app: string
 ): Promise<string[] | false | undefined> {
-  const enabledRaw = await runner.query('domains:report', app, '--domains-app-enabled')
+  const enabledRaw = await ctx.query('domains:report', app, '--domains-app-enabled')
   if (enabledRaw.trim() === 'false') return false
-  const raw = await runner.query('domains:report', app, '--domains-app-vhosts')
+  const raw = await ctx.query('domains:report', app, '--domains-app-vhosts')
   const vhosts = raw.split('\n').map(s => s.trim()).filter(Boolean)
   if (vhosts.length === 0) return undefined
   return vhosts

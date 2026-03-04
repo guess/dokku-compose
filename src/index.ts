@@ -55,10 +55,11 @@ program
     if (!opts.force) { console.error('--force required'); process.exit(1) }
     const config = loadConfig(opts.file)
     const runner = makeRunner({})
+    const ctx = createContext(runner)
     try {
-      await runDown(runner, config, apps, { force: true })
+      await runDown(ctx, config, apps, { force: true })
     } finally {
-      await runner.close()
+      await ctx.close()
     }
   })
 

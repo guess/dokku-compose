@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
 import { ensureAppNginx, exportAppNginx } from './nginx.js'
 
 describe('ensureAppNginx', () => {
@@ -7,7 +8,8 @@ describe('ensureAppNginx', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('')
     runner.run = vi.fn()
-    await ensureAppNginx(runner, 'myapp', { 'client-max-body-size': '15m' })
+    const ctx = createContext(runner)
+    await ensureAppNginx(ctx, 'myapp', { 'client-max-body-size': '15m' })
     expect(runner.run).toHaveBeenCalledWith('nginx:set', 'myapp', 'client-max-body-size', '15m')
   })
 })
@@ -17,7 +19,8 @@ describe('ensureAppNginx idempotency and proxy rebuild', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('       Nginx client max body size: 15m\n')
     runner.run = vi.fn()
-    await ensureAppNginx(runner, 'myapp', { 'client-max-body-size': '15m' })
+    const ctx = createContext(runner)
+    await ensureAppNginx(ctx, 'myapp', { 'client-max-body-size': '15m' })
     expect(runner.run).not.toHaveBeenCalledWith('nginx:set', expect.anything(), expect.anything(), expect.anything())
     expect(runner.run).not.toHaveBeenCalledWith('proxy:build-config', expect.anything())
   })
@@ -26,7 +29,8 @@ describe('ensureAppNginx idempotency and proxy rebuild', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('       Nginx client max body size: 1m\n')
     runner.run = vi.fn()
-    await ensureAppNginx(runner, 'myapp', { 'client-max-body-size': '15m' })
+    const ctx = createContext(runner)
+    await ensureAppNginx(ctx, 'myapp', { 'client-max-body-size': '15m' })
     expect(runner.run).toHaveBeenCalledWith('nginx:set', 'myapp', 'client-max-body-size', '15m')
     expect(runner.run).toHaveBeenCalledWith('proxy:build-config', 'myapp')
   })
@@ -35,7 +39,8 @@ describe('ensureAppNginx idempotency and proxy rebuild', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('')
     runner.run = vi.fn()
-    await ensureAppNginx(runner, 'myapp', { 'client-max-body-size': '15m' })
+    const ctx = createContext(runner)
+    await ensureAppNginx(ctx, 'myapp', { 'client-max-body-size': '15m' })
     expect(runner.run).toHaveBeenCalledWith('nginx:set', 'myapp', 'client-max-body-size', '15m')
     expect(runner.run).toHaveBeenCalledWith('proxy:build-config', 'myapp')
   })
@@ -44,7 +49,8 @@ describe('ensureAppNginx idempotency and proxy rebuild', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('       Nginx client max body size: 15m\n')
     runner.run = vi.fn()
-    await ensureAppNginx(runner, 'myapp', { 'client-max-body-size': '15m' })
+    const ctx = createContext(runner)
+    await ensureAppNginx(ctx, 'myapp', { 'client-max-body-size': '15m' })
     expect(runner.run).not.toHaveBeenCalled()
   })
 })
@@ -53,7 +59,8 @@ describe('exportAppNginx', () => {
   it('returns undefined when no nginx output', async () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('')
-    const result = await exportAppNginx(runner, 'myapp')
+    const ctx = createContext(runner)
+    const result = await exportAppNginx(ctx, 'myapp')
     expect(result).toBeUndefined()
   })
 
@@ -67,7 +74,8 @@ describe('exportAppNginx', () => {
       '       Nginx computed access log format:  ',
       '       Nginx last visited at:  ',
     ].join('\n'))
-    const result = await exportAppNginx(runner, 'myapp')
+    const ctx = createContext(runner)
+    const result = await exportAppNginx(ctx, 'myapp')
     expect(result).toEqual({ 'client-max-body-size': '15m' })
   })
 
@@ -78,7 +86,8 @@ describe('exportAppNginx', () => {
       '       Nginx computed access log format: default',
       '       Nginx global access log format: default',
     ].join('\n'))
-    const result = await exportAppNginx(runner, 'myapp')
+    const ctx = createContext(runner)
+    const result = await exportAppNginx(ctx, 'myapp')
     expect(result).toBeUndefined()
   })
 })

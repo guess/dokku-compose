@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
 import { ensureServices, ensureServiceBackups, ensureAppLinks, exportServices, exportAppLinks } from './services.js'
 
 describe('ensureServices', () => {
@@ -7,8 +8,9 @@ describe('ensureServices', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)  // postgres:exists returns false
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const services = { 'api-postgres': { plugin: 'postgres' } }
-    await ensureServices(runner, services)
+    await ensureServices(ctx, services)
     expect(runner.run).toHaveBeenCalledWith('postgres:create', 'api-postgres')
   })
 
@@ -16,7 +18,8 @@ describe('ensureServices', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
     runner.run = vi.fn()
-    await ensureServices(runner, { 'api-postgres': { plugin: 'postgres' } })
+    const ctx = createContext(runner)
+    await ensureServices(ctx, { 'api-postgres': { plugin: 'postgres' } })
     expect(runner.run).not.toHaveBeenCalled()
   })
 
@@ -24,7 +27,8 @@ describe('ensureServices', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    await ensureServices(runner, { 'funqtion-db': { plugin: 'postgres', image: 'postgis/postgis' } })
+    const ctx = createContext(runner)
+    await ensureServices(ctx, { 'funqtion-db': { plugin: 'postgres', image: 'postgis/postgis' } })
     expect(runner.run).toHaveBeenCalledWith('postgres:create', 'funqtion-db', '--image', 'postgis/postgis')
   })
 
@@ -32,7 +36,8 @@ describe('ensureServices', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    await ensureServices(runner, { 'funqtion-db': { plugin: 'postgres', version: '17-3.5' } })
+    const ctx = createContext(runner)
+    await ensureServices(ctx, { 'funqtion-db': { plugin: 'postgres', version: '17-3.5' } })
     expect(runner.run).toHaveBeenCalledWith('postgres:create', 'funqtion-db', '--image-version', '17-3.5')
   })
 
@@ -40,7 +45,8 @@ describe('ensureServices', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    await ensureServices(runner, {
+    const ctx = createContext(runner)
+    await ensureServices(ctx, {
       'funqtion-db': { plugin: 'postgres', image: 'postgis/postgis', version: '17-3.5' }
     })
     expect(runner.run).toHaveBeenCalledWith(
@@ -54,8 +60,9 @@ describe('ensureAppLinks', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)  // nothing linked yet
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const services = { 'api-postgres': { plugin: 'postgres' } }
-    await ensureAppLinks(runner, 'myapp', ['api-postgres'], services)
+    await ensureAppLinks(ctx, 'myapp', ['api-postgres'], services)
     expect(runner.run).toHaveBeenCalledWith('postgres:link', 'api-postgres', 'myapp', '--no-restart')
   })
 
@@ -63,8 +70,9 @@ describe('ensureAppLinks', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)  // already linked
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const services = { 'api-postgres': { plugin: 'postgres' } }
-    await ensureAppLinks(runner, 'myapp', ['api-postgres'], services)
+    await ensureAppLinks(ctx, 'myapp', ['api-postgres'], services)
     expect(runner.run).not.toHaveBeenCalled()
   })
 
@@ -75,8 +83,9 @@ describe('ensureAppLinks', () => {
       args[0] === 'postgres:linked' ? true : false
     )
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const allServices = { 'api-postgres': { plugin: 'postgres' } }
-    await ensureAppLinks(runner, 'myapp', [], allServices)
+    await ensureAppLinks(ctx, 'myapp', [], allServices)
     expect(runner.run).toHaveBeenCalledWith('postgres:unlink', 'api-postgres', 'myapp', '--no-restart')
   })
 })
@@ -84,7 +93,8 @@ describe('ensureAppLinks', () => {
 describe('exportServices', () => {
   it('returns empty record (best-effort stub)', async () => {
     const runner = createRunner({ dryRun: false })
-    const result = await exportServices(runner)
+    const ctx = createContext(runner)
+    const result = await exportServices(ctx)
     expect(result).toEqual({})
   })
 })
@@ -106,8 +116,9 @@ describe('ensureServiceBackups', () => {
     const runner = createRunner({ dryRun: false })
     runner.run = vi.fn()
     runner.query = vi.fn().mockResolvedValue('')  // no stored hash → run backup
+    const ctx = createContext(runner)
     const services = { 'funqtion-db': { plugin: 'postgres', backup: backupConfig } }
-    await ensureServiceBackups(runner, services)
+    await ensureServiceBackups(ctx, services)
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-deauth', 'funqtion-db')
     expect(runner.run).toHaveBeenCalledWith(
       'postgres:backup-auth', 'funqtion-db',
@@ -122,8 +133,9 @@ describe('ensureServiceBackups', () => {
   it('skips services without backup config', async () => {
     const runner = createRunner({ dryRun: false })
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const services = { 'funqtion-redis': { plugin: 'redis' } }
-    await ensureServiceBackups(runner, services)
+    await ensureServiceBackups(ctx, services)
     expect(runner.run).not.toHaveBeenCalled()
   })
 
@@ -145,8 +157,9 @@ describe('ensureServiceBackups', () => {
     const { createHash } = await import('crypto')
     const hash = createHash('sha256').update(JSON.stringify(backup)).digest('hex')
     runner.query = vi.fn().mockResolvedValue(hash)
+    const ctx = createContext(runner)
     const services = { 'funqtion-db': { plugin: 'postgres', backup } }
-    await ensureServiceBackups(runner, services)
+    await ensureServiceBackups(ctx, services)
     expect(runner.run).not.toHaveBeenCalled()
   })
 
@@ -154,6 +167,7 @@ describe('ensureServiceBackups', () => {
     const runner = createRunner({ dryRun: false })
     runner.run = vi.fn()
     runner.query = vi.fn().mockResolvedValue('old-hash-value')
+    const ctx = createContext(runner)
     const backup = {
       schedule: '0 * * * *',
       bucket: 'db-backups/funqtion-db',
@@ -166,7 +180,7 @@ describe('ensureServiceBackups', () => {
       },
     }
     const services = { 'funqtion-db': { plugin: 'postgres', backup } }
-    await ensureServiceBackups(runner, services)
+    await ensureServiceBackups(ctx, services)
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-deauth', 'funqtion-db')
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-auth', 'funqtion-db', 'KEY123', 'SECRET456', 'auto', 's3v4', 'https://r2.example.com')
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-schedule', 'funqtion-db', '0 * * * *', 'db-backups/funqtion-db')
@@ -180,6 +194,7 @@ describe('ensureServiceBackups', () => {
     const runner = createRunner({ dryRun: false })
     runner.run = vi.fn()
     runner.query = vi.fn().mockResolvedValue('')  // no stored hash
+    const ctx = createContext(runner)
     const backup = {
       schedule: '0 * * * *',
       bucket: 'db-backups/funqtion-db',
@@ -192,7 +207,7 @@ describe('ensureServiceBackups', () => {
       },
     }
     const services = { 'funqtion-db': { plugin: 'postgres', backup } }
-    await ensureServiceBackups(runner, services)
+    await ensureServiceBackups(ctx, services)
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-deauth', 'funqtion-db')
   })
 })
@@ -204,19 +219,21 @@ describe('exportAppLinks', () => {
     runner.check = vi.fn().mockImplementation(async (...args: string[]) =>
       args[0] === 'postgres:linked' ? true : false
     )
+    const ctx = createContext(runner)
     const services = {
       'api-postgres': { plugin: 'postgres' },
       'api-redis': { plugin: 'redis' },
     }
-    const result = await exportAppLinks(runner, 'myapp', services)
+    const result = await exportAppLinks(ctx, 'myapp', services)
     expect(result).toEqual(['api-postgres'])
   })
 
   it('returns empty array when no services linked', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
+    const ctx = createContext(runner)
     const services = { 'api-postgres': { plugin: 'postgres' } }
-    const result = await exportAppLinks(runner, 'myapp', services)
+    const result = await exportAppLinks(ctx, 'myapp', services)
     expect(result).toEqual([])
   })
 })

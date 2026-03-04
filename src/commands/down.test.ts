@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
 import { runDown } from './down.js'
 import { loadConfig } from '../core/config.js'
 import path from 'path'
@@ -12,8 +13,9 @@ describe('runDown', () => {
     runner.check = vi.fn().mockResolvedValue(true)  // everything exists
     runner.query = vi.fn().mockResolvedValue('')    // no linked apps for service check
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
-    await runDown(runner, config, [], { force: true })
+    await runDown(ctx, config, [], { force: true })
     expect(runner.run).toHaveBeenCalledWith('apps:destroy', 'myapp', '--force')
   })
 
@@ -22,8 +24,9 @@ describe('runDown', () => {
     runner.check = vi.fn().mockResolvedValue(true)
     runner.query = vi.fn().mockResolvedValue('')
     runner.run = vi.fn()
+    const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
-    await runDown(runner, config, [], { force: true })
+    await runDown(ctx, config, [], { force: true })
     const calls = (runner.run as any).mock.calls.map((c: string[]) => c.join(' '))
     const appDestroyIdx = calls.findIndex((c: string) => c.includes('apps:destroy'))
     const svcDestroyIdx = calls.findIndex((c: string) => c.includes('postgres:destroy'))

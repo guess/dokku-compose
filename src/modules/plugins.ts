@@ -1,12 +1,12 @@
-import type { Runner } from '../core/dokku.js'
+import type { Context } from '../core/context.js'
 import type { PluginConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export async function ensurePlugins(
-  runner: Runner,
+  ctx: Context,
   plugins: Record<string, PluginConfig>
 ): Promise<void> {
-  const listOutput = await runner.query('plugin:list')
+  const listOutput = await ctx.query('plugin:list')
   const installedNames = new Set(
     listOutput.split('\n')
       .map(line => line.trim().split(/\s+/)[0])
@@ -19,7 +19,7 @@ export async function ensurePlugins(
       logSkip()
       continue
     }
-    await runner.run('plugin:install', config.url, '--name', name)
+    await ctx.run('plugin:install', config.url, '--name', name)
     logDone()
   }
 }
