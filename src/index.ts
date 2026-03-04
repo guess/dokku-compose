@@ -33,10 +33,14 @@ program
   .action(async (apps, opts) => {
     const config = loadConfig(opts.file)
     const runner = makeRunner(opts)
-    await runUp(runner, config, apps)
-    if (opts.dryRun) {
-      console.log('\n# Commands that would run:')
-      for (const cmd of runner.dryRunLog) console.log(`dokku ${cmd}`)
+    try {
+      await runUp(runner, config, apps)
+      if (opts.dryRun) {
+        console.log('\n# Commands that would run:')
+        for (const cmd of runner.dryRunLog) console.log(`dokku ${cmd}`)
+      }
+    } finally {
+      await runner.close()
     }
   })
 
@@ -49,7 +53,11 @@ program
     if (!opts.force) { console.error('--force required'); process.exit(1) }
     const config = loadConfig(opts.file)
     const runner = makeRunner({})
-    await runDown(runner, config, apps, { force: true })
+    try {
+      await runDown(runner, config, apps, { force: true })
+    } finally {
+      await runner.close()
+    }
   })
 
 program
@@ -77,15 +85,19 @@ program
   .option('-o, --output <path>', 'Write to file instead of stdout')
   .action(async (opts) => {
     const runner = makeRunner({})
-    const result = await runExport(runner, {
-      appFilter: opts.app ? [opts.app] : undefined
-    })
-    const out = yaml.dump(result, { lineWidth: 120 })
-    if (opts.output) {
-      fs.writeFileSync(opts.output, out)
-      console.error(`Written to ${opts.output}`)
-    } else {
-      process.stdout.write(out)
+    try {
+      const result = await runExport(runner, {
+        appFilter: opts.app ? [opts.app] : undefined
+      })
+      const out = yaml.dump(result, { lineWidth: 120 })
+      if (opts.output) {
+        fs.writeFileSync(opts.output, out)
+        console.error(`Written to ${opts.output}`)
+      } else {
+        process.stdout.write(out)
+      }
+    } finally {
+      await runner.close()
     }
   })
 
@@ -97,13 +109,17 @@ program
   .action(async (opts) => {
     const desired = loadConfig(opts.file)
     const runner = makeRunner({})
-    const current = await runExport(runner, {
-      appFilter: Object.keys(desired.apps)
-    })
-    const diff = computeDiff(desired, current)
-    const output = opts.verbose ? formatVerbose(diff) : formatSummary(diff)
-    process.stdout.write(output)
-    process.exit(diff.inSync ? 0 : 1)
+    try {
+      const current = await runExport(runner, {
+        appFilter: Object.keys(desired.apps)
+      })
+      const diff = computeDiff(desired, current)
+      const output = opts.verbose ? formatVerbose(diff) : formatSummary(diff)
+      process.stdout.write(output)
+      process.exit(diff.inSync ? 0 : 1)
+    } finally {
+      await runner.close()
+    }
   })
 
 program
@@ -113,8 +129,12 @@ program
   .action(async (apps, opts) => {
     const config = loadConfig(opts.file)
     const runner = makeRunner({})
-    const { runPs } = await import('./commands/ps.js')
-    await runPs(runner, config, apps)
+    try {
+      const { runPs } = await import('./commands/ps.js')
+      await runPs(runner, config, apps)
+    } finally {
+      await runner.close()
+    }
   })
 
 program
