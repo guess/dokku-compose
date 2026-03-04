@@ -110,7 +110,7 @@ dokku-compose up
 DOKKU_HOST=my-server.example.com dokku-compose up
 ```
 
-Requires Node.js >= 18. See the [Installation Reference →](docs/reference/install.md) for version pinning, requirements, and remote execution details.
+Requires Node.js >= 18. See the [Installation Reference →](docs/reference/install.md) for requirements and remote execution details.
 
 ## Features
 
@@ -534,16 +534,16 @@ Each `src/modules/*.ts` file maps to one Dokku command namespace and exports `en
 ```bash
 git clone https://github.com/guess/dokku-compose.git
 cd dokku-compose
-npm install
+bun install
 
 # Run all tests
-npm test
+bun test
 
 # Run a specific module's tests
-npx vitest run src/tests/services.test.ts
+bun test src/modules/services.test.ts
 ```
 
-Tests use [Vitest](https://vitest.dev/) with a mocked `Runner` — no real Dokku server needed.
+Tests use [Bun's test runner](https://bun.sh/docs/cli/test) with a mocked `Runner` — no real Dokku server needed.
 
 ```bash
 # Cut a release (bumps version, tags, pushes — CI publishes to npm)

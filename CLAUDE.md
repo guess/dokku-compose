@@ -6,22 +6,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 dokku-compose is a declarative orchestrator for Dokku servers. Users define infrastructure in a single YAML file (`dokku-compose.yml`) and the tool idempotently configures Dokku apps, services, networks, and plugins. Think Docker Compose but for Dokku.
 
-**Requirements:** Node.js >= 18, npm
+**Requirements:** Node.js >= 18 (end users), Bun >= 1.0 (development)
 
 ## Commands
 
 ```bash
 # Run all tests
-npm test
+bun test
 
 # Run a single test file
-npx vitest run src/modules/apps.test.ts
+bun test src/modules/apps.test.ts
 
 # Run the tool (local or via DOKKU_HOST for remote)
 ./bin/dokku-compose up --dry-run
 
 # Build the CLI
-npm run build
+bun run build
 ```
 
 ## Architecture
@@ -76,8 +76,8 @@ npm run build
 Tests use Vitest.
 
 ```bash
-npm test          # run all tests
-npm run test:watch  # watch mode
+bun test          # run all tests
+bun test --watch  # watch mode
 ```
 
 **Test conventions:**

@@ -16,10 +16,10 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
+    "test": "bun test",
+    "test:watch": "bun test --watch",
     "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsx src/index.ts"
+    "dev": "bun src/index.ts"
   },
   "keywords": [
     "dokku",
@@ -46,8 +46,7 @@
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.3",
     "tsup": "^8.5.1",
-    "tsx": "^4.21.0",
-    "typescript": "^5.9.3",
+"typescript": "^5.9.3",
     "vitest": "^4.0.18"
   }
 }
