@@ -45,6 +45,8 @@ teardown() {
     mock_dokku_exit "postgres:linked qultr-postgres $app" 1
     mock_dokku_exit "redis:linked qultr-redis $app" 1
     mock_dokku_output "ports:report $app --ports-map" ""
+    # Certs: not yet enabled
+    mock_dokku_output "certs:report $app --ssl-enabled" "false"
     # Storage: no mounts yet
     mock_dokku_output "storage:report funqtion --storage-mounts" ""
 

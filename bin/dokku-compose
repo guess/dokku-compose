@@ -188,6 +188,7 @@ configure_app() {
     if type ensure_app_links &>/dev/null; then ensure_app_links "$app"; fi
     if type ensure_app_handlers &>/dev/null; then ensure_app_handlers "$app"; fi
     if type ensure_app_networks &>/dev/null; then ensure_app_networks "$app"; fi
+    if type ensure_app_network &>/dev/null; then ensure_app_network "$app"; fi
     if type ensure_app_proxy &>/dev/null; then ensure_app_proxy "$app"; fi
     if type ensure_app_ports &>/dev/null; then ensure_app_ports "$app"; fi
     if type ensure_app_certs &>/dev/null; then ensure_app_certs "$app"; fi
@@ -221,11 +222,20 @@ cmd_down() {
         if type destroy_app_handlers &>/dev/null; then
             destroy_app_handlers "$app"
         fi
+        if type destroy_app_certs &>/dev/null; then
+            destroy_app_certs "$app"
+        fi
         if type destroy_app_storage &>/dev/null; then
             destroy_app_storage "$app"
         fi
         if type destroy_app_domains &>/dev/null; then
             destroy_app_domains "$app"
+        fi
+        if type destroy_app_ports &>/dev/null; then
+            destroy_app_ports "$app"
+        fi
+        if type destroy_app_network &>/dev/null; then
+            destroy_app_network "$app"
         fi
         if type destroy_app &>/dev/null; then
             destroy_app "$app"
@@ -235,6 +245,11 @@ cmd_down() {
     # Phase 2: Destroy service instances (skips services still linked to other apps)
     if type destroy_services &>/dev/null; then
         destroy_services
+    fi
+
+    # Phase 3: Destroy shared networks
+    if type destroy_networks &>/dev/null; then
+        destroy_networks
     fi
 }
 

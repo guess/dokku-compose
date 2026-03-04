@@ -8,9 +8,36 @@
 ensure_app_certs() {
     local app="$1"
 
-    local cert_path
-    cert_path=$(yaml_app_get "$app" ".certs")
-    [[ -z "$cert_path" ]] && return 0
+    yaml_app_key_exists "$app" "certs" || return 0
+
+    local raw
+    raw=$(yq eval ".apps.${app}.certs" "$DOKKU_COMPOSE_FILE")
+
+    # certs: false — remove certificate if currently enabled
+    if [[ "$raw" == "false" ]]; then
+        local ssl_enabled
+        ssl_enabled=$(dokku_cmd certs:report "$app" --ssl-enabled 2>/dev/null || true)
+        if [[ "$ssl_enabled" == "true" ]]; then
+            log_action "$app" "Removing SSL certificate"
+            dokku_cmd certs:remove "$app"
+            log_done
+        else
+            log_action "$app" "SSL certificate"
+            log_skip
+        fi
+        return 0
+    fi
+
+    # certs: "path/to/certs" — add certificate if not already enabled
+    local cert_path="$raw"
+
+    local ssl_enabled
+    ssl_enabled=$(dokku_cmd certs:report "$app" --ssl-enabled 2>/dev/null || true)
+    if [[ "$ssl_enabled" == "true" ]]; then
+        log_action "$app" "SSL certificate"
+        log_skip
+        return 0
+    fi
 
     local cert_file="${cert_path}/cert.crt"
     local key_file="${cert_path}/cert.key"
@@ -28,5 +55,12 @@ ensure_app_certs() {
 
     log_action "$app" "Adding SSL certificate"
     tar cf - -C "$cert_path" cert.crt cert.key | dokku_cmd certs:add "$app"
+    log_done
+}
+
+destroy_app_certs() {
+    local app="$1"
+    log_action "$app" "Removing SSL certificate"
+    dokku_cmd certs:remove "$app"
     log_done
 }

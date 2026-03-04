@@ -30,3 +30,15 @@ teardown() {
     ensure_app_ports "myapp"
     assert_dokku_called "ports:set myapp http:5000:5000"
 }
+
+@test "ensure_app_ports skips when multi-port mappings match in different order" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/multi-port.yml"
+    mock_dokku_output "ports:report portapp --ports-map" "http:80:5000 https:443:4000"
+    ensure_app_ports "portapp"
+    refute_dokku_called "ports:set"
+}
+
+@test "destroy_app_ports clears port mappings" {
+    destroy_app_ports "funqtion"
+    assert_dokku_called "ports:clear funqtion"
+}

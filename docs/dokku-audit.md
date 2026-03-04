@@ -18,9 +18,9 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 1 | apps | apps.sh | supported | [link](https://dokku.com/docs/deployment/application-management/) |
 | 2 | domains | domains.sh | partial | [link](https://dokku.com/docs/configuration/domains/) |
 | 3 | config | config.sh | supported | [link](https://dokku.com/docs/configuration/environment-variables/) |
-| 4 | certs | certs.sh | partial | [link](https://dokku.com/docs/configuration/ssl/) |
-| 5 | network | network.sh | partial | [link](https://dokku.com/docs/networking/network/) |
-| 6 | ports | ports.sh | partial | [link](https://dokku.com/docs/networking/port-management/) |
+| 4 | certs | certs.sh | supported | [link](https://dokku.com/docs/configuration/ssl/) |
+| 5 | network | network.sh | supported | [link](https://dokku.com/docs/networking/network/) |
+| 6 | ports | ports.sh | supported | [link](https://dokku.com/docs/networking/port-management/) |
 | 7 | nginx | nginx.sh | partial | [link](https://dokku.com/docs/networking/proxies/nginx/) |
 | 8 | builder-* | builder.sh | partial | [link](https://dokku.com/docs/deployment/builders/builder-management/) |
 | 9 | docker-options | docker_options.sh | supported | [link](https://dokku.com/docs/advanced-usage/docker-options/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 5 namespaces (apps, config, docker-options, plugin, version)
-- **Partial:** 13 namespaces (domains, certs, network, ports, nginx, builder-*, proxy, storage, registry, scheduler, checks, logs, app-json)
+- **Supported:** 8 namespaces (apps, certs, config, docker-options, network, plugin, ports, version)
+- **Partial:** 10 namespaces (domains, nginx, builder-*, proxy, storage, registry, scheduler, checks, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -182,32 +182,28 @@ apps:
 
 **Doc:** https://dokku.com/docs/configuration/ssl/
 **Module:** `lib/certs.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| certs:add | declarative | yes | Tars cert.crt + cert.key and pipes to Dokku |
-| certs:update | declarative | no | Functionally similar to certs:add |
-| certs:remove | declarative | no | Needed for teardown / when ssl key removed |
+| certs:add | declarative | yes | Tars cert.crt + cert.key and pipes to Dokku; idempotent via certs:report |
+| certs:update | declarative | no | Functionally identical to certs:add; not needed separately |
+| certs:remove | declarative | yes | Called when `certs: false` or during `down` |
 | certs:generate | imperative | no | Interactive self-signed cert; not declarative |
-| certs:report | read-only | no | Could check if cert already installed |
+| certs:report | read-only | yes | Used for idempotency check (--ssl-enabled) |
 | certs:show | read-only | no | Export cert; not needed |
 
 ### YAML Keys
 
-YAML key is `certs:` (renamed from `ssl:` to match the Dokku namespace). Example: `certs: certs/example.com`.
-
-### Gaps in Existing Code
-
-- No idempotency: `certs:add` called every run even if cert already installed.
-- No `certs:remove` / destroy counterpart. If `certs:` key removed from YAML, old cert persists.
-- Dry-run logic bug: enters dry-run path when files are NOT found rather than when they are.
+- `certs: "path/to/certs"` — adds SSL cert from directory (idempotent, skips if already enabled)
+- `certs: false` — removes SSL cert (idempotent, skips if already disabled)
+- absent — no action
 
 ### Decision
 
-**Partial.** Core `certs:add` works for the primary use case. YAML key renamed from `ssl:` to `certs:` for namespace consistency. Gaps: no idempotency, no convergence when `certs:` removed, minor dry-run bug.
+**Supported.** Full scalar/false/absent pattern with idempotency via `certs:report --ssl-enabled`. Supports `certs:add` (path), `certs:remove` (false), and `destroy_app_certs` for `down`. Dry-run bug fixed.
 
 ---
 
@@ -215,55 +211,55 @@ YAML key is `certs:` (renamed from `ssl:` to match the Dokku namespace). Example
 
 **Doc:** https://dokku.com/docs/networking/network/
 **Module:** `lib/network.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
 | network:create | declarative | yes | Creates from top-level `networks:` list |
-| network:destroy | imperative | no | Needed for down / --remove-orphans |
-| network:exists | read-only | yes | Idempotency check before create |
-| network:set | declarative | partial | Only `attach-post-deploy` implemented |
+| network:destroy | declarative | yes | `destroy_networks()` in down path |
+| network:exists | read-only | yes | Idempotency check before create/destroy |
+| network:set | declarative | yes | All 4 relevant properties implemented |
 | network:rebuild | imperative | no | Runtime action |
 | network:report | read-only | no | Could check network:set state |
 
-### Missing network:set Properties
+### network:set Properties
 
 | Property | Supported | Notes |
 |----------|-----------|-------|
 | attach-post-deploy | yes | Set via `apps.<app>.networks` list |
-| attach-post-create | no | Different attach lifecycle |
-| initial-network | no | Default network at container creation |
-| bind-all-interfaces | no | Disables internal proxying |
-| static-web-listener | no | Exposes non-Dokku services |
-| tld | no | Custom TLD suffix |
+| attach-post-create | yes | Set via `apps.<app>.network.attach_post_create` |
+| initial-network | yes | Set via `apps.<app>.network.initial_network` |
+| bind-all-interfaces | yes | Set via `apps.<app>.network.bind_all_interfaces` |
+| static-web-listener | no | Not confirmed as a `network:set` property in Dokku docs |
+| tld | yes | Set via `apps.<app>.network.tld` |
 
-### Proposed YAML Keys
+### YAML Keys
 
 ```yaml
+networks:
+  - backend-net                    # top-level: list = create; absent = no action
+
 apps:
   myapp:
-    networks:                        # existing - drives attach-post-deploy
+    networks:                      # list = attach-post-deploy; absent = no action
       - backend-net
-    network:                         # NEW - map for other network:set properties
-      attach_post_create:
+    network:                       # map for other network:set properties
+      attach_post_create:          # list = set; false = clear; absent = no action
         - init-net
-      initial_network: custom-bridge
-      bind_all_interfaces: true
-      static_web_listener: "127.0.0.1:5000"
-      tld: internal
+      initial_network: custom-bridge  # string = set; false = clear; absent = no action
+      bind_all_interfaces: true    # true/false = set; absent = no action
+      tld: internal                # string = set; false = clear; absent = no action
 ```
 
 ### Gaps in Existing Code
 
-- No `destroy_networks()` function.
-- No idempotency check on `ensure_app_networks`.
-- Only 1 of 6 `network:set` properties supported.
+- No idempotency check on `ensure_app_networks` or `ensure_app_network` — re-sets every run.
 
 ### Decision
 
-**Partial.** Core network creation and `attach-post-deploy` work. Missing 5 of 6 `network:set` properties and teardown path.
+**Supported.** All 4 relevant `network:set` properties implemented via new `network:` map. Teardown path added: `destroy_app_network()` clears per-app settings, `destroy_networks()` destroys global networks. `static-web-listener` excluded — not confirmed as a `network:set` property in Dokku docs.
 
 ---
 
@@ -281,21 +277,20 @@ apps:
 | ports:report | read-only | yes | Used for idempotency check |
 | ports:add | declarative | no | Incremental; ports:set is better for declarative |
 | ports:remove | declarative | no | Incremental; ports:set replaces all |
-| ports:clear | declarative | no | Useful for teardown |
+| ports:clear | declarative | yes | Used in destroy_app_ports (down path) |
 | ports:list | read-only | no | Diagnostic only |
 
-### Proposed YAML Keys
+### YAML Keys
 
 No new keys needed. Existing `ports: ["https:443:4000"]` works well with `ports:set` replace-all semantics.
 
 ### Gaps in Existing Code
 
-- No `destroy_app_ports()` or `ports:clear` in down path.
-- String comparison for idempotency could produce false negatives on ordering differences.
+None remaining.
 
 ### Decision
 
-**Partial.** Core declarative use case (set ports from YAML) is fully implemented with idempotency. Missing teardown.
+**Supported.** Declarative set with order-insensitive idempotency check. Teardown clears port mappings via `ports:clear`.
 
 ---
 

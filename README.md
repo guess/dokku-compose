@@ -144,32 +144,27 @@ dokku docker-options:add api run --ulimit nofile=12
 
 ### Networks
 
-Create shared Docker networks for inter-app communication and attach apps to them.
+Create shared Docker networks and configure per-app network properties.
 
 ```yaml
 networks:
   - backend-net
-  - worker-net
 
 apps:
   api:
-    networks:
+    networks:                      # attach-post-deploy
       - backend-net
-
-  worker:
-    networks:
-      - backend-net
-      - worker-net
+    network:                       # other network:set properties
+      attach_post_create:
+        - init-net
+      initial_network: custom-bridge
+      bind_all_interfaces: true
+      tld: internal
 ```
 
-```
-dokku network:create backend-net
-dokku network:create worker-net
-dokku network:set api attach-post-deploy backend-net
-dokku network:set worker attach-post-deploy backend-net worker-net
-```
+`down --force` clears network settings and destroys declared networks.
 
-Networks are created once globally, then attached per-app.
+[Networks Reference →](docs/reference/network.md)
 
 ### Domains
 
@@ -197,25 +192,18 @@ dokku domains:set api api.example.com api.example.co
 
 ### Port Mappings
 
-Map external ports to container ports. Supports `http` and `https` schemes.
+Map external ports to container ports using `SCHEME:HOST_PORT:CONTAINER_PORT` format.
 
 ```yaml
 apps:
   api:
     ports:
       - "https:4001:4000"
-
-  worker:
-    ports:
-      - "http:5001:5000"
 ```
 
-```
-dokku ports:set api https:4001:4000
-dokku ports:set worker http:5001:5000
-```
+Comparison is order-insensitive. `down --force` clears port mappings before destroying the app.
 
-Ports are compared against current state — if they already match, the command is skipped.
+[Port Mappings Reference →](docs/reference/ports.md)
 
 ### SSL Certificates
 

@@ -1,0 +1,7 @@
+apps:
+  myapp:
+    network:
+      attach_post_create: false
+      initial_network: false
+      bind_all_interfaces: false
+      tld: false
