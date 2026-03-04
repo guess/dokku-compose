@@ -140,7 +140,7 @@ dokku docker-options:clear api run
 dokku docker-options:add api run --ulimit nofile=12
 ```
 
-[Docker Options Reference →](docs/reference/docker-options.md)
+[Docker Options Reference →](docs/reference/docker_options.md)
 
 ### Networks
 
