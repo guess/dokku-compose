@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Declarative orchestrator for Dokku servers",
   "main": "index.js",
+  "bin": {
+    "dokku-compose": "./dist/index.js"
+  },
   "type": "module",
   "scripts": {
     "test": "vitest run",
