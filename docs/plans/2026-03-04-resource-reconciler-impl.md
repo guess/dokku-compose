@@ -82,6 +82,37 @@ describe('createContext', () => {
     expect(runner.run).toHaveBeenCalledTimes(1)
   })
 
+  it('invalidate() clears cached entries matching prefix', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn()
+      .mockResolvedValueOnce('first')
+      .mockResolvedValueOnce('second')
+    const ctx = createContext(runner)
+
+    await ctx.query('nginx:report', 'myapp')
+    ctx.invalidate('nginx:report', 'myapp')
+    const result = await ctx.query('nginx:report', 'myapp')
+
+    expect(result).toBe('second')
+    expect(runner.query).toHaveBeenCalledTimes(2)
+  })
+
+  it('invalidate() only clears matching prefix', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn()
+      .mockResolvedValueOnce('nginx output')
+      .mockResolvedValueOnce('ports output')
+    const ctx = createContext(runner)
+
+    await ctx.query('nginx:report', 'myapp')
+    await ctx.query('ports:report', 'myapp')
+    ctx.invalidate('nginx:report')
+
+    // nginx cache busted, ports still cached
+    await ctx.query('ports:report', 'myapp')
+    expect(runner.query).toHaveBeenCalledTimes(2)  // no extra call for ports
+  })
+
   it('delegates check() to runner without caching', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
@@ -113,10 +144,12 @@ export interface Context {
   check(...args: string[]): Promise<boolean>
   /** Mutation — records command, executes via runner */
   run(...args: string[]): Promise<void>
+  /** Drop cached entries whose key starts with the given args joined by \0 */
+  invalidate(...prefix: string[]): void
   /** All commands that were run (or would be in dry-run) */
   commands: string[][]
-  /** The underlying runner (for close(), etc.) */
-  runner: Runner
+  /** Close the underlying SSH connection */
+  close(): Promise<void>
 }
 
 export function createContext(runner: Runner): Context {
@@ -125,7 +158,6 @@ export function createContext(runner: Runner): Context {
 
   return {
     commands,
-    runner,
 
     query(...args: string[]): Promise<string> {
       const key = args.join('\0')
@@ -142,6 +174,17 @@ export function createContext(runner: Runner): Context {
     async run(...args: string[]): Promise<void> {
       commands.push(args)
       await runner.run(...args)
+    },
+
+    invalidate(...prefix: string[]): void {
+      const p = prefix.join('\0')
+      for (const key of cache.keys()) {
+        if (key.startsWith(p)) cache.delete(key)
+      }
+    },
+
+    close(): Promise<void> {
+      return runner.close()
     },
   }
 }
@@ -1629,14 +1672,11 @@ export async function runUp(
     : Object.keys(config.apps)
 
   // Phase 1: Infrastructure
-  // Custom functions take ctx.runner for now. These are candidates for
-  // Context migration in a follow-up (for caching benefits), but Runner
-  // passthrough is intentional here to keep this refactor scoped.
-  if (config.plugins) await ensurePlugins(ctx.runner, config.plugins)
+  if (config.plugins) await ensurePlugins(ctx, config.plugins)
   // TODO: wire global resources in a follow-up
-  if (config.networks) await ensureNetworks(ctx.runner, config.networks)
-  if (config.services) await ensureServices(ctx.runner, config.services)
-  if (config.services) await ensureServiceBackups(ctx.runner, config.services)
+  if (config.networks) await ensureNetworks(ctx, config.networks)
+  if (config.services) await ensureServices(ctx, config.services)
+  if (config.services) await ensureServiceBackups(ctx, config.services)
 
   // Phase 2: Per-app
   for (const app of apps) {
@@ -1654,7 +1694,7 @@ export async function runUp(
     // Links — between networking and config because they depend on
     // services existing (Phase 1) and app existing (2a).
     if (config.services) {
-      await ensureAppLinks(ctx.runner, app, appConfig.links ?? [], config.services)
+      await ensureAppLinks(ctx, app, appConfig.links ?? [], config.services)
     }
 
     // 2c: Configuration
@@ -1742,6 +1782,8 @@ import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { exportApps } from '../modules/apps.js'
 import { exportServices, exportAppLinks } from '../modules/services.js'
 import { exportNetworks } from '../modules/network.js'
+
+// These functions are updated to take Context in Task 9.
 
 export interface ExportOptions {
   appFilter?: string[]
@@ -1876,13 +1918,17 @@ git commit -m "feat: rewrite export and diff commands using resource registry"
 
 ---
 
-### Task 9: Update CLI entry points and down.ts
+### Task 9: Update CLI entry points, down.ts, and custom function signatures
 
-The CLI (`src/index.ts`) creates a Runner and passes it to commands. Now commands need a Context. Update the CLI to create a Context wrapping the Runner, and update `down.ts`.
+The CLI (`src/index.ts`) creates a Runner and passes it to commands. Now everything takes Context. Update the CLI to create a Context wrapping the Runner, update `down.ts`, and change all custom functions (plugins, services, networks, apps) from `Runner` to `Context`.
 
 **Files:**
 - Modify: `src/index.ts`
 - Modify: `src/commands/down.ts`
+- Modify: `src/modules/plugins.ts` (Runner → Context)
+- Modify: `src/modules/services.ts` (Runner → Context)
+- Modify: `src/modules/network.ts` (Runner → Context, for ensureNetworks/exportNetworks)
+- Modify: `src/modules/apps.ts` (Runner → Context, for exportApps)
 
 **Step 1: Read the current index.ts to understand CLI wiring**
 
@@ -1890,7 +1936,6 @@ Read `src/index.ts` to see how Runner is created and passed to commands.
 
 **Step 2: Update index.ts**
 
-Wherever `runUp(runner, ...)` is called, change to:
 ```typescript
 import { createContext } from './core/context.js'
 // ...
@@ -1898,10 +1943,43 @@ const runner = createRunner({ host: process.env.DOKKU_HOST, dryRun: opts.dryRun 
 const ctx = createContext(runner)
 await runUp(ctx, config, appFilter)
 // ... same for runExport, runDiff, runDown
-await runner.close()
+await ctx.close()
 ```
 
-**Step 3: Update down.ts**
+**Step 3: Update custom function signatures (Runner → Context)**
+
+This is mechanical — replace `runner: Runner` with `ctx: Context`, then replace `runner.query(` → `ctx.query(`, `runner.run(` → `ctx.run(`, `runner.check(` → `ctx.check(` in each file.
+
+For `src/modules/services.ts` — `ensureAppLinks` does read-after-write (checks link status, then links/unlinks). No invalidation needed here because each service's link status is checked independently and not re-read after mutation within the same loop iteration.
+
+For `src/modules/plugins.ts`:
+```typescript
+// Change: runner: Runner → ctx: Context
+export async function ensurePlugins(
+  ctx: Context,
+  plugins: Record<string, PluginConfig>
+): Promise<void> {
+  const listOutput = await ctx.query('plugin:list')
+  // ... rest unchanged, just s/runner./ctx./g
+}
+```
+
+For `src/modules/services.ts` — same pattern for all exported functions:
+```typescript
+export async function ensureServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function ensureServiceBackups(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function ensureAppLinks(ctx: Context, app: string, desiredLinks: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function destroyAppLinks(ctx: Context, app: string, links: string[], allServices: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function destroyServices(ctx: Context, services: Record<string, ServiceConfig>): Promise<void> { ... }
+export async function exportServices(ctx: Context): Promise<Record<string, ServiceConfig>> { ... }
+export async function exportAppLinks(ctx: Context, app: string, services: Record<string, ServiceConfig>): Promise<string[]> { ... }
+```
+
+For `src/modules/network.ts` (ensureNetworks, exportNetworks) and `src/modules/apps.ts` (exportApps) — same mechanical change.
+
+Update corresponding test files to pass Context instead of Runner where tests mock `runner.query`/`runner.run` etc.
+
+**Step 4: Update down.ts (already uses Context from Task 8)**
 
 ```typescript
 // src/commands/down.ts
@@ -1931,14 +2009,14 @@ export async function runDown(
     if (!appConfig) continue
 
     if (config.services && appConfig.links) {
-      await destroyAppLinks(ctx.runner, app, appConfig.links, config.services)
+      await destroyAppLinks(ctx, app, appConfig.links, config.services)
     }
 
     await reconcile(Apps, ctx, app, false)
   }
 
   if (config.services) {
-    await destroyServices(ctx.runner, config.services)
+    await destroyServices(ctx, config.services)
   }
 
   if (config.networks) {
@@ -1953,16 +2031,16 @@ export async function runDown(
 }
 ```
 
-**Step 4: Run full test suite**
+**Step 5: Run full test suite**
 
 Run: `bun test`
 Expected: PASS (all tests)
 
-**Step 5: Commit**
+**Step 6: Commit**
 
 ```bash
-git add src/index.ts src/commands/down.ts
-git commit -m "feat: update CLI and down command to use Context"
+git add src/index.ts src/commands/down.ts src/modules/plugins.ts src/modules/services.ts src/modules/network.ts src/modules/apps.ts
+git commit -m "feat: unify on Context everywhere, remove Runner passthrough"
 ```
 
 ---

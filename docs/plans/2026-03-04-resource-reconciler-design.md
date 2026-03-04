@@ -31,11 +31,16 @@ interface Context {
   // Mutations — always appends to commands[], also executes unless dry-run
   run(...args: string[]): void
 
+  // Cache invalidation — drop cached entries matching a prefix.
+  // Use after mutations that change queryable state (e.g. after linking
+  // a service, invalidate the linked status cache).
+  invalidate(...prefix: string[]): void
+
   // Recorded command log (serves both dry-run display and down/diff)
   commands: string[][]
 
-  // The underlying runner (for close(), passthrough to custom functions)
-  runner: Runner
+  // Close the underlying SSH connection
+  close(): Promise<void>
 }
 ```
 
@@ -295,7 +300,7 @@ Adding a new Dokku namespace: define a resource (~5 lines), add it to the approp
 - **Service backups** — multi-step auth + schedule configuration
 - **Top-level networks** — create lifecycle (not property-based)
 
-These remain as standalone functions called explicitly in the orchestrator, outside the generic resource loop.
+These remain as standalone functions called explicitly in the orchestrator, outside the generic resource loop. All custom functions take `Context` (not `Runner`) — one calling convention everywhere. They use `ctx.query()`, `ctx.check()`, `ctx.run()` directly. Functions that read-after-write (e.g. checking link status after linking) use `ctx.invalidate()` to bust the cache for affected queries.
 
 ### Known Limitations
 
