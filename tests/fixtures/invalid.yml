@@ -1,4 +1,0 @@
-# Invalid config for error testing
-apps:
-  broken-app:
-    ports: "not-a-list"

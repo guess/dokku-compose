@@ -1,8 +1,0 @@
-nginx:
-  client-max-body-size: "50m"
-  hsts: "true"
-
-apps:
-  myapp:
-    nginx:
-      proxy-read-timeout: "120s"

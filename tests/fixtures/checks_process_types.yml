@@ -1,9 +1,0 @@
-apps:
-  myapp:
-    checks:
-      wait-to-retire: 60
-      attempts: 5
-      disabled:
-        - worker
-      skipped:
-        - cron

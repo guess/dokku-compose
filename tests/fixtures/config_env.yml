@@ -1,5 +1,0 @@
-apps:
-  myapp:
-    env:
-      APP_ENV: production
-      APP_SECRET: mysecret

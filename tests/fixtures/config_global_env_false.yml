@@ -1,6 +1,0 @@
-env: false
-
-apps:
-  myapp:
-    env:
-      APP_ENV: production

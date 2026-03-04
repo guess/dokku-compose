@@ -1,8 +1,0 @@
-domains:
-  - example.com
-  - example.org
-
-apps:
-  myapp:
-    domains:
-      - myapp.example.com

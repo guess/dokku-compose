@@ -1,5 +1,0 @@
-apps:
-  myapp:
-    env:
-      APP_ENV: production
-      DATABASE_URL: "postgres://localhost/mydb"

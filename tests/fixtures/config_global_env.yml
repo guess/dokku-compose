@@ -1,8 +1,0 @@
-env:
-  APP_GLOBAL_KEY: globalvalue
-  APP_OTHER: other
-
-apps:
-  myapp:
-    env:
-      APP_ENV: production
