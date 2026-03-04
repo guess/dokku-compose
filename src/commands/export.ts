@@ -22,6 +22,11 @@ export interface ExportOptions {
 export async function runExport(runner: Runner, opts: ExportOptions): Promise<Config> {
   const config: Config = { apps: {} }
 
+  // Dokku version
+  const versionOutput = await runner.query('version')
+  const versionMatch = versionOutput.match(/(\d+\.\d+\.\d+)/)
+  if (versionMatch) config.dokku = { version: versionMatch[1] }
+
   // Apps
   const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(runner)
 
