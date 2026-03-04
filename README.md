@@ -546,8 +546,8 @@ npx vitest run src/tests/services.test.ts
 Tests use [Vitest](https://vitest.dev/) with a mocked `Runner` — no real Dokku server needed.
 
 ```bash
-# Cut a release (checks CI passed first)
-scripts/release.sh 0.2.0
+# Cut a release (bumps version, tags, pushes — CI publishes to npm)
+scripts/release.sh 0.3.0
 ```
 
 ## License
