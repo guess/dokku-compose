@@ -186,7 +186,7 @@ configure_app() {
     if type ensure_app_locked &>/dev/null; then ensure_app_locked "$app"; fi
     if type ensure_app_domains &>/dev/null; then ensure_app_domains "$app"; fi
     if type ensure_app_links &>/dev/null; then ensure_app_links "$app"; fi
-    if type ensure_app_scripts &>/dev/null; then ensure_app_scripts "$app"; fi
+    if type ensure_app_handlers &>/dev/null; then ensure_app_handlers "$app"; fi
     if type ensure_app_networks &>/dev/null; then ensure_app_networks "$app"; fi
     if type ensure_app_proxy &>/dev/null; then ensure_app_proxy "$app"; fi
     if type ensure_app_ports &>/dev/null; then ensure_app_ports "$app"; fi
@@ -218,8 +218,8 @@ cmd_down() {
         if type destroy_app_links &>/dev/null; then
             destroy_app_links "$app"
         fi
-        if type destroy_app_scripts &>/dev/null; then
-            destroy_app_scripts "$app"
+        if type destroy_app_handlers &>/dev/null; then
+            destroy_app_handlers "$app"
         fi
         if type destroy_app_storage &>/dev/null; then
             destroy_app_storage "$app"

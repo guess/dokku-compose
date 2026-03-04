@@ -1,11 +1,11 @@
-# lib/services.sh — Service instances, links, and custom plugin scripts
+# lib/services.sh — Service instances, links, and custom handler services
 # Dokku docs: (community service plugins — postgres, redis, mongo, etc.)
 # Commands: {plugin}:create, {plugin}:link, {plugin}:unlink, {plugin}:destroy
 
 #!/usr/bin/env bash
 # Dokku service management — top-level services with per-app links
 
-# Get the directory containing the compose file (for resolving script paths)
+# Get the directory containing the compose file (for resolving handler paths)
 _compose_file_dir() {
     local dir
     dir=$(dirname "$DOKKU_COMPOSE_FILE")
@@ -16,6 +16,50 @@ _compose_file_dir() {
 _service_plugin() {
     local service="$1"
     yaml_service_get "$service" ".plugin"
+}
+
+# --- Handler service helpers ---
+
+# Check if a service uses a custom handler instead of the standard create/link API
+_service_has_handler() {
+    local service="$1"
+    local handler
+    handler=$(yaml_service_get "$service" ".handler")
+    [[ -n "$handler" && "$handler" != "null" ]]
+}
+
+# Get list of service names that have a handler defined
+_handler_service_names() {
+    yaml_get '.services | to_entries | .[] | select(.value.handler) | .key' 2>/dev/null || true
+}
+
+# Get the full path to a service's handler script
+_service_handler_path() {
+    local service="$1"
+    local handler
+    handler=$(yaml_service_get "$service" ".handler")
+    echo "$(_compose_file_dir)/${handler}"
+}
+
+# Run a service's handler script
+_run_service_handler() {
+    local service="$1" app="$2" action="$3"
+
+    local handler_path
+    handler_path=$(_service_handler_path "$service")
+
+    if [[ ! -f "$handler_path" ]]; then
+        log_error "$app" "Handler not found: $handler_path"
+        return 1
+    fi
+
+    local config
+    config=$(yq eval ".apps.${app}.${service} | tojson" "$DOKKU_COMPOSE_FILE" 2>/dev/null || echo '{}')
+
+    SERVICE_ACTION="$action" \
+    SERVICE_APP="$app" \
+    SERVICE_CONFIG="$config" \
+        source "$handler_path"
 }
 
 # --- Top-level service instance management ---
@@ -31,6 +75,9 @@ ensure_services() {
 
     while IFS= read -r service; do
         [[ -z "$service" ]] && continue
+
+        # Handler services have no create step
+        _service_has_handler "$service" && continue
 
         local plugin
         plugin=$(_service_plugin "$service")
@@ -101,6 +148,10 @@ ensure_app_links() {
 
     while IFS= read -r service; do
         [[ -z "$service" ]] && continue
+
+        # Handler services don't use the standard link API
+        _service_has_handler "$service" && continue
+
         local plugin
         plugin=$(_service_plugin "$service")
         [[ -z "$plugin" ]] && continue
@@ -117,68 +168,23 @@ ensure_app_links() {
     done <<< "$all_services"
 }
 
-# --- Script plugin helpers ---
+# --- Handler service entry points ---
 
-# Get list of plugin names from top-level plugins
-_script_plugin_names() {
-    yaml_get '.plugins | keys | .[]' 2>/dev/null || true
-}
-
-# Check if a plugin has a custom script defined
-_plugin_has_script() {
-    local plugin="$1"
-    local script
-    script=$(yaml_get ".plugins.${plugin}.script")
-    [[ -n "$script" && "$script" != "null" ]]
-}
-
-# Get the custom script path for a plugin
-_plugin_script_path() {
-    local plugin="$1"
-    local script
-    script=$(yaml_get ".plugins.${plugin}.script")
-    echo "$(_compose_file_dir)/${script}"
-}
-
-# Run a custom script for a plugin
-_run_plugin_script() {
-    local plugin="$1" app="$2" action="$3"
-
-    local script_path
-    script_path=$(_plugin_script_path "$plugin")
-
-    if [[ ! -f "$script_path" ]]; then
-        log_error "$app" "Custom script not found: $script_path"
-        return 1
-    fi
-
-    local config
-    config=$(yq eval ".apps.${app}.${plugin} | tojson" "$DOKKU_COMPOSE_FILE" 2>/dev/null || echo '{}')
-
-    SERVICE_ACTION="$action" \
-    SERVICE_APP="$app" \
-    SERVICE_CONFIG="$config" \
-        source "$script_path"
-}
-
-# --- Script plugin entry points ---
-
-ensure_app_scripts() {
+ensure_app_handlers() {
     local app="$1"
 
-    local plugins
-    plugins=$(_script_plugin_names)
-    [[ -z "$plugins" || "$plugins" == "null" ]] && return 0
+    local services
+    services=$(_handler_service_names)
+    [[ -z "$services" || "$services" == "null" ]] && return 0
 
-    while IFS= read -r plugin; do
-        [[ -z "$plugin" ]] && continue
-        _plugin_has_script "$plugin" || continue
-        yaml_app_has "$app" ".$plugin" || continue
+    while IFS= read -r service; do
+        [[ -z "$service" ]] && continue
+        yaml_app_has "$app" ".$service" || continue
 
-        log_action "$app" "Running $plugin script"
-        _run_plugin_script "$plugin" "$app" "up"
+        log_action "$app" "Running $service handler"
+        _run_service_handler "$service" "$app" "up"
         log_done
-    done <<< "$plugins"
+    done <<< "$services"
 }
 
 # --- Destroy functions ---
@@ -208,6 +214,23 @@ destroy_app_links() {
     done <<< "$links"
 }
 
+destroy_app_handlers() {
+    local app="$1"
+
+    local services
+    services=$(_handler_service_names)
+    [[ -z "$services" || "$services" == "null" ]] && return 0
+
+    while IFS= read -r service; do
+        [[ -z "$service" ]] && continue
+        yaml_app_has "$app" ".$service" || continue
+
+        log_action "$app" "Running $service handler (down)"
+        _run_service_handler "$service" "$app" "down"
+        log_done
+    done <<< "$services"
+}
+
 destroy_services() {
     if ! yaml_has ".services"; then
         return 0
@@ -219,6 +242,10 @@ destroy_services() {
 
     while IFS= read -r service; do
         [[ -z "$service" ]] && continue
+
+        # Handler services have no destroy step
+        _service_has_handler "$service" && continue
+
         local plugin
         plugin=$(_service_plugin "$service")
         [[ -z "$plugin" ]] && continue
@@ -240,22 +267,4 @@ destroy_services() {
         dokku_cmd "${plugin}:destroy" "$service" --force
         log_done
     done <<< "$services"
-}
-
-destroy_app_scripts() {
-    local app="$1"
-
-    local plugins
-    plugins=$(_script_plugin_names)
-    [[ -z "$plugins" || "$plugins" == "null" ]] && return 0
-
-    while IFS= read -r plugin; do
-        [[ -z "$plugin" ]] && continue
-        _plugin_has_script "$plugin" || continue
-        yaml_app_has "$app" ".$plugin" || continue
-
-        log_action "$app" "Running $plugin script (down)"
-        _run_plugin_script "$plugin" "$app" "down"
-        log_done
-    done <<< "$plugins"
 }

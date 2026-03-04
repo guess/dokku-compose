@@ -135,9 +135,43 @@ YAML
     assert_dokku_called "redis:link shared-cache api --no-restart"
 }
 
-# --- ensure_app_scripts (custom script plugins) ---
+# --- ensure_services: handler services ---
 
-@test "ensure_app_scripts runs custom script for script plugins" {
+@test "ensure_services skips handler services" {
+    DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
+    mock_dokku_exit "letsencrypt:exists letsencrypt" 1
+    ensure_services
+    refute_dokku_called "letsencrypt:create"
+}
+
+# --- ensure_app_links: handler services ---
+
+@test "ensure_app_links does not unlink handler services" {
+    DOKKU_COMPOSE_FILE="${MOCK_DIR}/handler_and_links.yml"
+    cat > "$DOKKU_COMPOSE_FILE" <<'YAML'
+services:
+  mydb:
+    plugin: postgres
+  letsencrypt:
+    plugin: letsencrypt
+    handler: scripts/letsencrypt.sh
+
+apps:
+  myapp:
+    links:
+      - mydb
+    letsencrypt:
+      email: admin@example.com
+YAML
+    mock_dokku_exit "postgres:linked mydb myapp" 0
+    ensure_app_links "myapp"
+    refute_dokku_called "letsencrypt:linked"
+    refute_dokku_called "letsencrypt:unlink"
+}
+
+# --- ensure_app_handlers (custom handler services) ---
+
+@test "ensure_app_handlers runs handler for handler services" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
 
     local script_dir
@@ -147,13 +181,13 @@ YAML
 echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
 SCRIPT
 
-    ensure_app_scripts "api"
+    ensure_app_handlers "api"
     assert_dokku_called "script:up:api:"
 
     rm -rf "${script_dir}/scripts"
 }
 
-@test "ensure_app_scripts skips script plugins not configured on app" {
+@test "ensure_app_handlers skips handler services not configured on app" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
 
     local script_dir
@@ -163,20 +197,20 @@ SCRIPT
 echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
 SCRIPT
 
-    ensure_app_scripts "nonexistent"
+    ensure_app_handlers "nonexistent"
     [[ ! -s "$DOKKU_CMD_LOG" ]]
 
     rm -rf "${script_dir}/scripts"
 }
 
-@test "ensure_app_scripts skips non-script plugins" {
-    ensure_app_scripts "funqtion"
+@test "ensure_app_handlers skips when no handler services declared" {
+    ensure_app_handlers "funqtion"
     [[ ! -s "$DOKKU_CMD_LOG" ]]
 }
 
-# --- destroy_app_scripts ---
+# --- destroy_app_handlers ---
 
-@test "destroy_app_scripts runs custom script with down action" {
+@test "destroy_app_handlers runs handler with down action" {
     DOKKU_COMPOSE_FILE="${PROJECT_ROOT}/tests/fixtures/script_plugin.yml"
 
     local script_dir
@@ -186,7 +220,7 @@ SCRIPT
 echo "script:${SERVICE_ACTION}:${SERVICE_APP}:${SERVICE_CONFIG}" >> "$DOKKU_CMD_LOG"
 SCRIPT
 
-    destroy_app_scripts "api"
+    destroy_app_handlers "api"
     assert_dokku_called "script:down:api:"
 
     rm -rf "${script_dir}/scripts"
