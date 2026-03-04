@@ -88,8 +88,9 @@ program
   .option('-o, --output <path>', 'Write to file instead of stdout')
   .action(async (opts) => {
     const runner = makeRunner({})
+    const ctx = createContext(runner)
     try {
-      const result = await runExport(runner, {
+      const result = await runExport(ctx, {
         appFilter: opts.app ? [opts.app] : undefined
       })
       const out = yaml.dump(result, { lineWidth: 120 })
@@ -100,7 +101,7 @@ program
         process.stdout.write(out)
       }
     } finally {
-      await runner.close()
+      await ctx.close()
     }
   })
 
@@ -112,16 +113,14 @@ program
   .action(async (opts) => {
     const desired = loadConfig(opts.file)
     const runner = makeRunner({})
+    const ctx = createContext(runner)
     try {
-      const current = await runExport(runner, {
-        appFilter: Object.keys(desired.apps)
-      })
-      const diff = computeDiff(desired, current)
+      const diff = await computeDiff(ctx, desired)
       const output = opts.verbose ? formatVerbose(diff) : formatSummary(diff)
       process.stdout.write(output)
       process.exit(diff.inSync ? 0 : 1)
     } finally {
-      await runner.close()
+      await ctx.close()
     }
   })
 

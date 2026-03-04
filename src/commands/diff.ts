@@ -1,4 +1,7 @@
+import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
+import { computeChange } from '../core/change.js'
+import { ALL_APP_RESOURCES } from '../resources/index.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra'
@@ -19,50 +22,49 @@ interface DiffResult {
   inSync: boolean
 }
 
-export function computeDiff(desired: Config, current: Config): DiffResult {
+export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
   const result: DiffResult = { apps: {}, services: {}, inSync: true }
 
-  // Compare per-app features
-  for (const [app, desiredApp] of Object.entries(desired.apps)) {
-    const currentApp = current.apps[app] ?? {}
+  for (const [app, appConfig] of Object.entries(config.apps)) {
     const appDiff: AppDiff = {}
 
-    const features: Array<keyof AppConfig> = [
-      'domains', 'ports', 'env', 'ssl', 'storage',
-      'nginx', 'logs', 'registry', 'scheduler', 'checks',
-      'networks', 'proxy', 'links'
-    ]
+    for (const resource of ALL_APP_RESOURCES) {
+      if (resource.key.startsWith('_')) continue
+      if (resource.forceApply) continue  // can't diff forceApply resources
 
-    for (const feature of features) {
-      const d = desiredApp[feature]
-      const c = currentApp[feature as keyof typeof currentApp]
-      if (d === undefined) continue  // not declared = don't diff
+      // Map schema field to resource key
+      let desired: unknown
+      if (resource.key === 'proxy') {
+        desired = appConfig.proxy?.enabled
+      } else {
+        desired = (appConfig as any)[resource.key]
+      }
+      if (desired === undefined) continue
 
-      const dStr = JSON.stringify(d)
-      const cStr = JSON.stringify(c)
+      const current = await resource.read(ctx, app)
+      const change = computeChange(current as any, desired as any)
 
-      if (c === undefined) {
-        appDiff[feature] = { status: 'missing', desired: d, current: undefined }
-        result.inSync = false
-      } else if (dStr !== cStr) {
-        appDiff[feature] = { status: 'changed', desired: d, current: c }
+      if (!change.changed) {
+        appDiff[resource.key] = { status: 'in-sync', desired, current }
+      } else if (current === null || current === undefined ||
+                 (Array.isArray(current) && current.length === 0) ||
+                 (typeof current === 'object' && Object.keys(current as any).length === 0)) {
+        appDiff[resource.key] = { status: 'missing', desired, current }
         result.inSync = false
       } else {
-        appDiff[feature] = { status: 'in-sync', desired: d, current: c }
+        appDiff[resource.key] = { status: 'changed', desired, current }
+        result.inSync = false
       }
     }
+
     result.apps[app] = appDiff
   }
 
   // Compare services
-  for (const [svc] of Object.entries(desired.services ?? {})) {
-    const exists = current.services?.[svc]
-    if (!exists) {
-      result.services[svc] = { status: 'missing' }
-      result.inSync = false
-    } else {
-      result.services[svc] = { status: 'in-sync' }
-    }
+  for (const [svc, svcConfig] of Object.entries(config.services ?? {})) {
+    const exists = await ctx.check(`${svcConfig.plugin}:exists`, svc)
+    result.services[svc] = { status: exists ? 'in-sync' : 'missing' }
+    if (!exists) result.inSync = false
   }
 
   return result
