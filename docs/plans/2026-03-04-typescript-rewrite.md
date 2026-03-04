@@ -209,7 +209,6 @@ const PluginSchema = z.object({
 export const ConfigSchema = z.object({
   dokku: z.object({
     version: z.string().optional(),
-    env_prefix: z.string().optional(),
   }).optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
   networks: z.array(z.string()).optional(),
@@ -808,26 +807,67 @@ git commit -m "feat: add proxy, ports, storage, certs modules"
 
 ## Task 10: Modules — nginx, checks, logs, registry, scheduler, config
 
-Six modules. `config` is the most complex (env convergence with prefix filtering).
+Six modules. `config` is the most complex (env convergence via managed key tracking).
 
 **Files:** One `.ts` + `.test.ts` per module.
 
-**Key behaviour for `config` (env convergence):**
+**Key behaviour for `config` (env convergence — no prefix required):**
+
+Instead of a prefix convention, dokku-compose stores `DOKKU_COMPOSE_MANAGED_KEYS` as a
+comma-separated env var on the app. This records exactly which keys dokku-compose set last
+run. On the next run, keys that were previously managed but are no longer declared in the
+YAML get unset. Dokku-injected vars (`DATABASE_URL`, `REDIS_URL`, etc.) are never in the
+managed set, so they are never touched.
+
+Flow per run:
+1. Read `DOKKU_COMPOSE_MANAGED_KEYS` from `config:get APP DOKKU_COMPOSE_MANAGED_KEYS`
+2. Compute `to_unset = prev_managed_keys - current_yaml_keys`
+3. `config:unset --no-restart APP ...to_unset` (if any)
+4. `config:set --no-restart APP KEY=VALUE ... DOKKU_COMPOSE_MANAGED_KEYS=KEY1,KEY2,...`
+
+First run on a fresh app: `DOKKU_COMPOSE_MANAGED_KEYS` is empty, nothing unset. Sets
+declared vars and records them. Taking over an existing app behaves the same — pre-existing
+vars Dokku injected are never part of the managed set.
 
 ```typescript
 // src/modules/config.test.ts
-it('unsets orphaned prefixed vars', async () => {
+it('unsets keys that were managed last run but removed from YAML', async () => {
   const runner = createRunner({ dryRun: false })
-  runner.query = async () => 'APP_OLD\nAPP_KEEP\nDATABASE_URL'  // current keys
+  // APP_OLD was managed last run, APP_KEEP is still declared
+  runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+    if (args.includes('DOKKU_COMPOSE_MANAGED_KEYS')) return 'APP_OLD,APP_KEEP'
+    return ''
+  })
   runner.run = vi.fn()
   const desired = { APP_KEEP: 'value' }
-  await ensureAppConfig(runner, 'myapp', desired, 'APP_')
+  await ensureAppConfig(runner, 'myapp', desired)
   expect(runner.run).toHaveBeenCalledWith(
     'config:unset', '--no-restart', 'myapp', 'APP_OLD'
   )
-  // DATABASE_URL not prefixed with APP_ — leave it alone
-  expect(runner.run).not.toHaveBeenCalledWith(
-    expect.stringContaining('DATABASE_URL')
+})
+
+it('never touches Dokku-injected vars not in managed set', async () => {
+  const runner = createRunner({ dryRun: false })
+  runner.query = vi.fn().mockResolvedValue('')  // no managed keys
+  runner.run = vi.fn()
+  await ensureAppConfig(runner, 'myapp', { MY_KEY: 'value' })
+  const calls = (runner.run as any).mock.calls.map((c: string[]) => c.join(' '))
+  expect(calls.some(c => c.includes('DATABASE_URL'))).toBe(false)
+})
+
+it('sets vars with any naming convention (no prefix required)', async () => {
+  const runner = createRunner({ dryRun: false })
+  runner.query = vi.fn().mockResolvedValue('')
+  runner.run = vi.fn()
+  await ensureAppConfig(runner, 'myapp', {
+    SECRET_KEY: 'abc',
+    DATABASE_URL_OVERRIDE: 'postgres://custom',
+    PORT: '3000',
+  })
+  expect(runner.run).toHaveBeenCalledWith(
+    'config:set', '--no-restart', 'myapp',
+    'SECRET_KEY=abc', 'DATABASE_URL_OVERRIDE=postgres://custom', 'PORT=3000',
+    expect.stringContaining('DOKKU_COMPOSE_MANAGED_KEYS=')
   )
 })
 ```
@@ -968,7 +1008,7 @@ export async function runUp(
 
   // Phase 2: Global config
   if (config.domains !== undefined) await ensureGlobalDomains(runner, config.domains)
-  if (config.env !== undefined) await ensureGlobalConfig(runner, config.env, config.dokku?.env_prefix)
+  if (config.env !== undefined) await ensureGlobalConfig(runner, config.env, )
   if (config.logs !== undefined) await ensureGlobalLogs(runner, config.logs)
   if (config.nginx !== undefined) await ensureGlobalNginx(runner, config.nginx)
 
@@ -997,7 +1037,7 @@ export async function runUp(
     if (appConfig.logs) await ensureAppLogs(runner, app, appConfig.logs)
     if (appConfig.registry) await ensureAppRegistry(runner, app, appConfig.registry)
     if (appConfig.scheduler) await ensureAppScheduler(runner, app, appConfig.scheduler)
-    if (appConfig.env !== undefined) await ensureAppConfig(runner, app, appConfig.env, config.dokku?.env_prefix)
+    if (appConfig.env !== undefined) await ensureAppConfig(runner, app, appConfig.env, )
     if (appConfig.build) await ensureAppBuilder(runner, app, appConfig.build)
     if (appConfig.docker_options) await ensureAppDockerOptions(runner, app, appConfig.docker_options)
   }
@@ -1933,7 +1973,7 @@ ensureAppChecks(runner, app, checks: ChecksConfig | false): Promise<void>
 ensureAppLogs(runner, app, logs: Record<string, string | number>): Promise<void>
 ensureAppRegistry(runner, app, registry: Record<string, string | boolean>): Promise<void>
 ensureAppScheduler(runner, app, scheduler: string): Promise<void>
-ensureAppConfig(runner, app, env: EnvMap | false, prefix?: string): Promise<void>
+ensureAppConfig(runner, app, env: EnvMap): Promise<void>
 ensureAppBuilder(runner, app, build: BuildConfig): Promise<void>
 ensureAppDockerOptions(runner, app, options: DockerOptionsConfig): Promise<void>
 

@@ -247,3 +247,5 @@ The internal refactoring opportunity is that `--dry-run` could eventually use th
 4. **Diff: undeclared server state** → Only diff what's declared in YAML. If the YAML doesn't mention nginx, diff ignores server's nginx state. Prevents noise, respects "I don't care about this."
 
 5. **Validate: unknown keys** → Warnings, not errors. Forward-compatible — new modules can add keys without breaking validation. Still flags typos visually.
+
+6. **Config env var convergence** → Track managed keys via `DOKKU_COMPOSE_MANAGED_KEYS` stored as an app env var. No prefix required. On each run: read previous managed set, compute keys to unset (prev - desired), unset them, set desired vars, update managed set. Dokku-injected vars (`DATABASE_URL` etc.) are never in the managed set so are never touched.
