@@ -21,7 +21,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 4 | certs | certs.sh | supported | [link](https://dokku.com/docs/configuration/ssl/) |
 | 5 | network | network.sh | supported | [link](https://dokku.com/docs/networking/network/) |
 | 6 | ports | ports.sh | supported | [link](https://dokku.com/docs/networking/port-management/) |
-| 7 | nginx | nginx.sh | partial | [link](https://dokku.com/docs/networking/proxies/nginx/) |
+| 7 | nginx | nginx.sh | supported | [link](https://dokku.com/docs/networking/proxies/nginx/) |
 | 8 | builder-* | builder.sh | partial | [link](https://dokku.com/docs/deployment/builders/builder-management/) |
 | 9 | docker-options | docker_options.sh | supported | [link](https://dokku.com/docs/advanced-usage/docker-options/) |
 | 10 | plugin | plugins.sh | supported | [link](https://dokku.com/docs/advanced-usage/plugin-management/) |
@@ -44,8 +44,8 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 9 namespaces (apps, certs, checks, config, docker-options, network, plugin, ports, version)
-- **Partial:** 9 namespaces (domains, nginx, builder-*, proxy, storage, registry, scheduler, logs, app-json)
+- **Supported:** 10 namespaces (apps, certs, checks, config, docker-options, network, nginx, plugin, ports, version)
+- **Partial:** 8 namespaces (domains, builder-*, proxy, storage, registry, scheduler, logs, app-json)
 - **Planned:** 3 namespaces (ps, resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
@@ -298,44 +298,42 @@ None remaining.
 
 **Doc:** https://dokku.com/docs/networking/proxies/nginx/
 **Module:** `lib/nginx.sh`
-**Status:** partial
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| nginx:set | declarative | yes | Generic key-value passthrough from YAML map |
-| nginx:report | read-only | no | Could enable idempotency checks |
+| nginx:set | declarative | yes | Per-app and global key-value passthrough from YAML map |
+| nginx:report | read-only | no | Diagnostic only |
 | nginx:show-config | read-only | no | Diagnostic |
 | nginx:validate-config | imperative | no | Could be a safety check post-config |
 | nginx:access-logs | read-only | no | Log viewer |
 | nginx:error-logs | read-only | no | Log viewer |
 | nginx:start / stop | imperative | no | Service management |
 
-### Proposed YAML Keys
+### YAML Keys
 
 ```yaml
+nginx:                           # top-level: global nginx defaults
+  client-max-body-size: "50m"
+  hsts: "true"
+
 apps:
   myapp:
-    nginx:                       # existing generic passthrough (all properties work)
+    nginx:                       # per-app: overrides global defaults
       client-max-body-size: "15m"
       proxy-read-timeout: "120s"
-      hsts: "true"
-
-nginx:                           # NEW: global nginx defaults
-  client-max-body-size: "50m"
 ```
 
 ### Gaps in Existing Code
 
-- No idempotency check -- re-sets all nginx properties every run.
-- No `--global` support for nginx defaults.
-- No teardown function.
-- No `proxy:build-config` trigger after changes (documented Dokku requirement).
+- No idempotency check — re-sets all nginx properties every run (harmless but noisy).
+- No `proxy:build-config` trigger after changes (same gap exists in ports module; broader design decision).
 
 ### Decision
 
-**Partial.** Generic passthrough design is elegant and all properties are technically accessible. Gaps: no idempotency, no global support, no teardown, missing `proxy:build-config` trigger.
+**Supported.** Generic passthrough for all `nginx:set` properties, both per-app and global (`--global`). Teardown resets each configured property to Dokku defaults via empty-value `nginx:set`. Remaining gaps (idempotency, `proxy:build-config`) are intentionally deferred.
 
 ---
 
@@ -611,12 +609,11 @@ Note: Simplified to a flat list of mount strings (not nested `mounts:`/`ensure_d
 
 ### Gaps in Existing Code
 
-- No `storage:ensure-directory` support for creating directories with correct ownership.
-- No convergence for removed mounts — only declared mounts are managed.
+- No `storage:ensure-directory` support. Not needed for Dockerfile deployments (Dokku's chown options target buildpack process types; Dockerfile users manage directory ownership themselves).
 
 ### Decision
 
-**Partial.** Mount and unmount implemented with idempotency (checks `storage:report` before mounting). Gaps: no `storage:ensure-directory`, no convergence for mounts removed from YAML.
+**Partial.** Mount and unmount implemented with full convergence: stale mounts (present in Dokku but removed from YAML) are unmounted; new mounts are added; existing mounts are skipped. Remaining gap: `storage:ensure-directory` intentionally skipped for Dockerfile-only deployments.
 
 ---
 

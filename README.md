@@ -243,7 +243,7 @@ dokku proxy:disable worker
 
 ### Persistent Storage
 
-Mount host directories into containers. Existing mounts are detected and skipped.
+Declare persistent bind mounts for an app. Mounts are fully converged on each `up` run — new mounts are added, mounts removed from YAML are unmounted, and existing mounts are skipped.
 
 ```yaml
 apps:
@@ -252,30 +252,26 @@ apps:
       - "/var/lib/dokku/data/storage/api/uploads:/app/uploads"
 ```
 
-```
-dokku storage:mount api /var/lib/dokku/data/storage/api/uploads:/app/uploads
-```
+Host directories must exist before mounting. On `down`, declared mounts are unmounted.
 
-Storage mounts are reconciled during `down` — declared mounts are unmounted when destroying an app.
+[Storage Reference →](docs/reference/storage.md)
 
 ### Nginx Configuration
 
-Set any nginx property supported by Dokku. Each key-value pair maps directly to `nginx:set`.
+Set any nginx property supported by Dokku via a key-value map — per-app or globally.
 
 ```yaml
+nginx:                        # global defaults
+  client-max-body-size: "50m"
+
 apps:
   api:
-    nginx:
+    nginx:                    # per-app overrides
       client-max-body-size: "15m"
-      proxy-buffer-size: "8k"
       proxy-read-timeout: "120s"
 ```
 
-```
-dokku nginx:set api client-max-body-size 15m
-dokku nginx:set api proxy-buffer-size 8k
-dokku nginx:set api proxy-read-timeout 120s
-```
+[Nginx Reference →](docs/reference/nginx.md)
 
 ### Zero-Downtime Checks
 
@@ -419,7 +415,7 @@ Idempotently ensures desired state, in order:
 
 1. Check Dokku version (warn on mismatch)
 2. Install missing plugins
-3. Set global config (domains, env vars)
+3. Set global config (domains, env vars, nginx defaults)
 4. Create shared networks
 5. Create service instances (from top-level `services:`)
 6. For each app:
