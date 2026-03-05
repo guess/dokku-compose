@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-04
+
+### Added
+
+- Build properties (`dockerfile`, `app_json`, `context`, `args`) now appear in `export` and `diff` output
+- Builder resource reads current state from Dokku reports instead of blindly reapplying
+
+### Fixed
+
+- Plugin detection now uses realistic `plugin:list` output parsing with bulk query (single SSH call)
+- `parseReport` now handles hyphenated namespaces (`builder-dockerfile`, `app-json`, `docker-options`)
+
 ## [0.5.2] - 2026-03-04
 
 ### Fixed
