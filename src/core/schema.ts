@@ -74,11 +74,15 @@ const ServiceBackupSchema = z.object({
   auth: ServiceBackupAuthSchema,
 })
 
-const ServiceSchema = z.object({
-  plugin: z.string(),
+const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
   backup: ServiceBackupSchema.optional(),
+})
+
+const RedisSchema = z.object({
+  version: z.string().optional(),
+  image: z.string().optional(),
 })
 
 const PluginSchema = z.object({
@@ -92,7 +96,8 @@ export const ConfigSchema = z.object({
   }).optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
   networks: z.array(z.string()).optional(),
-  services: z.record(z.string(), ServiceSchema).optional(),
+  postgres: z.record(z.string(), PostgresSchema).optional(),
+  redis: z.record(z.string(), RedisSchema).optional(),
   apps: z.record(z.string(), AppSchema),
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
   env: EnvMapSchema.optional(),
@@ -103,7 +108,8 @@ export const ConfigSchema = z.object({
 
 export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>
-export type ServiceConfig = z.infer<typeof ServiceSchema>
+export type PostgresConfig = z.infer<typeof PostgresSchema>
+export type RedisConfig = z.infer<typeof RedisSchema>
 export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>
 export type GitConfig = z.infer<typeof GitSchema>
