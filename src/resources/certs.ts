@@ -13,7 +13,7 @@ export const Certs: Resource<SslValue> = {
   },
   readAll: async (ctx: Context) => {
     const raw = await ctx.query('certs:report')
-    const bulk = parseBulkReport(raw, 'ssl', 'certs')
+    const bulk = parseBulkReport(raw, 'ssl')
     const result = new Map<string, SslValue>()
     for (const [app, report] of bulk) {
       result.set(app, report['enabled'] === 'true')

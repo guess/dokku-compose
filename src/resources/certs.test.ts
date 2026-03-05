@@ -13,9 +13,9 @@ describe('Certs.readAll (bulk)', () => {
 
   it('returns per-app booleans from bulk report', async () => {
     const ctx = makeCtx(
-      '=====> app1 certs information\n' +
+      '=====> app1 ssl information\n' +
       '       Ssl enabled:                  true\n' +
-      '=====> app2 certs information\n' +
+      '=====> app2 ssl information\n' +
       '       Ssl enabled:                  false\n'
     )
     const result = await Certs.readAll!(ctx)
