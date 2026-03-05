@@ -70,11 +70,14 @@ export const Builder: Resource<BuildConfig> = {
     const dockerOptsBulk = parseBulkReport(dockerOptsRaw, 'docker-options')
 
     if (process.env.DOKKU_COMPOSE_DEBUG) {
-      const app0 = [...builderBulk.keys()][0]
+      console.error('[debug] builderRaw length:', builderRaw.length)
+      console.error('[debug] dockerfileRaw length:', dockerfileRaw.length)
+      console.error('[debug] appJsonRaw length:', appJsonRaw.length)
+      console.error('[debug] dockerOptsRaw length:', dockerOptsRaw.length)
+      console.error('[debug] dockerfileRaw first 300:', JSON.stringify(dockerfileRaw.slice(0, 300)))
+      console.error('[debug] dockerOptsRaw first 300:', JSON.stringify(dockerOptsRaw.slice(0, 300)))
       console.error('[debug] builderBulk keys:', [...builderBulk.keys()])
       console.error('[debug] dockerfileBulk keys:', [...dockerfileBulk.keys()])
-      console.error('[debug] dockerfileBulk[' + app0 + ']:', JSON.stringify(dockerfileBulk.get(app0!)))
-      console.error('[debug] dockerOptsRaw first 200:', dockerOptsRaw.slice(0, 200))
       console.error('[debug] dockerOptsBulk keys:', [...dockerOptsBulk.keys()])
     }
 
