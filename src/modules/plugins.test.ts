@@ -6,13 +6,12 @@ import { ensurePlugins } from './plugins.js'
 describe('ensurePlugins', () => {
   it('installs plugin not yet installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockResolvedValue('')
     runner.run = vi.fn()
     const ctx = createContext(runner)
     await ensurePlugins(ctx, {
       postgres: { url: 'https://github.com/dokku/dokku-postgres.git' }
     })
-    expect(runner.check).toHaveBeenCalledWith('plugin:installed', 'postgres')
     expect(runner.run).toHaveBeenCalledWith(
       'plugin:install', 'https://github.com/dokku/dokku-postgres.git', '--name', 'postgres'
     )
@@ -20,13 +19,15 @@ describe('ensurePlugins', () => {
 
   it('skips plugin already installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.check = vi.fn().mockResolvedValue(true)
+    runner.query = vi.fn().mockResolvedValue(
+      '  postgres             1.46.2 enabled    dokku postgres service plugin\n' +
+      '  redis                1.42.2 enabled    dokku redis service plugin'
+    )
     runner.run = vi.fn()
     const ctx = createContext(runner)
     await ensurePlugins(ctx, {
       postgres: { url: 'https://github.com/dokku/dokku-postgres.git' }
     })
-    expect(runner.check).toHaveBeenCalledWith('plugin:installed', 'postgres')
     expect(runner.run).not.toHaveBeenCalled()
   })
 })
