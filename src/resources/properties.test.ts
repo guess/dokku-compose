@@ -82,6 +82,54 @@ describe('Logs resource', () => {
   })
 })
 
+describe('readAll (bulk)', () => {
+  function makeCtx(queryResult: string) {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockResolvedValue(queryResult)
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+
+  it('Nginx.readAll returns per-app maps', async () => {
+    const ctx = makeCtx(
+      '=====> app1 nginx information\n' +
+      '       Nginx client max body size:   1m\n' +
+      '=====> app2 nginx information\n' +
+      '       Nginx client max body size:   50m\n'
+    )
+    const result = await Nginx.readAll!(ctx)
+    expect(result.get('app1')).toEqual({ 'client-max-body-size': '1m' })
+    expect(result.get('app2')).toEqual({ 'client-max-body-size': '50m' })
+  })
+
+  it('Logs.readAll returns per-app maps', async () => {
+    const ctx = makeCtx(
+      '=====> app1 logs information\n' +
+      '       Logs max size:                10m\n'
+    )
+    const result = await Logs.readAll!(ctx)
+    expect(result.get('app1')).toEqual({ 'max-size': '10m' })
+  })
+
+  it('Scheduler.readAll returns per-app strings', async () => {
+    const ctx = makeCtx(
+      '=====> app1 scheduler information\n' +
+      '       Scheduler selected:           docker-local\n' +
+      '=====> app2 scheduler information\n' +
+      '       Scheduler selected:           k3s\n'
+    )
+    const result = await Scheduler.readAll!(ctx)
+    expect(result.get('app1')).toBe('docker-local')
+    expect(result.get('app2')).toBe('k3s')
+  })
+
+  it('bulk queries use no app argument', async () => {
+    const ctx = makeCtx('')
+    await Nginx.readAll!(ctx)
+    expect(ctx.runner.query).toHaveBeenCalledWith('nginx:report')
+  })
+})
+
 describe('Registry resource', () => {
   function makeCtx(queryResult: string) {
     const runner = createRunner({ dryRun: false })
