@@ -11,7 +11,7 @@ import { createContext } from './core/context.js'
 import { runUp } from './commands/up.js'
 import { runDown } from './commands/down.js'
 import { runExport } from './commands/export.js'
-import { computeDiff, formatSummary, formatVerbose } from './commands/diff.js'
+import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from './commands/diff.js'
 import { validate } from './commands/validate.js'
 
 import { maskSensitiveArgs } from './core/mask.js'
@@ -116,15 +116,17 @@ program
   .description('Show what is out of sync between config and server')
   .option('-f, --file <path>', 'Config file', 'dokku-compose.yml')
   .option('--verbose', 'Show git-style +/- diff')
+  .option('--sensitive', 'Show sensitive values (masked by default)')
   .action(async (opts) => {
     const desired = loadConfig(opts.file)
     const runner = makeRunner({})
     const ctx = createContext(runner)
     try {
-      const diff = await computeDiff(ctx, desired)
+      const rawDiff = await computeDiff(ctx, desired)
+      const diff = opts.sensitive ? rawDiff : maskDiffResult(rawDiff)
       const output = opts.verbose ? formatVerbose(diff) : formatSummary(diff)
       process.stdout.write(output)
-      process.exit(diff.inSync ? 0 : 1)
+      process.exit(rawDiff.inSync ? 0 : 1)
     } finally {
       await ctx.close()
     }

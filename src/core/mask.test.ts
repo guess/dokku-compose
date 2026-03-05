@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { maskSensitiveArgs } from './mask.js'
+import { maskSensitiveArgs, maskSensitiveData } from './mask.js'
 
 describe('maskSensitiveArgs', () => {
   it('masks TOKEN values showing last 4 chars', () => {
@@ -64,5 +64,45 @@ describe('maskSensitiveArgs', () => {
   it('leaves commands without env vars unchanged', () => {
     expect(maskSensitiveArgs('apps:create myapp'))
       .toBe('apps:create myapp')
+  })
+})
+
+describe('maskSensitiveData', () => {
+  it('masks sensitive keys in flat objects', () => {
+    expect(maskSensitiveData({
+      API_KEY: 'abc12345',
+      APP_ENV: 'staging',
+      SECRET_TOKEN: 'xyz98765',
+    })).toEqual({
+      API_KEY: '****2345',
+      APP_ENV: 'staging',
+      SECRET_TOKEN: '****8765',
+    })
+  })
+
+  it('masks sensitive keys in nested objects', () => {
+    expect(maskSensitiveData({
+      env: { DB_PASSWORD: 's3cur3pass', NODE_ENV: 'production' },
+      build: { args: { SENTRY_AUTH_TOKEN: 'sntrys_abc123' } },
+    })).toEqual({
+      env: { DB_PASSWORD: '****pass', NODE_ENV: 'production' },
+      build: { args: { SENTRY_AUTH_TOKEN: '****c123' } },
+    })
+  })
+
+  it('handles arrays', () => {
+    expect(maskSensitiveData(['http:80:3000', 'https:443:3000']))
+      .toEqual(['http:80:3000', 'https:443:3000'])
+  })
+
+  it('handles null and primitives', () => {
+    expect(maskSensitiveData(null)).toBe(null)
+    expect(maskSensitiveData(42)).toBe(42)
+    expect(maskSensitiveData('hello')).toBe('hello')
+  })
+
+  it('fully masks short sensitive values', () => {
+    expect(maskSensitiveData({ API_KEY: 'ab' }))
+      .toEqual({ API_KEY: '****' })
   })
 })

@@ -2,6 +2,7 @@ import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
 import { computeChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
+import { maskSensitiveData } from '../core/mask.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra'
@@ -79,6 +80,22 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   }
 
   return result
+}
+
+export function maskDiffResult(diff: DiffResult): DiffResult {
+  const masked: DiffResult = { apps: {}, services: diff.services, inSync: diff.inSync }
+  for (const [app, appDiff] of Object.entries(diff.apps)) {
+    const maskedAppDiff: AppDiff = {}
+    for (const [feature, d] of Object.entries(appDiff)) {
+      maskedAppDiff[feature] = {
+        status: d.status,
+        desired: maskSensitiveData(d.desired),
+        current: maskSensitiveData(d.current),
+      }
+    }
+    masked.apps[app] = maskedAppDiff
+  }
+  return masked
 }
 
 export function formatSummary(diff: DiffResult): string {

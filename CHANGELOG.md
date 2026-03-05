@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-03-05
+
+### Added
+
+- `diff` command now masks sensitive values (TOKEN, SECRET, PASSWORD, KEY, AUTH, CREDENTIAL) by default
+- `--sensitive` flag on `diff` to reveal full values
+- `maskSensitiveData` for deep-masking values in data structures (env vars, build args)
+
 ## [0.6.9] - 2026-03-05
 
 ### Changed
