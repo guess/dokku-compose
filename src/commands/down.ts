@@ -1,7 +1,9 @@
 import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { destroyApp } from '../modules/apps.js'
-import { destroyAppLinks, destroyServices } from '../modules/services.js'
+import { destroyPostgres } from '../modules/postgres.js'
+import { destroyRedis } from '../modules/redis.js'
+import { destroyAppLinks } from '../modules/links.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export interface DownOptions {
@@ -24,8 +26,8 @@ export async function runDown(
     if (!appConfig) continue
 
     // Unlink services first
-    if (config.services && appConfig.links) {
-      await destroyAppLinks(ctx, app, appConfig.links, config.services)
+    if (appConfig.links && (config.postgres || config.redis)) {
+      await destroyAppLinks(ctx, app, appConfig.links, config)
     }
 
     // Destroy the app
@@ -33,9 +35,8 @@ export async function runDown(
   }
 
   // Phase 2: Destroy services (if no remaining apps link to them)
-  if (config.services) {
-    await destroyServices(ctx, config.services)
-  }
+  if (config.postgres) await destroyPostgres(ctx, config.postgres)
+  if (config.redis) await destroyRedis(ctx, config.redis)
 
   // Phase 3: Destroy networks
   if (config.networks) {

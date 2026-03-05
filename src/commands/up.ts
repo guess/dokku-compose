@@ -14,7 +14,9 @@ import { Checks } from '../resources/checks.js'
 import { Networks, NetworkProps } from '../resources/network.js'
 import { ensurePlugins } from '../modules/plugins.js'
 import { ensureNetworks } from '../modules/network.js'
-import { ensureServices, ensureServiceBackups, ensureAppLinks } from '../modules/services.js'
+import { ensurePostgres, ensurePostgresBackups } from '../modules/postgres.js'
+import { ensureRedis } from '../modules/redis.js'
+import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
 import { ensureGlobalLogs } from '../modules/logs.js'
@@ -42,8 +44,9 @@ export async function runUp(
   if (config.networks) await ensureNetworks(ctx, config.networks)
 
   // Phase 4: Services
-  if (config.services) await ensureServices(ctx, config.services)
-  if (config.services) await ensureServiceBackups(ctx, config.services)
+  if (config.postgres) await ensurePostgres(ctx, config.postgres)
+  if (config.redis) await ensureRedis(ctx, config.redis)
+  if (config.postgres) await ensurePostgresBackups(ctx, config.postgres)
 
   // Phase 5: Per-app
   for (const app of apps) {
@@ -61,8 +64,8 @@ export async function runUp(
     await reconcile(Ports, ctx, app, appConfig.ports)
 
     // Links (between networking and config)
-    if (config.services) {
-      await ensureAppLinks(ctx, app, appConfig.links ?? [], config.services)
+    if (config.postgres || config.redis) {
+      await ensureAppLinks(ctx, app, appConfig.links ?? [], config)
     }
 
     // Configuration

@@ -2,7 +2,9 @@ import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { exportApps } from '../modules/apps.js'
-import { exportServices, exportAppLinks } from '../modules/services.js'
+import { exportPostgres } from '../modules/postgres.js'
+import { exportRedis } from '../modules/redis.js'
+import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
 
 export interface ExportOptions {
@@ -25,8 +27,10 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
   if (networks.length > 0) config.networks = networks
 
   // Services
-  const services = await exportServices(ctx)
-  if (Object.keys(services).length > 0) config.services = services
+  const postgres = await exportPostgres(ctx)
+  if (Object.keys(postgres).length > 0) config.postgres = postgres
+  const redis = await exportRedis(ctx)
+  if (Object.keys(redis).length > 0) config.redis = redis
 
   // Bulk prefetch: run all readAll queries in parallel
   const prefetched = new Map<string, Map<string, unknown>>()
@@ -64,8 +68,8 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
     }
 
     // Links (custom read — not a resource)
-    if (Object.keys(services).length > 0) {
-      const links = await exportAppLinks(ctx, app, services)
+    if (config.postgres || config.redis) {
+      const links = await exportAppLinks(ctx, app, config)
       if (links.length > 0) appConfig.links = links
     }
 

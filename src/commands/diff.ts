@@ -73,8 +73,13 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   }
 
   // Compare services
-  for (const [svc, svcConfig] of Object.entries(config.services ?? {})) {
-    const exists = await ctx.check(`${svcConfig.plugin}:exists`, svc)
+  for (const svc of Object.keys(config.postgres ?? {})) {
+    const exists = await ctx.check('postgres:exists', svc)
+    result.services[svc] = { status: exists ? 'in-sync' : 'missing' }
+    if (!exists) result.inSync = false
+  }
+  for (const svc of Object.keys(config.redis ?? {})) {
+    const exists = await ctx.check('redis:exists', svc)
     result.services[svc] = { status: exists ? 'in-sync' : 'missing' }
     if (!exists) result.inSync = false
   }
