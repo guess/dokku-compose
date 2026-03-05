@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-03-05
+
+### Fixed
+
+- npm `bin` entry now points to `bin/dokku-compose` instead of `dist/index.js`, so the correct shebang and entry point are used when installed globally
+
 ## [0.9.1] - 2026-03-05
 
 ### Fixed

@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "exports": "./dist/index.js",
   "bin": {
-    "dokku-compose": "./dist/index.js"
+    "dokku-compose": "./bin/dokku-compose"
   },
   "files": [
     "dist/",
