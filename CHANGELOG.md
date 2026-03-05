@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-04
+
+### Fixed
+
+- Sensitive value masking now handles values containing `=` (e.g. base64 tokens)
+
 ## [0.5.1] - 2026-03-04
 
 ### Changed
