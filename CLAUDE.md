@@ -40,7 +40,9 @@ bun run build
 
 - `apps.ts` — App creation/destruction
 - `domains.ts` — Domain configuration, vhost enable/disable
-- `services.ts` — Service plugins (postgres, redis, etc.) with link convergence
+- `postgres.ts` — Postgres service creation, backups, export
+- `redis.ts` — Redis service creation, export
+- `links.ts` — Cross-plugin service link resolution and convergence
 - `plugins.ts` — Plugin installation
 - `network.ts` — Shared Docker networks
 - `proxy.ts` — Proxy enable/disable
@@ -65,7 +67,7 @@ bun run build
 - `export.ts` — Query server state → emit YAML
 - `diff.ts` — Compare local YAML vs server state (summary + verbose modes)
 
-**Execution flow for `up`:** Plugins → Global config → Networks → Services → Per-app (create → domains → links → networks → proxy → ports → certs → storage → nginx → checks → logs → registry → scheduler → env vars → builder → docker options).
+**Execution flow for `up`:** Plugins → Global config → Networks → Postgres → Redis → Postgres backups → Per-app (create → domains → links → networks → proxy → ports → certs → storage → nginx → checks → logs → registry → scheduler → env vars → builder → docker options).
 
 **Idempotency pattern:** Every `ensure*` function queries current Dokku state before acting. If state already matches, it logs "already configured" and skips. `runner.check()` is for boolean state queries; `runner.query()` for output-capturing queries; `runner.run()` for mutations.
 
