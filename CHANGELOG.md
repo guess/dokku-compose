@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.6.11] - 2026-03-05
+
+### Added
+
+- `export` command now masks sensitive values by default, with `--sensitive` flag to reveal
+
 ## [0.6.10] - 2026-03-05
 
 ### Added

@@ -14,7 +14,7 @@ import { runExport } from './commands/export.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from './commands/diff.js'
 import { validate } from './commands/validate.js'
 
-import { maskSensitiveArgs } from './core/mask.js'
+import { maskSensitiveArgs, maskSensitiveData } from './core/mask.js'
 
 const program = new Command()
   .name('dokku-compose')
@@ -92,13 +92,15 @@ program
   .description('Export server state to dokku-compose.yml format')
   .option('--app <app>', 'Export only a specific app')
   .option('-o, --output <path>', 'Write to file instead of stdout')
+  .option('--sensitive', 'Show sensitive values (masked by default)')
   .action(async (opts) => {
     const runner = makeRunner({})
     const ctx = createContext(runner)
     try {
-      const result = await runExport(ctx, {
+      const rawResult = await runExport(ctx, {
         appFilter: opts.app ? [opts.app] : undefined
       })
+      const result = opts.sensitive ? rawResult : maskSensitiveData(rawResult)
       const out = yaml.dump(result, { lineWidth: 120 })
       if (opts.output) {
         fs.writeFileSync(opts.output, out)
