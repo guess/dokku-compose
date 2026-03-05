@@ -5,9 +5,8 @@ plugins:
 networks:
   - app-net
 
-services:
-  myapp-postgres:
-    plugin: postgres
+postgres:
+  myapp-postgres: {}
 
 apps:
   myapp:

@@ -12,22 +12,18 @@ networks:
   - studio-net
   - qultr-net
 
-services:
+postgres:
   funqtion-postgres:
-    plugin: postgres
     version: "17-3.5"
     image: postgis/postgis
+  studio-postgres: {}
+  qultr-postgres: {}
+
+redis:
   funqtion-redis:
-    plugin: redis
     version: "7.2-alpine"
-  studio-postgres:
-    plugin: postgres
-  studio-redis:
-    plugin: redis
-  qultr-postgres:
-    plugin: postgres
-  qultr-redis:
-    plugin: redis
+  studio-redis: {}
+  qultr-redis: {}
 
 apps:
   funqtion:
