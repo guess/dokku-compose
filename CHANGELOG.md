@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-05
+
+### Added
+
+- `export` command now discovers and exports services (postgres, redis) from server state, including custom images
+
 ## [0.6.13] - 2026-03-05
 
 ### Fixed
