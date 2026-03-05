@@ -54,6 +54,13 @@ describe('maskSensitiveArgs', () => {
       .toBe('config:set myapp api_token=****2345')
   })
 
+  it('masks values containing equals signs (base64)', () => {
+    expect(maskSensitiveArgs('config:set myapp AUTH_TOKEN=eyJhbGciOiJIUzI1NiJ9=='))
+      .toBe('config:set myapp AUTH_TOKEN=****J9==')
+    expect(maskSensitiveArgs('docker-options:add myapp build --build-arg SENTRY_AUTH_TOKEN=sntrys_eyJpYXQ6MTc3MDUxNjQ1OH0==_RraBT0jEz6e2/uqIAYW0'))
+      .toBe('docker-options:add myapp build --build-arg SENTRY_AUTH_TOKEN=****AYW0')
+  })
+
   it('leaves commands without env vars unchanged', () => {
     expect(maskSensitiveArgs('apps:create myapp'))
       .toBe('apps:create myapp')
