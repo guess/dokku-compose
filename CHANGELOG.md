@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-03-05
+
+### Fixed
+
+- Plugin detection now uses `plugin:installed` per-plugin check instead of `plugin:list` bulk query, which fails from Node subprocess due to Dokku basher issues
+
 ## [0.6.7] - 2026-03-05
 
 ### Fixed
