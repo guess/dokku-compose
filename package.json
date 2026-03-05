@@ -1,6 +1,6 @@
 {
   "name": "dokku-compose",
-  "version": "0.6.5",
+  "version": "0.6.6",
   "description": "Docker Compose for Dokku — declare your entire server in a single YAML file.",
   "main": "dist/index.js",
   "exports": "./dist/index.js",
