@@ -32,29 +32,51 @@ plugins:
 
 **`version`** (optional) — Pin the plugin to a specific git tag, branch, or commit. When the installed version differs from the declared version, `plugin:update` is called automatically. When absent, the installed plugin is left as-is.
 
-### Service Declaration (`services.<name>`)
+### Postgres Services (`postgres.<name>`)
 
-Declare service instances to create. Each service has a unique name and references an installed plugin. Services are created before apps during `up`, so they are ready to be linked.
+Declare Postgres service instances to create. Each service has a unique name. Services are created before apps during `up`, so they are ready to be linked.
 
 ```yaml
-services:
+postgres:
   api-postgres:
-    plugin: postgres         # required: which plugin to use
     version: "17-3.5"        # optional: POSTGRES_IMAGE_VERSION
     image: postgis/postgis   # optional: POSTGRES_IMAGE (custom image)
-
-  api-redis:
-    plugin: redis
-
-  shared-cache:
-    plugin: redis            # same plugin, different instance name
+    backup:                  # optional: automated backup config
+      schedule: "0 * * * *"
+      bucket: "db-backups/api-postgres"
+      auth:
+        access_key_id: "${R2_ACCESS_KEY_ID}"
+        secret_access_key: "${R2_SECRET_ACCESS_KEY}"
+        region: "auto"
+        signature_version: "s3v4"
+        endpoint: "${R2_SCHEME}://${R2_HOST}"
 ```
 
 | Key | Dokku Command |
 |-----|---------------|
-| `plugin` (required) | `<plugin>:create <name>` |
-| `version` | `<plugin>:create <name> -I <version>` |
-| `image` | `<plugin>:create <name> -i <image>` |
+| `version` | `postgres:create <name> -I <version>` |
+| `image` | `postgres:create <name> -i <image>` |
+| `backup.schedule` | `postgres:backup-schedule-cat <name>` |
+| `backup.bucket` | `postgres:backup-set-bucket <name> <bucket>` |
+| `backup.auth.*` | `postgres:backup-auth <name> ...` |
+
+Service creation is idempotent — if the service already exists, it is skipped.
+
+### Redis Services (`redis.<name>`)
+
+Declare Redis service instances to create. Each service has a unique name. Services are created before apps during `up`, so they are ready to be linked.
+
+```yaml
+redis:
+  api-redis: {}              # default version
+
+  shared-cache:
+    version: "7.2-alpine"   # optional: REDIS_IMAGE_VERSION
+```
+
+| Key | Dokku Command |
+|-----|---------------|
+| `version` | `redis:create <name> -I <version>` |
 
 Service creation is idempotent — if the service already exists, it is skipped.
 
@@ -94,9 +116,8 @@ Because reconciliation is declarative, removing a service from `links:` and re-r
 Because services are named independently from apps, multiple apps can link to the same service instance:
 
 ```yaml
-services:
-  shared-cache:
-    plugin: redis
+redis:
+  shared-cache: {}
 
 apps:
   api:
@@ -108,48 +129,3 @@ apps:
 ```
 
 Both `api` and `worker` receive the same Redis connection URL.
-
-### Handler Services (`services.<name>.handler`)
-
-For plugins that don't follow the standard `{plugin}:create` / `{plugin}:link` API, add a `handler:` key pointing to a shell script. Handler services are skipped by the standard create/link/destroy flow — the script manages everything instead.
-
-```yaml
-plugins:
-  letsencrypt:
-    url: https://github.com/dokku/dokku-letsencrypt.git
-
-services:
-  letsencrypt:
-    plugin: letsencrypt
-    handler: scripts/letsencrypt.sh   # path relative to dokku-compose.yml
-
-apps:
-  web:
-    letsencrypt:                      # app config passed as SERVICE_CONFIG JSON
-      email: admin@example.com
-```
-
-The handler script is sourced with three variables set:
-
-| Variable | Value |
-|----------|-------|
-| `SERVICE_ACTION` | `up` or `down` |
-| `SERVICE_APP` | the app name |
-| `SERVICE_CONFIG` | JSON of the app's config block for this service |
-
-Example handler (`scripts/letsencrypt.sh`):
-
-```bash
-#!/usr/bin/env bash
-local email
-email=$(echo "$SERVICE_CONFIG" | yq -r '.email')
-
-if [[ "$SERVICE_ACTION" == "up" ]]; then
-    dokku_cmd letsencrypt:set "$SERVICE_APP" email "$email"
-    dokku_cmd letsencrypt:enable "$SERVICE_APP"
-elif [[ "$SERVICE_ACTION" == "down" ]]; then
-    dokku_cmd letsencrypt:disable "$SERVICE_APP"
-fi
-```
-
-Use `dokku_cmd` (not `dokku`) inside handler scripts so that dry-run mode and test mocking work correctly.

@@ -361,14 +361,18 @@ plugins:
     url: https://github.com/dokku/dokku-postgres.git
     version: "1.41.0"
 
-services:
-  api-postgres:
-    plugin: postgres
+postgres:
+  api-postgres: {}
+
+redis:
+  api-redis:
+    version: "7.2-alpine"
 
 apps:
   api:
     links:
       - api-postgres
+      - api-redis
 ```
 
 [Plugins and Services Reference →](docs/reference/plugins.md)
