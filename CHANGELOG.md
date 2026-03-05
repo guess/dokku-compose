@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-03-05
+
+### Added
+
+- `DOKKU_COMPOSE_DEBUG=1` env var to trace builder readAll parsing
+
 ## [0.6.2] - 2026-03-04
 
 ### Fixed
