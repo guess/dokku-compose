@@ -64,6 +64,17 @@ export async function destroyPostgres(
   }
 }
 
+function parseBackupSchedule(
+  cronLine: string
+): { schedule: string; bucket: string } | null {
+  // Format: "0 * * * * dokku /usr/bin/dokku postgres:backup <name> <bucket>"
+  const parts = cronLine.trim().split(/\s+/)
+  if (parts.length < 8) return null
+  const schedule = parts.slice(0, 5).join(' ')
+  const bucket = parts[parts.length - 1]
+  return { schedule, bucket }
+}
+
 export async function exportPostgres(
   ctx: Context
 ): Promise<Record<string, PostgresConfig>> {
@@ -90,6 +101,28 @@ export async function exportPostgres(
       if (version) config.version = version
     } else {
       config.version = versionField
+    }
+
+    try {
+      const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
+      if (cronOutput) {
+        const parsed = parseBackupSchedule(cronOutput)
+        if (parsed) {
+          config.backup = {
+            schedule: parsed.schedule,
+            bucket: parsed.bucket,
+            auth: {
+              access_key_id: 'REPLACE_ME',
+              secret_access_key: 'REPLACE_ME',
+              region: 'REPLACE_ME',
+              signature_version: 'REPLACE_ME',
+              endpoint: 'REPLACE_ME',
+            },
+          }
+        }
+      }
+    } catch {
+      // No backup configured for this service
     }
 
     services[name] = config
