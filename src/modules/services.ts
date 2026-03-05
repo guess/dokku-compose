@@ -104,11 +104,53 @@ export async function destroyServices(
   }
 }
 
+const SERVICE_PLUGINS = ['postgres', 'redis']
+
 export async function exportServices(
-  _ctx: Context
+  ctx: Context
 ): Promise<Record<string, ServiceConfig>> {
-  // This is a best-effort export — callers will typically provide known plugin names
-  return {}
+  const services: Record<string, ServiceConfig> = {}
+
+  // Detect which service plugins are installed
+  const pluginOutput = await ctx.query('plugin:list')
+  const installedPlugins = new Set(
+    pluginOutput.split('\n').map(line => line.trim().split(/\s+/)[0]).filter(Boolean)
+  )
+
+  for (const plugin of SERVICE_PLUGINS) {
+    if (!installedPlugins.has(plugin)) continue
+
+    // List services for this plugin
+    const listOutput = await ctx.query(`${plugin}:list`)
+    const lines = listOutput.split('\n').slice(1) // skip header
+
+    for (const line of lines) {
+      const name = line.trim().split(/\s+/)[0]
+      if (!name) continue
+
+      // Get version/image from info output
+      const infoOutput = await ctx.query(`${plugin}:info`, name)
+      const versionMatch = infoOutput.match(/Version:\s+(\S+)/)
+      if (!versionMatch) continue
+
+      const versionField = versionMatch[1]
+      const colonIdx = versionField.lastIndexOf(':')
+
+      const config: ServiceConfig = { plugin }
+      if (colonIdx > 0) {
+        const image = versionField.slice(0, colonIdx)
+        const version = versionField.slice(colonIdx + 1)
+        if (image !== plugin) config.image = image
+        if (version) config.version = version
+      } else {
+        config.version = versionField
+      }
+
+      services[name] = config
+    }
+  }
+
+  return services
 }
 
 export async function exportAppLinks(

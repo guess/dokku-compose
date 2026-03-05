@@ -91,11 +91,65 @@ describe('ensureAppLinks', () => {
 })
 
 describe('exportServices', () => {
-  it('returns empty record (best-effort stub)', async () => {
+  it('exports postgres service with custom image', async () => {
     const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'plugin:list') return 'postgres  0.33.3 enabled  dokku-postgres\nredis  0.20.0 enabled  dokku-redis'
+      if (args[0] === 'postgres:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS\nqultr-db         postgis/postgis:17-3.5  running  -              qultr'
+      if (args[0] === 'postgres:info') return '=====> qultr-db postgres service information\n       Version:             postgis/postgis:17-3.5'
+      if (args[0] === 'redis:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS'
+      return ''
+    })
+    const ctx = createContext(runner)
+    const result = await exportServices(ctx)
+    expect(result).toEqual({
+      'qultr-db': { plugin: 'postgres', image: 'postgis/postgis', version: '17-3.5' },
+    })
+  })
+
+  it('exports redis service with default image (no image field)', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'plugin:list') return 'postgres  0.33.3 enabled  dokku-postgres\nredis  0.20.0 enabled  dokku-redis'
+      if (args[0] === 'postgres:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS'
+      if (args[0] === 'redis:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS\nqultr-redis      redis:7.2-alpine   running  -              qultr'
+      if (args[0] === 'redis:info') return '=====> qultr-redis redis service information\n       Version:             redis:7.2-alpine'
+      return ''
+    })
+    const ctx = createContext(runner)
+    const result = await exportServices(ctx)
+    expect(result).toEqual({
+      'qultr-redis': { plugin: 'redis', version: '7.2-alpine' },
+    })
+  })
+
+  it('skips plugins not installed', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'plugin:list') return 'nginx-vhosts  built-in'
+      return ''
+    })
     const ctx = createContext(runner)
     const result = await exportServices(ctx)
     expect(result).toEqual({})
+  })
+
+  it('exports multiple services across plugins', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'plugin:list') return 'postgres  0.33.3 enabled  dokku-postgres\nredis  0.20.0 enabled  dokku-redis'
+      if (args[0] === 'postgres:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS\napp-db           postgres:16        running  -              app'
+      if (args[0] === 'postgres:info') return '=====> app-db postgres service information\n       Version:             postgres:16'
+      if (args[0] === 'redis:list') return 'NAME             VERSION            STATUS   EXPOSED PORTS  LINKS\napp-redis        redis:7.2-alpine   running  -              app'
+      if (args[0] === 'redis:info') return '=====> app-redis redis service information\n       Version:             redis:7.2-alpine'
+      return ''
+    })
+    const ctx = createContext(runner)
+    const result = await exportServices(ctx)
+    expect(result).toEqual({
+      'app-db': { plugin: 'postgres', version: '16' },
+      'app-redis': { plugin: 'redis', version: '7.2-alpine' },
+    })
   })
 })
 
