@@ -1,11 +1,22 @@
 import type { Resource } from '../core/reconcile.js'
 import type { ListChange, Change } from '../core/change.js'
+import type { Context } from '../core/context.js'
+import { parseBulkReport } from './parsers.js'
 
 export const Networks: Resource<string[]> = {
   key: 'networks',
   read: async (ctx, target) => {
     const raw = await ctx.query('network:report', target, '--network-attach-post-deploy')
     return raw.trim() ? raw.trim().split(/\s+/) : []
+  },
+  readAll: async (ctx: Context) => {
+    const raw = await ctx.query('network:report')
+    const bulk = parseBulkReport(raw, 'network')
+    const result = new Map<string, string[]>()
+    for (const [app, report] of bulk) {
+      result.set(app, report['attach-post-deploy'] ? report['attach-post-deploy'].split(/\s+/) : [])
+    }
+    return result
   },
   onChange: async (ctx, target, { after }: ListChange) => {
     await ctx.run('network:set', target, 'attach-post-deploy', ...after)
