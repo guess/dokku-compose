@@ -1,10 +1,10 @@
 # dokku-compose
 
-- 📄 **Declarative** -- Define your entire Dokku server in a single YAML file
+- 📄 **Declarative** -- One YAML file for your entire Dokku server. Git-trackable, reviewable, reproducible
 - 🔁 **Idempotent** -- Run it twice, nothing changes. Safe to re-run anytime
 - 👀 **Dry-run** -- Preview every command before it touches your server
 - 🔍 **Diff** -- See exactly what's out of sync before applying changes
-- 🏗️ **Modular** -- One file per Dokku namespace. Easy to read, extend, and debug
+- 📤 **Export** -- Reverse-engineer an existing server into a config file
 
 [![Tests](https://github.com/guess/dokku-compose/actions/workflows/tests.yml/badge.svg)](https://github.com/guess/dokku-compose/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/github/license/guess/dokku-compose)](LICENSE)
