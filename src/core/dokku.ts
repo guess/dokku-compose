@@ -35,10 +35,14 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     ? ['-o', 'ControlMaster=auto', '-o', `ControlPath=${controlPath}`, '-o', 'ControlPersist=60']
     : []
 
+  function shellQuote(arg: string): string {
+    return `'${arg.replace(/'/g, "'\\''")}'`
+  }
+
   async function execDokku(args: string[]): Promise<{ stdout: string; ok: boolean }> {
     if (opts.host) {
       try {
-        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, ...args])
+        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)])
         return { stdout: result.stdout, ok: true }
       } catch (e: any) {
         return { stdout: e.stdout ?? '', ok: false }
@@ -58,7 +62,7 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
 
     async run(...args: string[]): Promise<void> {
       if (opts.dryRun) {
-        log.push(args.join(' '))
+        log.push(args.map(a => a.includes(' ') ? shellQuote(a) : a).join(' '))
         return
       }
       await execDokku(args)
