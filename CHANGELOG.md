@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.6.13] - 2026-03-05
+
+### Fixed
+
+- Shell-quote arguments sent over SSH to prevent cron schedules and other space-containing values from being split by the remote shell
+
 ## [0.6.12] - 2026-03-05
 
 ### Fixed
