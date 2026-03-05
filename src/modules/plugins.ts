@@ -6,16 +6,9 @@ export async function ensurePlugins(
   ctx: Context,
   plugins: Record<string, PluginConfig>
 ): Promise<void> {
-  const listOutput = await ctx.query('plugin:list')
-  const installedNames = new Set(
-    listOutput.split('\n')
-      .map(line => line.trim().split(/\s+/)[0])
-      .filter(Boolean)
-  )
-
   for (const [name, config] of Object.entries(plugins)) {
     logAction('plugins', `Installing ${name}`)
-    if (installedNames.has(name)) {
+    if (await ctx.check('plugin:installed', name)) {
       logSkip()
       continue
     }
