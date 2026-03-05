@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-03-04
+
+### Changed
+
+- `--dry-run` now queries real server state, only showing commands that would actually change something
+- Sensitive env var values (TOKEN, SECRET, PASSWORD, KEY, AUTH, CREDENTIAL) are masked in dry-run output by default, showing last 4 chars
+- Added `--sensitive` flag to reveal full values in dry-run output
+
 ## [0.5.0] - 2026-03-04
 
 ### Added
