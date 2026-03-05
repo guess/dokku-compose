@@ -14,6 +14,8 @@ import { runExport } from './commands/export.js'
 import { computeDiff, formatSummary, formatVerbose } from './commands/diff.js'
 import { validate } from './commands/validate.js'
 
+import { maskSensitiveArgs } from './core/mask.js'
+
 const program = new Command()
   .name('dokku-compose')
   .version(version)
@@ -30,6 +32,7 @@ program
   .description('Create/update apps and services to match config')
   .option('-f, --file <path>', 'Config file', 'dokku-compose.yml')
   .option('--dry-run', 'Print commands without executing')
+  .option('--sensitive', 'Show sensitive values in dry-run output (masked by default)')
   .option('--fail-fast', 'Stop on first error')
   .action(async (apps, opts) => {
     const config = loadConfig(opts.file)
@@ -39,7 +42,10 @@ program
       await runUp(ctx, config, apps)
       if (opts.dryRun) {
         console.log('\n# Commands that would run:')
-        for (const cmd of runner.dryRunLog) console.log(`dokku ${cmd}`)
+        for (const cmd of runner.dryRunLog) {
+          const line = opts.sensitive ? cmd : maskSensitiveArgs(cmd)
+          console.log(`dokku ${line}`)
+        }
       }
     } finally {
       await ctx.close()

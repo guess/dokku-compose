@@ -65,13 +65,11 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     },
 
     async query(...args: string[]): Promise<string> {
-      if (opts.dryRun) return ''
       const { stdout } = await execDokku(args)
       return stdout.trim()
     },
 
     async check(...args: string[]): Promise<boolean> {
-      if (opts.dryRun) return false
       const { ok } = await execDokku(args)
       return ok
     },

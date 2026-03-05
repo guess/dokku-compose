@@ -64,21 +64,29 @@ describe('close() with no host', () => {
 })
 
 describe('DryRun runner', () => {
+  beforeEach(() => {
+    mockExecaFn.mockClear()
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '' }))
+  })
+
   it('records commands without executing', async () => {
     const runner = createRunner({ dryRun: true })
     await runner.run('apps:create', 'myapp')
     expect(runner.dryRunLog).toEqual(['apps:create myapp'])
+    expect(mockExecaFn).not.toHaveBeenCalled()
   })
 
-  it('query() works in dry-run (returns empty string)', async () => {
+  it('query() executes for real in dry-run', async () => {
+    mockExecaFn.mockImplementation(async () => ({ stdout: 'myapp\n', stderr: '' }))
     const runner = createRunner({ dryRun: true })
-    const result = await runner.query('apps:exists', 'myapp')
-    expect(result).toBe('')
+    const result = await runner.query('apps:list')
+    expect(result).toBe('myapp')
+    expect(mockExecaFn).toHaveBeenCalled()
   })
 
-  it('check() returns false in dry-run', async () => {
+  it('check() executes for real in dry-run', async () => {
     const runner = createRunner({ dryRun: true })
     const ok = await runner.check('apps:exists', 'myapp')
-    expect(ok).toBe(false)
+    expect(mockExecaFn).toHaveBeenCalled()
   })
 })
