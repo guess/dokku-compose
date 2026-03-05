@@ -1,7 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { MapChange, Change } from '../core/change.js'
 import type { Context } from '../core/context.js'
-import { parseReport } from './parsers.js'
+import { parseReport, parseBulkReport } from './parsers.js'
 
 function propertyResource(opts: {
   key: string
@@ -15,6 +15,11 @@ function propertyResource(opts: {
     async read(ctx: Context, target: string): Promise<Record<string, string>> {
       const raw = await ctx.query(`${opts.namespace}:report`, target)
       return parseReport(raw, opts.namespace)
+    },
+
+    async readAll(ctx: Context): Promise<Map<string, Record<string, string>>> {
+      const raw = await ctx.query(`${opts.namespace}:report`)
+      return parseBulkReport(raw, opts.namespace)
     },
 
     async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {
@@ -56,6 +61,16 @@ export const Scheduler: Resource<string> = {
     const raw = await ctx.query('scheduler:report', target)
     const report = parseReport(raw, 'scheduler')
     return report['selected'] ?? ''
+  },
+
+  async readAll(ctx: Context): Promise<Map<string, string>> {
+    const raw = await ctx.query('scheduler:report')
+    const bulk = parseBulkReport(raw, 'scheduler')
+    const result = new Map<string, string>()
+    for (const [app, report] of bulk) {
+      result.set(app, report['selected'] ?? '')
+    }
+    return result
   },
 
   async onChange(ctx: Context, target: string, change: Change<string>): Promise<void> {
