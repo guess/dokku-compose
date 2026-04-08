@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-04-08
+
 ### Fixed
 
 - Postgres backup reconciliation can no longer silently leave a service with no backups. Three related changes:
