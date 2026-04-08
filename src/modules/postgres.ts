@@ -39,13 +39,26 @@ export async function ensurePostgresBackups(
     const storedHash = await ctx.query('config:get', '--global', hashKey)
     if (storedHash === desiredHash) { logSkip(); continue }
     const { schedule, bucket, auth } = config.backup
-    await ctx.run('postgres:backup-deauth', name)
+    // NOTE: do NOT call `postgres:backup-deauth` before `backup-auth`. The
+    // deauth command wipes the per-service backup/ directory and cron file,
+    // so if the subsequent auth/schedule calls fail the service is left with
+    // no backups at all. `backup-auth` overwrites existing credentials in
+    // place, which is what we want.
     await ctx.run(
       'postgres:backup-auth', name,
       auth.access_key_id, auth.secret_access_key,
       auth.region, auth.signature_version, auth.endpoint
     )
     await ctx.run('postgres:backup-schedule', name, schedule, bucket)
+    // Verify the schedule actually landed before persisting the hash —
+    // otherwise a silent failure would masquerade as "already configured" on
+    // the next run and mask a broken backup.
+    const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
+    if (!parseBackupSchedule(cronOutput)) {
+      throw new Error(
+        `Backup schedule for ${name} was not installed after backup-schedule ran`
+      )
+    }
     await ctx.run('config:set', '--global', `${hashKey}=${desiredHash}`)
     logDone()
   }

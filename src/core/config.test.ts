@@ -48,7 +48,7 @@ apps:
     expect((config.apps.myapp.env as Record<string, string>)['SECRET']).toBe('hunter2')
   })
 
-  it('leaves ${VAR} as empty string when env var not set', () => {
+  it('throws when ${VAR} references an unset env var', () => {
     const yamlContent = `
 apps:
   myapp:
@@ -58,7 +58,21 @@ apps:
     const file = path.join(tmpDir, 'dokku-compose.yml')
     fs.writeFileSync(file, yamlContent)
     delete process.env.UNSET_VAR_XYZ
-    const config = loadConfig(file)
-    expect((config.apps.myapp.env as Record<string, string>)['SECRET']).toBe('')
+    expect(() => loadConfig(file)).toThrow(/UNSET_VAR_XYZ/)
+  })
+
+  it('throws listing all missing vars at once', () => {
+    const yamlContent = `
+apps:
+  myapp:
+    env:
+      A: "\${UNSET_A_XYZ}"
+      B: "\${UNSET_B_XYZ}"
+`
+    const file = path.join(tmpDir, 'dokku-compose.yml')
+    fs.writeFileSync(file, yamlContent)
+    delete process.env.UNSET_A_XYZ
+    delete process.env.UNSET_B_XYZ
+    expect(() => loadConfig(file)).toThrow(/UNSET_A_XYZ.*UNSET_B_XYZ|UNSET_B_XYZ.*UNSET_A_XYZ/)
   })
 })

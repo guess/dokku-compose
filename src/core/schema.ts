@@ -61,16 +61,16 @@ const AppSchema = z.object({
 })
 
 const ServiceBackupAuthSchema = z.object({
-  access_key_id: z.string(),
-  secret_access_key: z.string(),
-  region: z.string(),
-  signature_version: z.string(),
-  endpoint: z.string(),
+  access_key_id: z.string().min(1),
+  secret_access_key: z.string().min(1),
+  region: z.string().min(1),
+  signature_version: z.string().min(1),
+  endpoint: z.string().min(1),
 })
 
 const ServiceBackupSchema = z.object({
-  schedule: z.string(),
-  bucket: z.string(),
+  schedule: z.string().min(1),
+  bucket: z.string().min(1),
   auth: ServiceBackupAuthSchema,
 })
 

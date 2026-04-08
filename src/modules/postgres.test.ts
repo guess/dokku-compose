@@ -50,14 +50,36 @@ describe('ensurePostgresBackups', () => {
   it('configures backup when hash differs', async () => {
     const runner = createRunner({ dryRun: false })
     runner.run = vi.fn()
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'postgres:backup-schedule-cat') {
+        return '0 * * * * dokku /usr/bin/dokku postgres:backup api-db db-backups/api-db'
+      }
+      return ''
+    })
     const ctx = createContext(runner)
     await ensurePostgresBackups(ctx, { 'api-db': { backup } })
-    expect(runner.run).toHaveBeenCalledWith('postgres:backup-deauth', 'api-db')
+    expect(runner.run).not.toHaveBeenCalledWith('postgres:backup-deauth', 'api-db')
     expect(runner.run).toHaveBeenCalledWith(
       'postgres:backup-auth', 'api-db', 'KEY', 'SECRET', 'auto', 's3v4', 'https://r2.example.com'
     )
     expect(runner.run).toHaveBeenCalledWith('postgres:backup-schedule', 'api-db', '0 * * * *', 'db-backups/api-db')
+    const { createHash } = await import('crypto')
+    const hash = createHash('sha256').update(JSON.stringify(backup)).digest('hex')
+    expect(runner.run).toHaveBeenCalledWith('config:set', '--global', expect.stringContaining(hash))
+  })
+
+  it('throws and does not persist hash when schedule verification fails', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.run = vi.fn()
+    // Empty cron output = backup-schedule silently failed to install anything
+    runner.query = vi.fn().mockResolvedValue('')
+    const ctx = createContext(runner)
+    await expect(
+      ensurePostgresBackups(ctx, { 'api-db': { backup } })
+    ).rejects.toThrow(/was not installed/)
+    expect(runner.run).not.toHaveBeenCalledWith(
+      'config:set', '--global', expect.stringContaining('DOKKU_COMPOSE_BACKUP_HASH')
+    )
   })
 
   it('skips when hash matches', async () => {
