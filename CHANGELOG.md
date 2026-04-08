@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Postgres backup reconciliation can no longer silently leave a service with no backups. Three related changes:
+  - `loadConfig` now throws on unset `${VAR}` references instead of substituting empty strings, so missing credentials fail loudly at parse time
+  - `ServiceBackup` / `ServiceBackupAuth` schemas require `.min(1)` on every string field as a second line of defense against empty values
+  - `ensurePostgresBackups` no longer runs `postgres:backup-deauth` before `backup-auth` (the latter overwrites in place), and now verifies the installed cron via `postgres:backup-schedule-cat` before persisting the global hash — silent failures retry on the next run instead of masquerading as "already configured"
+
 ## [0.9.2] - 2026-03-05
 
 ### Fixed
