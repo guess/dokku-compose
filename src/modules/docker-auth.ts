@@ -8,7 +8,7 @@ export async function ensureDockerAuth(
 ): Promise<void> {
   for (const [server, creds] of Object.entries(config)) {
     logAction('docker-auth', `Logging in to ${server} as ${creds.username}`)
-    await ctx.run('registry:login', server, creds.username, creds.password)
+    await ctx.run('registry:login', '--global', server, creds.username, creds.password)
     logDone()
   }
 }

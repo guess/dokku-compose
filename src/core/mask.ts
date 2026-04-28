@@ -11,10 +11,10 @@ export function maskSensitiveArgs(cmd: string): string {
     return `${key}=${maskValue(value)}`
   })
 
-  // Special-case `registry:login <server> <username> <password>` — password is
-  // a positional arg, not KEY=VALUE, so the regex above can't catch it.
+  // Special-case `registry:login [--global] <server> <username> <password>` —
+  // password is a positional arg, not KEY=VALUE, so the regex above can't catch it.
   masked = masked.replace(
-    /^(registry:login\s+\S+\s+\S+\s+)(\S+)/,
+    /^(registry:login\s+(?:--global\s+)?\S+\s+\S+\s+)(\S+)/,
     (_, prefix, password) => `${prefix}${maskValue(password)}`
   )
 
