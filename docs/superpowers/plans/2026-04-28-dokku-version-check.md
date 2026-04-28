@@ -27,6 +27,14 @@
 
 ---
 
+## Prerequisites
+
+- Run `bun install` from the repo root if you haven't already.
+- This project uses **Vitest** as the test framework, but tests are invoked through Bun's built-in test runner via `bun test <path>`. No separate Vitest setup is needed — `bun test` discovers Vitest automatically.
+- The `Context` type (passed to module functions) is defined at `src/core/context.ts:3`. The `Runner` type (used inside tests via `createRunner`) is at `src/core/dokku.ts:11`. Test files create a runner, override its methods with `vi.fn()`, then wrap with `createContext(runner)` — see `src/modules/plugins.test.ts` for the canonical pattern.
+
+---
+
 ## Task 1: `compareSemver` pure helper
 
 **Files:**
@@ -124,15 +132,51 @@ git commit -m "feat: add compareSemver helper"
 - Modify: `src/modules/version.ts`
 - Modify: `src/modules/version.test.ts`
 
-- [ ] **Step 1: Add failing tests for `ensureDokkuVersion`**
+- [ ] **Step 1: Replace `src/modules/version.test.ts` with the complete final test file**
 
-Append to `src/modules/version.test.ts`:
+This step replaces the file from Task 1 with the full final version (existing tests + new tests). Imports stay grouped at the top of the file as is the project convention. Note that `warnSpy.mock.calls[0][0]` will contain ANSI color codes (chalk wraps the string in yellow); `toContain('0.36.4')` still works because the digits appear verbatim in the formatted output.
+
+Replace the contents of `src/modules/version.test.ts` with:
 
 ```typescript
-import { vi } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { ensureDokkuVersion } from './version.js'
+import { compareSemver, ensureDokkuVersion } from './version.js'
+
+describe('compareSemver', () => {
+  it('returns 0 for equal versions', () => {
+    expect(compareSemver('0.37.9', '0.37.9')).toBe(0)
+  })
+
+  it('returns -1 when a is older (patch)', () => {
+    expect(compareSemver('0.37.9', '0.37.10')).toBe(-1)
+  })
+
+  it('returns 1 when a is newer (minor)', () => {
+    expect(compareSemver('0.38.0', '0.37.99')).toBe(1)
+  })
+
+  it('returns 1 when a is newer (major)', () => {
+    expect(compareSemver('1.0.0', '0.99.99')).toBe(1)
+  })
+
+  it('ignores pre-release suffix when otherwise equal', () => {
+    expect(compareSemver('0.37.9-rc1', '0.37.9')).toBe(0)
+  })
+
+  it('ignores pre-release suffix on both sides', () => {
+    expect(compareSemver('0.37.9-rc1', '0.37.9-rc2')).toBe(0)
+  })
+
+  it('throws when input is not parseable', () => {
+    expect(() => compareSemver('garbage', '0.37.9')).toThrow(/parse/i)
+  })
+
+  it('throws when only major.minor (missing patch)', () => {
+    expect(() => compareSemver('0.37', '0.37.9')).toThrow(/parse/i)
+  })
+})
 
 describe('ensureDokkuVersion', () => {
   it('does nothing when pinned is undefined (no query)', async () => {
@@ -190,13 +234,30 @@ describe('ensureDokkuVersion', () => {
 Run: `bun test src/modules/version.test.ts`
 Expected: FAIL — `ensureDokkuVersion is not exported from './version.js'`.
 
-- [ ] **Step 3: Implement `ensureDokkuVersion`**
+- [ ] **Step 3: Replace `src/modules/version.ts` with the complete final module file**
 
-Append to `src/modules/version.ts`:
+Imports go at the top (project convention). Replace the contents of `src/modules/version.ts` with:
 
 ```typescript
 import type { Context } from '../core/context.js'
 import { logWarn } from '../core/logger.js'
+
+const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/
+
+function parseSemver(input: string): [number, number, number] {
+  const m = input.match(SEMVER_RE)
+  if (!m) throw new Error(`Cannot parse version: ${input}`)
+  return [Number(m[1]), Number(m[2]), Number(m[3])]
+}
+
+export function compareSemver(a: string, b: string): -1 | 0 | 1 {
+  const [aMaj, aMin, aPatch] = parseSemver(a)
+  const [bMaj, bMin, bPatch] = parseSemver(b)
+  if (aMaj !== bMaj) return aMaj < bMaj ? -1 : 1
+  if (aMin !== bMin) return aMin < bMin ? -1 : 1
+  if (aPatch !== bPatch) return aPatch < bPatch ? -1 : 1
+  return 0
+}
 
 export async function ensureDokkuVersion(
   ctx: Context,
@@ -239,15 +300,17 @@ git commit -m "feat: add ensureDokkuVersion check"
 **Files:**
 - Modify: `src/commands/up.ts:35-36` (insert before "Phase 1: Plugins")
 
-- [ ] **Step 1: Add the import and call**
+- [ ] **Step 1a: Add the import**
 
-Edit `src/commands/up.ts`. Add this import next to the other module imports (around line 15):
+In `src/commands/up.ts`, add this line to the module-imports block (the `import { ensure* } from '../modules/*.js'` cluster around lines 15-24). Alphabetical order suggests placing it between `ensureRedis` and `ensureAppLinks` is fine — exact placement isn't enforced:
 
 ```typescript
 import { ensureDokkuVersion } from '../modules/version.js'
 ```
 
-Then insert the version check at the top of the orchestration body, before "Phase 1: Plugins". The existing block:
+- [ ] **Step 1b: Insert the version-check call before Phase 1**
+
+The current `runUp` body has this structure (verified against `src/commands/up.ts:31-37`):
 
 ```typescript
   const apps = appFilter.length > 0
@@ -256,9 +319,10 @@ Then insert the version check at the top of the orchestration body, before "Phas
 
   // Phase 1: Plugins & host-level auth
   if (config.plugins) await ensurePlugins(ctx, config.plugins)
+  if (config.docker_auth) await ensureDockerAuth(ctx, config.docker_auth)
 ```
 
-becomes:
+**Insert two new lines (a comment and the call) immediately before the `// Phase 1:` comment line. Do NOT modify or remove any existing lines.** The result should look like:
 
 ```typescript
   const apps = appFilter.length > 0
@@ -270,6 +334,7 @@ becomes:
 
   // Phase 1: Plugins & host-level auth
   if (config.plugins) await ensurePlugins(ctx, config.plugins)
+  if (config.docker_auth) await ensureDockerAuth(ctx, config.docker_auth)
 ```
 
 - [ ] **Step 2: Run the full test suite**
@@ -277,12 +342,12 @@ becomes:
 Run: `bun test`
 Expected: PASS — all existing tests still passing, no regressions.
 
-- [ ] **Step 3: Smoke test in dry-run**
+- [ ] **Step 3: Build to confirm TypeScript compiles**
 
-Run: `./bin/dokku-compose up --dry-run` against a fixture or local config that does NOT pin `dokku.version`.
-Expected: no warning, no error, dry-run output as before.
+Run: `bun run build`
+Expected: PASS — no TypeScript errors.
 
-If a `DOKKU_HOST` and a fixture with `dokku.version` set higher than the server are available, run again and confirm the warning prints. (Skip this sub-step if no test server is reachable — the unit tests cover the logic.)
+(End-to-end smoke testing requires a `DOKKU_HOST`. The unit tests in Task 2 fully cover the runtime logic, and the build verifies the wiring compiles. If you have a server available, you can additionally run `DOKKU_HOST=<host> ./bin/dokku-compose up -f src/tests/fixtures/simple.yml --dry-run` — the fixture does not pin `dokku.version`, so no warning should appear.)
 
 - [ ] **Step 4: Commit**
 
@@ -393,13 +458,13 @@ Dokku has changed its output format.
 
 - [ ] **Step 2: Add the row to the README Features table**
 
-Edit `README.md`. The Features table currently ends with the Service Links row at line 130. Add a new row above the table's first data row (alphabetical-ish placement isn't strict in this table; group it with infrastructure-level items near the top). Insert this row immediately after the `| Apps | ... |` row:
+In `README.md`, find the Features table (around lines 111-130). Insert one new row immediately after the `| Apps | ... |` row and before the `| Environment Variables | ... |` row. The new row is:
 
 ```markdown
 | Dokku Version | Warn when the server's Dokku version is older than the pinned floor | [dokku](docs/reference/dokku.md) |
 ```
 
-The relevant section after the edit:
+After the edit, the top of the table should read exactly:
 
 ```markdown
 | Feature | Description | Reference |
@@ -437,5 +502,7 @@ Expected: PASS — TypeScript strict mode compiles clean.
 
 - [ ] **Step 3: Smoke test (offline)**
 
-Run: `./bin/dokku-compose validate src/tests/fixtures/<any-fixture>.yml`
-Expected: no errors. (Validate is offline — version check should not run here.)
+`validate` takes a positional file argument (see `src/index.ts:73-75`).
+
+Run: `./bin/dokku-compose validate src/tests/fixtures/simple.yml`
+Expected: no errors and no warning about Dokku version. `validate` runs offline and never queries the server, so the version check must not fire here — that confirms the wiring (Tasks 3 and 4) is in `up`/`diff` only.
