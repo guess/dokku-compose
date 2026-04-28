@@ -15,7 +15,8 @@ is absent, no check runs.
 
 The value is interpreted as a **minimum**, not an exact match: a server
 running a newer version than pinned is silent. Pre-release suffixes
-(`-rc1`, `-beta`) on the server output are tolerated.
+(`-rc1`, `-beta`) are tolerated on both the server output and the pinned
+value itself — only the `X.Y.Z` numeric part is compared.
 
 The `export` command writes the running server's version into this field
 automatically, so round-tripping `export` → edit → `up` produces a useful
