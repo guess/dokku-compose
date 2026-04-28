@@ -33,7 +33,7 @@ export async function runUp(
     ? appFilter
     : Object.keys(config.apps)
 
-  // Phase 0: Version check (warning-only, opt-in via dokku.version)
+  // Phase 0: Version check
   await ensureDokkuVersion(ctx, config.dokku?.version)
 
   // Phase 1: Plugins & host-level auth

@@ -27,7 +27,6 @@ interface DiffResult {
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
   const result: DiffResult = { apps: {}, services: {}, inSync: true }
 
-  // Version check (warning-only, opt-in via dokku.version)
   await ensureDokkuVersion(ctx, config.dokku?.version)
 
   // Bulk prefetch: run all readAll queries in parallel

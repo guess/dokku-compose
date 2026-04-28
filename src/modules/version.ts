@@ -9,6 +9,11 @@ function parseSemver(input: string): [number, number, number] {
   return [Number(m[1]), Number(m[2]), Number(m[3])]
 }
 
+export function extractServerVersion(output: string): string | null {
+  const match = output.match(/(\d+\.\d+\.\d+)/)
+  return match ? match[1] : null
+}
+
 export function compareSemver(a: string, b: string): -1 | 0 | 1 {
   const [aMaj, aMin, aPatch] = parseSemver(a)
   const [bMaj, bMin, bPatch] = parseSemver(b)
@@ -25,11 +30,10 @@ export async function ensureDokkuVersion(
   if (!pinned) return
 
   const output = await ctx.query('version')
-  const match = output.match(/(\d+\.\d+\.\d+)/)
-  if (!match) {
+  const server = extractServerVersion(output)
+  if (!server) {
     throw new Error(`Cannot parse Dokku server version from output: ${output}`)
   }
-  const server = match[1]
 
   if (compareSemver(server, pinned) === -1) {
     logWarn(
