@@ -13,10 +13,10 @@ describe('ensureDockerAuth', () => {
       'registry.example.com': { username: 'svc', password: 'pw' },
     })
     expect(runner.run).toHaveBeenCalledWith(
-      'registry:login', 'ghcr.io', 'octocat', 'ghp_secret'
+      'registry:login', '--global', 'ghcr.io', 'octocat', 'ghp_secret'
     )
     expect(runner.run).toHaveBeenCalledWith(
-      'registry:login', 'registry.example.com', 'svc', 'pw'
+      'registry:login', '--global', 'registry.example.com', 'svc', 'pw'
     )
     expect(runner.run).toHaveBeenCalledTimes(2)
   })

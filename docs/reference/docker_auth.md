@@ -21,7 +21,7 @@ docker_auth:
     password: "${REGISTRY_PASSWORD}"
 ```
 
-On each `up` run, dokku-compose runs `dokku registry:login <server> <username> <password>` for every entry. Docker stores credentials in `~/.docker/config.json` and overwrites in place, so re-running is idempotent and rotation is just an `up` away.
+On each `up` run, dokku-compose runs `dokku registry:login --global <server> <username> <password>` for every entry. Docker stores credentials in `~/.docker/config.json` and overwrites in place, so re-running is idempotent and rotation is just an `up` away.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -34,7 +34,7 @@ This top-level `docker_auth:` is host-global pull authentication. It is **not** 
 
 ## Removal Semantics
 
-Removing an entry from `docker_auth:` does **not** automatically log out — host credentials persist. To revoke, run `dokku registry:logout <server>` manually on the host. Same posture as `plugins:` (installed plugins aren't auto-removed).
+Removing an entry from `docker_auth:` does **not** automatically log out — host credentials persist. To revoke, run `dokku registry:logout --global <server>` manually on the host. Same posture as `plugins:` (installed plugins aren't auto-removed).
 
 ## Secrets
 

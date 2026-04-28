@@ -66,14 +66,19 @@ describe('maskSensitiveArgs', () => {
       .toBe('apps:create myapp')
   })
 
-  it('masks positional password in registry:login', () => {
-    expect(maskSensitiveArgs('registry:login ghcr.io octocat ghp_abcdefgh'))
-      .toBe('registry:login ghcr.io octocat ****efgh')
+  it('masks positional password in registry:login --global', () => {
+    expect(maskSensitiveArgs('registry:login --global ghcr.io octocat ghp_abcdefgh'))
+      .toBe('registry:login --global ghcr.io octocat ****efgh')
   })
 
-  it('masks short positional password in registry:login', () => {
-    expect(maskSensitiveArgs('registry:login ghcr.io octocat pw'))
-      .toBe('registry:login ghcr.io octocat ****')
+  it('masks short positional password in registry:login --global', () => {
+    expect(maskSensitiveArgs('registry:login --global ghcr.io octocat pw'))
+      .toBe('registry:login --global ghcr.io octocat ****')
+  })
+
+  it('masks positional password in registry:login without --global', () => {
+    expect(maskSensitiveArgs('registry:login ghcr.io octocat ghp_abcdefgh'))
+      .toBe('registry:login ghcr.io octocat ****efgh')
   })
 
   it('does not affect other registry: subcommands', () => {
