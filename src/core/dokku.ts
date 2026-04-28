@@ -36,6 +36,11 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     : []
 
   function shellQuote(arg: string): string {
+    // Only quote args containing shell-significant characters. Wrapping every arg in
+    // single quotes confuses the dokku SSH command wrapper (notably git:report on
+    // dokku 0.36), which can pass SSH_ORIGINAL_COMMAND through to dokku without
+    // stripping the literal quotes for some subcommands.
+    if (/^[A-Za-z0-9_\-:.,/=@]+$/.test(arg)) return arg
     return `'${arg.replace(/'/g, "'\\''")}'`
   }
 

@@ -54,18 +54,23 @@ export const Domains: Resource<string[]> = {
   },
 }
 
+function parseDeployMounts(raw: string): string[] {
+  // Dokku reports deploy mounts as space-separated `-v PATH:PATH` pairs on one line.
+  return raw.split(/\s+/).filter(s => s && s !== '-v')
+}
+
 export const Storage: Resource<string[]> = {
   key: 'storage',
   read: async (ctx, target) => {
-    const raw = await ctx.query('storage:report', target, '--storage-mounts')
-    return splitLines(raw)
+    const raw = await ctx.query('storage:report', target, '--storage-deploy-mounts')
+    return parseDeployMounts(raw)
   },
   readAll: async (ctx: Context) => {
     const raw = await ctx.query('storage:report')
     const bulk = parseBulkReport(raw, 'storage')
     const result = new Map<string, string[]>()
     for (const [app, report] of bulk) {
-      result.set(app, report['mounts'] ? splitLines(report['mounts']) : [])
+      result.set(app, report['deploy-mounts'] ? parseDeployMounts(report['deploy-mounts']) : [])
     }
     return result
   },

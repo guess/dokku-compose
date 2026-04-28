@@ -33,6 +33,32 @@ describe('createRunner with host', () => {
     expect(controlPersistIdx).toBeGreaterThan(-1)
   })
 
+  it('passes plain args to SSH unquoted', async () => {
+    const runner = createRunner({ host: 'myserver.com' })
+    mockExecaFn.mockClear()
+    await runner.query('git:report', 'myapp', '--git-deploy-branch')
+    const callArgs = mockExecaFn.mock.calls[0][1] as string[]
+    // dokku 0.36's SSH wrapper rejects literal-quoted args for some commands
+    // (notably git:report). Plain identifiers and flags must be passed as-is.
+    expect(callArgs).toContain('git:report')
+    expect(callArgs).toContain('myapp')
+    expect(callArgs).toContain('--git-deploy-branch')
+    expect(callArgs).not.toContain("'git:report'")
+  })
+
+  it('shell-quotes only args containing whitespace or special chars', async () => {
+    const runner = createRunner({ host: 'myserver.com' })
+    mockExecaFn.mockClear()
+    await runner.run('cron:set', 'myapp', '--schedule', '0 5 * * *')
+    const callArgs = mockExecaFn.mock.calls[0][1] as string[]
+    // Plain args stay unquoted; the schedule (with spaces) gets single-quoted
+    // so the remote shell parses it as one arg.
+    expect(callArgs).toContain('cron:set')
+    expect(callArgs).toContain('myapp')
+    expect(callArgs).toContain('--schedule')
+    expect(callArgs).toContain("'0 5 * * *'")
+  })
+
   it('runner has a close() method', () => {
     const runner = createRunner({ host: 'myserver.com' })
     expect(typeof runner.close).toBe('function')

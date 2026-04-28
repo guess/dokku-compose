@@ -57,15 +57,21 @@ describe('Storage resource', () => {
   }
 
   it('mounts new and unmounts removed storage', async () => {
-    const ctx = makeCtx('/old:/app/old')
+    const ctx = makeCtx('-v /old:/app/old')
     await reconcile(Storage, ctx, 'myapp', ['/new:/app/new'])
     expect(ctx.commands).toContainEqual(['storage:unmount', 'myapp', '/old:/app/old'])
     expect(ctx.commands).toContainEqual(['storage:mount', 'myapp', '/new:/app/new'])
   })
 
   it('skips when storage matches', async () => {
-    const ctx = makeCtx('/data:/app/data')
+    const ctx = makeCtx('-v /data:/app/data')
     await reconcile(Storage, ctx, 'myapp', ['/data:/app/data'])
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('parses multiple `-v` mounts on one line', async () => {
+    const ctx = makeCtx('-v /a:/app/a -v /b:/app/b')
+    await reconcile(Storage, ctx, 'myapp', ['/a:/app/a', '/b:/app/b'])
     expect(ctx.commands).toEqual([])
   })
 })
@@ -105,10 +111,12 @@ describe('readAll (bulk)', () => {
   it('Storage.readAll returns per-app mount arrays', async () => {
     const ctx = makeCtx(
       '=====> app1 storage information\n' +
-      '       Storage mounts:               /data:/app/data\n'
+      '       Storage build mounts:\n' +
+      '       Storage deploy mounts:        -v /data:/app/data -v /logs:/app/logs\n' +
+      '       Storage run mounts:           -v /data:/app/data -v /logs:/app/logs\n'
     )
     const result = await Storage.readAll!(ctx)
-    expect(result.get('app1')).toEqual(['/data:/app/data'])
+    expect(result.get('app1')).toEqual(['/data:/app/data', '/logs:/app/logs'])
   })
 
   it('handles empty field values as empty arrays', async () => {
