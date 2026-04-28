@@ -50,6 +50,33 @@ describe('PostgresSchema backup', () => {
   })
 })
 
+describe('docker_auth in schema', () => {
+  it('accepts docker_auth with username and password', () => {
+    const result = parseConfig({
+      apps: {},
+      docker_auth: {
+        'ghcr.io': { username: 'octocat', password: 'ghp_secret' },
+      },
+    })
+    expect(result.docker_auth?.['ghcr.io']?.username).toBe('octocat')
+    expect(result.docker_auth?.['ghcr.io']?.password).toBe('ghp_secret')
+  })
+
+  it('rejects docker_auth entry missing password', () => {
+    expect(() => parseConfig({
+      apps: {},
+      docker_auth: { 'ghcr.io': { username: 'octocat' } },
+    })).toThrow()
+  })
+
+  it('rejects docker_auth entry with empty password', () => {
+    expect(() => parseConfig({
+      apps: {},
+      docker_auth: { 'ghcr.io': { username: 'octocat', password: '' } },
+    })).toThrow()
+  })
+})
+
 describe('parseConfig', () => {
   it('parses minimal config', () => {
     const result = parseConfig({

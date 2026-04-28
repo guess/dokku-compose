@@ -17,6 +17,13 @@ plugins:
     url: https://github.com/dokku/dokku-letsencrypt.git
     script: scripts/letsencrypt.sh   # custom handler (not a service plugin)
 
+# Authenticate host docker daemon to private registries (for `git:from-image`).
+# See docs/reference/docker_auth.md.
+docker_auth:
+  ghcr.io:
+    username: "${GHCR_USERNAME}"
+    password: "${GHCR_PAT}"
+
 # Shared Docker networks for inter-app communication
 networks:
   - backend-net

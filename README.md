@@ -124,6 +124,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Zero-Downtime Checks | Configure deploy checks, disable per process type | [checks](docs/reference/checks.md) |
 | Log Management | Log retention and vector sink configuration | [logs](docs/reference/logs.md) |
 | Plugins | Install Dokku plugins declaratively | [plugins](docs/reference/plugins.md) |
+| Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
 | Postgres | Postgres services with optional S3 backups | [postgres](docs/reference/postgres.md) |
 | Redis | Redis service instances | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps | [plugins](docs/reference/plugins.md#linking-services-to-apps-appsapplinks) |

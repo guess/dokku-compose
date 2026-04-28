@@ -65,6 +65,21 @@ describe('maskSensitiveArgs', () => {
     expect(maskSensitiveArgs('apps:create myapp'))
       .toBe('apps:create myapp')
   })
+
+  it('masks positional password in registry:login', () => {
+    expect(maskSensitiveArgs('registry:login ghcr.io octocat ghp_abcdefgh'))
+      .toBe('registry:login ghcr.io octocat ****efgh')
+  })
+
+  it('masks short positional password in registry:login', () => {
+    expect(maskSensitiveArgs('registry:login ghcr.io octocat pw'))
+      .toBe('registry:login ghcr.io octocat ****')
+  })
+
+  it('does not affect other registry: subcommands', () => {
+    expect(maskSensitiveArgs('registry:set myapp server registry.example.com'))
+      .toBe('registry:set myapp server registry.example.com')
+  })
 })
 
 describe('maskSensitiveData', () => {
