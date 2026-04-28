@@ -17,6 +17,7 @@ import { ensureDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
 import { ensurePostgres, ensurePostgresBackups } from '../modules/postgres.js'
 import { ensureRedis } from '../modules/redis.js'
+import { ensureDokkuVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
@@ -31,6 +32,9 @@ export async function runUp(
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
+
+  // Phase 0: Version check
+  await ensureDokkuVersion(ctx, config.dokku?.version)
 
   // Phase 1: Plugins & host-level auth
   if (config.plugins) await ensurePlugins(ctx, config.plugins)

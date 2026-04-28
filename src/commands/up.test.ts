@@ -56,7 +56,10 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
     await runUp(ctx, config, ['funqtion'])

@@ -111,6 +111,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Feature | Description | Reference |
 |---------|-------------|-----------|
 | Apps | Create and destroy Dokku apps | [apps](docs/reference/apps.md) |
+| Dokku Version | Warn when the server's Dokku version is older than the pinned floor | [dokku](docs/reference/dokku.md) |
 | Environment Variables | Set config vars per app or globally, with full convergence | [config](docs/reference/config.md) |
 | Build | Dockerfile path, build context, app.json, build args | [builder](docs/reference/builder.md) |
 | Docker Options | Custom Docker options per phase (build/deploy/run) | [docker_options](docs/reference/docker_options.md) |

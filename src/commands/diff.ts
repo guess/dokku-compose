@@ -3,6 +3,7 @@ import type { Config, AppConfig } from '../core/schema.js'
 import { computeChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { maskSensitiveData } from '../core/mask.js'
+import { ensureDokkuVersion } from '../modules/version.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra'
@@ -25,6 +26,8 @@ interface DiffResult {
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
   const result: DiffResult = { apps: {}, services: {}, inSync: true }
+
+  await ensureDokkuVersion(ctx, config.dokku?.version)
 
   // Bulk prefetch: run all readAll queries in parallel
   const prefetched = new Map<string, Map<string, unknown>>()
