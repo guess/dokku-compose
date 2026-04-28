@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-04-28
+
+### Added
+
+- Optional `dokku.version` field pins a minimum Dokku version. On `up` and `diff`, dokku-compose queries the server's `dokku version` and prints a warning if it falls below the pin. Warning-only and opt-in — omitting the field skips the check entirely. See `docs/reference/dokku.md`.
+
+### Fixed
+
+- `docker_auth` now passes `--global` to `dokku registry:login`, making the host-scope login explicit and silencing Dokku's deprecation warning about implicit positional-arg disambiguation. The dry-run password mask was updated to accept the new flag while preserving back-compat for the unflagged form.
+
 ## [0.10.1] - 2026-04-28
 
 ### Fixed
