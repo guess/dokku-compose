@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-04-28
+
+### Fixed
+
+- `Storage.read` queried the non-existent `--storage-mounts` flag, so reads always returned empty and every mount looked missing on every run. Switched to `--storage-deploy-mounts` and added a parser for the `-v PATH:PATH -v PATH:PATH` line format dokku reports.
+- SSH arg quoting wrapped every arg in single quotes, which dokku 0.36's SSH command wrapper handles inconsistently across subcommands — `git:report` failed (so reads returned empty and every app's git deploy branch reconciled every run) while other reports happened to pass through. Plain identifiers and flags now reach the remote unmodified; only args containing shell-significant characters are quoted.
+
 ## [0.10.0] - 2026-04-28
 
 ### Added
