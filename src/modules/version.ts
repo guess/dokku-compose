@@ -1,3 +1,6 @@
+import type { Context } from '../core/context.js'
+import { logWarn } from '../core/logger.js'
+
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/
 
 function parseSemver(input: string): [number, number, number] {
@@ -13,4 +16,25 @@ export function compareSemver(a: string, b: string): -1 | 0 | 1 {
   if (aMin !== bMin) return aMin < bMin ? -1 : 1
   if (aPatch !== bPatch) return aPatch < bPatch ? -1 : 1
   return 0
+}
+
+export async function ensureDokkuVersion(
+  ctx: Context,
+  pinned: string | undefined
+): Promise<void> {
+  if (!pinned) return
+
+  const output = await ctx.query('version')
+  const match = output.match(/(\d+\.\d+\.\d+)/)
+  if (!match) {
+    throw new Error(`Cannot parse Dokku server version from output: ${output}`)
+  }
+  const server = match[1]
+
+  if (compareSemver(server, pinned) === -1) {
+    logWarn(
+      'dokku',
+      `server is v${server} but dokku-compose.yml pins >= v${pinned}. Some features may be unavailable.`
+    )
+  }
 }
