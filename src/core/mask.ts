@@ -7,9 +7,18 @@ function maskValue(value: string): string {
 
 /** Mask KEY=VALUE pairs in a command string */
 export function maskSensitiveArgs(cmd: string): string {
-  return cmd.replace(/([^\s=]*(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)[^\s=]*)=(\S+)/gi, (_, key, value) => {
+  let masked = cmd.replace(/([^\s=]*(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)[^\s=]*)=(\S+)/gi, (_, key, value) => {
     return `${key}=${maskValue(value)}`
   })
+
+  // Special-case `registry:login <server> <username> <password>` — password is
+  // a positional arg, not KEY=VALUE, so the regex above can't catch it.
+  masked = masked.replace(
+    /^(registry:login\s+\S+\s+\S+\s+)(\S+)/,
+    (_, prefix, password) => `${prefix}${maskValue(password)}`
+  )
+
+  return masked
 }
 
 /** Deep-mask sensitive values in data structures (for diff/export output) */

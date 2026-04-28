@@ -90,11 +90,17 @@ const PluginSchema = z.object({
   version: z.string().optional(),
 })
 
+const DockerAuthEntrySchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+})
+
 export const ConfigSchema = z.object({
   dokku: z.object({
     version: z.string().optional(),
   }).optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
+  docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
   networks: z.array(z.string()).optional(),
   postgres: z.record(z.string(), PostgresSchema).optional(),
   redis: z.record(z.string(), RedisSchema).optional(),
@@ -112,6 +118,7 @@ export type PostgresConfig = z.infer<typeof PostgresSchema>
 export type RedisConfig = z.infer<typeof RedisSchema>
 export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>
+export type DockerAuthEntry = z.infer<typeof DockerAuthEntrySchema>
 export type GitConfig = z.infer<typeof GitSchema>
 
 export function parseConfig(raw: unknown): Config {

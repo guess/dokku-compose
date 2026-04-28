@@ -8,6 +8,11 @@ plugins:
   redis:
     url: https://github.com/dokku/dokku-redis.git
 
+docker_auth:
+  ghcr.io:
+    username: "ci-user"
+    password: "test-pat"
+
 networks:
   - studio-net
   - qultr-net

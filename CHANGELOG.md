@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `docker_auth:` top-level block for declaring host-level container registry credentials. On `up`, dokku-compose runs `dokku registry:login` for each entry so the docker daemon can pull from private registries — useful with `dokku git:from-image` flows. Passwords are masked in `--dry-run` output. Distinct from the per-app `apps.<app>.registry:` block, which configures push behavior. See `docs/reference/docker_auth.md`.
+
 ## [0.9.3] - 2026-04-08
 
 ### Fixed
