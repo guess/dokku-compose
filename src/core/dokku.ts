@@ -48,16 +48,16 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     if (opts.host) {
       try {
         const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)])
-        return { stdout: result.stdout, ok: true }
+        return { stdout: String(result.stdout ?? ''), ok: true }
       } catch (e: any) {
-        return { stdout: e.stdout ?? '', ok: false }
+        return { stdout: String(e.stdout ?? ''), ok: false }
       }
     } else {
       try {
         const result = await execa('dokku', args)
-        return { stdout: result.stdout, ok: true }
+        return { stdout: String(result.stdout ?? ''), ok: true }
       } catch (e: any) {
-        return { stdout: e.stdout ?? '', ok: false }
+        return { stdout: String(e.stdout ?? ''), ok: false }
       }
     }
   }
