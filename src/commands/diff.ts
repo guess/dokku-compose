@@ -33,14 +33,19 @@ interface DiffResult {
  * `true` against `{certfile, keyfile}` as unequal scalars and report
  * "changed" on every run even when the cert is already in place. Treat:
  *  - desired object + current true  -> in-sync (a cert is present)
- *  - desired object + current false/absent -> missing
+ *  - desired object + current false -> missing
  *  - desired false + current true -> changed (should be removed)
+ *  - current undefined (report was empty/unreadable) -> defer to the
+ *    generic path so the unknown handling applies, same as any other
+ *    resource whose read failed; `undefined` must never be coerced to
+ *    "missing" here, or an installed cert reads back as absent.
  *  - anything else (both booleans) -> fall through to the normal comparison
  */
 function diffSslStatus(desired: unknown, current: unknown): DiffStatus | undefined {
   if (typeof desired !== 'object' || desired === null) return undefined
+  if (current === undefined) return undefined
   if (current === true) return 'in-sync'
-  if (current === false || current === undefined || current === null) return 'missing'
+  if (current === false || current === null) return 'missing'
   return undefined
 }
 
@@ -56,6 +61,19 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
   await ensureDokkuVersion(ctx, config.dokku?.version)
 
+  // An app that does not exist on the server yet cannot have any of its
+  // resources read — every resource report for it is naturally empty. That
+  // is a normal first run, not a read failure, so this must be resolved
+  // before the unreadable heuristic below (which only wants to see apps
+  // that exist and still came back empty).
+  const appExists = new Map<string, boolean>()
+  await Promise.all(
+    appNames.map(async app => {
+      appExists.set(app, await ctx.check('apps:exists', app))
+    })
+  )
+  const existingAppNames = appNames.filter(app => appExists.get(app))
+
   // Bulk prefetch: run all readAll queries in parallel. A resource whose
   // bulk report comes back with zero parseable app sections, despite apps
   // existing, means the read itself failed (e.g. a Dokku bash-plugin report
@@ -69,7 +87,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       .map(async r => {
         try {
           const bulk = await r.readAll!(ctx)
-          const unreadable = appNames.length > 0 && bulk.size === 0
+          const unreadable = existingAppNames.length > 0 && bulk.size === 0
           prefetched.set(r.key, unreadable ? null : bulk)
         } catch {
           prefetched.set(r.key, null)
@@ -93,6 +111,15 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
       if (desired === undefined) continue
 
+      // The app itself does not exist yet: every desired resource on it is
+      // simply missing, never "unknown" — there is nothing unreadable about
+      // an app that has not been created.
+      if (!appExists.get(app)) {
+        appDiff[resource.key] = { status: 'missing', desired, current: undefined }
+        result.inSync = false
+        continue
+      }
+
       const bulk = prefetched.get(resource.key)
       let current: unknown
       let bulkUnreadable = false
@@ -102,6 +129,15 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         current = await resource.read(ctx, app)
       } else if (bulk) {
         current = bulk.get(app)
+        // `ssl`'s bulk report can be well-formed overall (readAll's
+        // unreadable check passes) yet still miss the `enabled` key for one
+        // app's section. That per-app gap must fall back to a direct read,
+        // same as a fully-unreadable bulk report, rather than being coerced
+        // into "missing".
+        if (resource.key === 'ssl' && current === undefined) {
+          current = await resource.read(ctx, app)
+          if (current === undefined) bulkUnreadable = true
+        }
       } else {
         current = await resource.read(ctx, app)
       }
@@ -234,6 +270,12 @@ export function formatVerbose(diff: DiffResult): string {
 
     for (const [feature, d] of changes) {
       lines.push(`@@ app: ${app} / ${feature} @@`)
+      if (d.status === 'unknown') {
+        // Not a +/- drift block — an unknown means the read failed, not
+        // that the values differ, and must not look like a proposed change.
+        lines.push(chalk.red(`  ? could not read server state — not reported as missing`))
+        continue
+      }
       const currentLines = d.current !== undefined
         ? JSON.stringify(d.current, null, 2).split('\n')
         : []
@@ -248,6 +290,12 @@ export function formatVerbose(diff: DiffResult): string {
       lines.push(`@@ services @@`)
       lines.push(chalk.green(`+ ${svc}`))
     }
+  }
+
+  if (diff.readWarnings.length > 0) {
+    lines.push('')
+    lines.push(chalk.red('Could not read some server state — treated as unknown, not missing:'))
+    for (const w of diff.readWarnings) lines.push(chalk.red(`  - ${w}`))
   }
 
   lines.push('')

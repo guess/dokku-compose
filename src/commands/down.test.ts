@@ -57,6 +57,7 @@ describe('runDown', () => {
     expect(thrown).toBeInstanceOf(DownFailedError)
     expect((thrown as DownFailedError).failures.map(f => f.app)).toEqual(['funqtion'])
     expect(runner.run).toHaveBeenCalledWith('apps:destroy', 'studio', '--force')
+    expect((thrown as DownFailedError).message).toContain('service and network teardown was skipped')
   })
 
   it('--fail-fast stops at the first failing app', async () => {

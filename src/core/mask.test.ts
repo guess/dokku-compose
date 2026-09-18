@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { maskSensitiveArgs, maskSensitiveData } from './mask.js'
+import { maskSensitiveArgs, maskSensitiveArgsList, maskSecretsInText, maskSensitiveData } from './mask.js'
 
 describe('maskSensitiveArgs', () => {
   it('masks TOKEN values showing last 4 chars', () => {
@@ -84,6 +84,65 @@ describe('maskSensitiveArgs', () => {
   it('does not affect other registry: subcommands', () => {
     expect(maskSensitiveArgs('registry:set myapp server registry.example.com'))
       .toBe('registry:set myapp server registry.example.com')
+  })
+
+  it('masks positional credentials in postgres:backup-auth', () => {
+    expect(maskSensitiveArgs('postgres:backup-auth mydb AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY us-east-1 v4 s3.amazonaws.com'))
+      .toBe('postgres:backup-auth mydb ****MPLE ****EKEY us-east-1 v4 s3.amazonaws.com')
+  })
+
+  it('masks positional credentials in redis:backup-auth', () => {
+    expect(maskSensitiveArgs('redis:backup-auth mycache AKIAIOSFODNN7EXAMPLE wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY us-east-1 v4 s3.amazonaws.com'))
+      .toBe('redis:backup-auth mycache ****MPLE ****EKEY us-east-1 v4 s3.amazonaws.com')
+  })
+})
+
+describe('maskSensitiveArgsList', () => {
+  it('masks positional credentials in a backup-auth argv, reporting the secrets', () => {
+    const { masked, secrets } = maskSensitiveArgsList([
+      'postgres:backup-auth', 'mydb',
+      'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY',
+      'us-east-1', 'v4', 's3.amazonaws.com',
+    ])
+    expect(masked).toEqual([
+      'postgres:backup-auth', 'mydb',
+      '****MPLE', '****EKEY',
+      'us-east-1', 'v4', 's3.amazonaws.com',
+    ])
+    expect(secrets).toEqual(['AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY'])
+  })
+
+  it('masks positional password in registry:login argv', () => {
+    const { masked, secrets } = maskSensitiveArgsList(['registry:login', '--global', 'ghcr.io', 'octocat', 'ghp_abcdefgh'])
+    expect(masked).toEqual(['registry:login', '--global', 'ghcr.io', 'octocat', '****efgh'])
+    expect(secrets).toEqual(['ghp_abcdefgh'])
+  })
+
+  it('masks KEY=VALUE args regardless of position', () => {
+    const { masked, secrets } = maskSensitiveArgsList(['config:set', 'myapp', 'API_KEY=abc12345', 'APP_ENV=prod'])
+    expect(masked).toEqual(['config:set', 'myapp', 'API_KEY=****2345', 'APP_ENV=prod'])
+    expect(secrets).toEqual(['abc12345'])
+  })
+
+  it('leaves non-sensitive argv untouched', () => {
+    const { masked, secrets } = maskSensitiveArgsList(['apps:create', 'myapp'])
+    expect(masked).toEqual(['apps:create', 'myapp'])
+    expect(secrets).toEqual([])
+  })
+})
+
+describe('maskSecretsInText', () => {
+  it('scrubs a secret value that got echoed back in free text', () => {
+    expect(maskSecretsInText('invalid access key AKIAIOSFODNN7EXAMPLE for region', ['AKIAIOSFODNN7EXAMPLE']))
+      .toBe('invalid access key ****MPLE for region')
+  })
+
+  it('leaves text unchanged when no secret is present', () => {
+    expect(maskSecretsInText('connection refused', ['AKIAIOSFODNN7EXAMPLE'])).toBe('connection refused')
+  })
+
+  it('ignores empty secret values', () => {
+    expect(maskSecretsInText('some text', [''])).toBe('some text')
   })
 })
 

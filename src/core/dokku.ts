@@ -2,7 +2,7 @@ import { execa } from 'execa'
 import { createHash } from 'crypto'
 import * as os from 'os'
 import * as path from 'path'
-import { maskSensitiveArgs } from './mask.js'
+import { maskSensitiveArgsList, maskSecretsInText } from './mask.js'
 
 export interface RunnerOptions {
   host?: string    // DOKKU_HOST for SSH
@@ -20,8 +20,11 @@ export class DokkuCommandError extends Error {
     public readonly exitCode: number,
     public readonly stderr: string
   ) {
-    const maskedCmd = maskSensitiveArgs(args.join(' '))
-    const stderrTail = stderr.trim()
+    const { masked, secrets } = maskSensitiveArgsList(args)
+    const maskedCmd = masked.join(' ')
+    // Mask dokku's own stderr too: a command that echoes an argument back
+    // (e.g. on validation failure) must not leak the secret it was given.
+    const stderrTail = maskSecretsInText(stderr.trim(), secrets)
     super(
       `dokku ${maskedCmd} failed (exit ${exitCode})` +
       (stderrTail ? `: ${stderrTail}` : '')

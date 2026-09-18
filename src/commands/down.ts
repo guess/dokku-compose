@@ -16,7 +16,8 @@ export interface DownOptions {
 export class DownFailedError extends Error {
   constructor(public readonly failures: { app: string; error: unknown }[]) {
     super(
-      `down failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')}`
+      `down failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')} ` +
+      `— service and network teardown was skipped because app teardown failed`
     )
     this.name = 'DownFailedError'
   }

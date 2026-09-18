@@ -34,6 +34,54 @@ describe('Nginx resource', () => {
     await reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' })
     expect(ctx.commands).toEqual([])
   })
+
+  it('a failing proxy:build-config on an undeployed app warns and continues, without throwing', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'ps:report') return 'false' // never deployed
+      return '       Nginx client max body size:   1m\n'
+    })
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'proxy:build-config') throw new Error('nothing to build yet')
+    })
+    const ctx = createContext(runner)
+
+    await expect(
+      reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' })
+    ).resolves.toBeUndefined()
+  })
+
+  it('a failing proxy:build-config on a deployed app rethrows', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'ps:report') return 'true' // already deployed
+      return '       Nginx client max body size:   1m\n'
+    })
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'proxy:build-config') throw new Error('real failure')
+    })
+    const ctx = createContext(runner)
+
+    await expect(
+      reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' })
+    ).rejects.toThrow('real failure')
+  })
+
+  it('an unreadable deploy status is treated as not deployed (warns, does not throw)', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'ps:report') return '' // unreadable
+      return '       Nginx client max body size:   1m\n'
+    })
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'proxy:build-config') throw new Error('nothing to build yet')
+    })
+    const ctx = createContext(runner)
+
+    await expect(
+      reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' })
+    ).resolves.toBeUndefined()
+  })
 })
 
 describe('Scheduler resource', () => {

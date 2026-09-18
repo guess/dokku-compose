@@ -18,6 +18,68 @@ export function maskSensitiveArgs(cmd: string): string {
     (_, prefix, password) => `${prefix}${maskValue(password)}`
   )
 
+  // Special-case `<plugin>:backup-auth <name> <access_key_id> <secret_access_key> ...` —
+  // both credentials are positional args, not KEY=VALUE.
+  masked = masked.replace(
+    /^(\S+:backup-auth\s+\S+\s+)(\S+)(\s+)(\S+)/,
+    (_, prefix, accessKeyId, sep, secretAccessKey) =>
+      `${prefix}${maskValue(accessKeyId)}${sep}${maskValue(secretAccessKey)}`
+  )
+
+  return masked
+}
+
+/**
+ * Mask a dokku argv (before it is joined into a command string) and report
+ * the original secret values that were masked, so callers can also scrub
+ * those values out of anything else derived from the same command (e.g.
+ * stderr that echoes an argument back). Operating on the array — rather than
+ * a joined string — is what makes this reliable when a value itself
+ * contains whitespace.
+ */
+export function maskSensitiveArgsList(args: string[]): { masked: string[]; secrets: string[] } {
+  const secrets: string[] = []
+  const masked = [...args]
+
+  const mark = (index: number) => {
+    const value = masked[index]
+    if (value === undefined || value === '') return
+    secrets.push(value)
+    masked[index] = maskValue(value)
+  }
+
+  // KEY=VALUE pairs, wherever they appear.
+  for (let i = 0; i < masked.length; i++) {
+    const m = masked[i].match(/^([^\s=]*(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)[^\s=]*)=(.+)$/i)
+    if (m) {
+      secrets.push(m[2])
+      masked[i] = `${m[1]}=${maskValue(m[2])}`
+    }
+  }
+
+  // `registry:login [--global] <server> <username> <password>` — password is
+  // the last positional arg.
+  if (masked[0] === 'registry:login') {
+    mark(masked.length - 1)
+  }
+
+  // `<plugin>:backup-auth <name> <access_key_id> <secret_access_key> ...` —
+  // both credentials are positional args right after the service name.
+  if (/^\S+:backup-auth$/.test(masked[0] ?? '')) {
+    mark(2)
+    mark(3)
+  }
+
+  return { masked, secrets }
+}
+
+/** Scrub any of the given secret values out of free-form text (e.g. stderr). */
+export function maskSecretsInText(text: string, secrets: string[]): string {
+  let masked = text
+  for (const secret of secrets) {
+    if (!secret) continue
+    masked = masked.split(secret).join(maskValue(secret))
+  }
   return masked
 }
 

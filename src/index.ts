@@ -136,7 +136,10 @@ program
       const diff = opts.sensitive ? rawDiff : maskDiffResult(rawDiff)
       const output = opts.verbose ? formatVerbose(diff) : formatSummary(diff)
       process.stdout.write(output)
-      process.exit(rawDiff.inSync ? 0 : 1)
+      // process.exit() here would skip the finally below and leave ctx
+      // (and any SSH control socket) open — set exitCode instead so
+      // ctx.close() still runs before the process exits naturally.
+      process.exitCode = rawDiff.inSync ? 0 : 1
     } finally {
       await ctx.close()
     }

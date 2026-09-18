@@ -140,6 +140,54 @@ describe('run() surfacing failures', () => {
     ).rejects.toThrow(/API_TOKEN=\*\*\*\*alue/)
   })
 
+  it('masks positional backup-auth credentials in the thrown error message', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = 'boom'
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    let message = ''
+    try {
+      await runner.run(
+        'postgres:backup-auth', 'mydb',
+        'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY',
+        'us-east-1', 'v4', 's3.amazonaws.com'
+      )
+    } catch (e: any) {
+      message = e.message
+    }
+    expect(message).not.toContain('AKIAIOSFODNN7EXAMPLE')
+    expect(message).not.toContain('wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY')
+    expect(message).toContain('****MPLE')
+    expect(message).toContain('****EKEY')
+  })
+
+  it('masks a secret echoed back in dokku stderr', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = 'invalid access key AKIAIOSFODNN7EXAMPLE for region us-east-1'
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    let message = ''
+    try {
+      await runner.run(
+        'postgres:backup-auth', 'mydb',
+        'AKIAIOSFODNN7EXAMPLE', 'wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEY',
+        'us-east-1', 'v4', 's3.amazonaws.com'
+      )
+    } catch (e: any) {
+      message = e.message
+    }
+    expect(message).not.toContain('AKIAIOSFODNN7EXAMPLE')
+    expect(message).toContain('****MPLE')
+  })
+
   it('check() returns false on non-zero exit instead of throwing', async () => {
     mockExecaFn.mockImplementation(async () => {
       const err: any = new Error('command failed')
