@@ -104,6 +104,17 @@ Running `up` again produces no changes — every step checks current state befor
 | `--remove-orphans` | Destroy services and networks not in config |
 | `--verbose` | Show git-style +/- diff (diff command only) |
 
+### Errors
+
+A failing Dokku command (mutation) is never reported as a success. On `up` and `down`, a
+global-phase failure (plugins, docker auth, global config, networks, services) aborts the whole
+run immediately. A per-app failure is printed with the command and Dokku's error output, and by
+default the run continues to the next app, exiting non-zero at the end with a summary of which
+apps failed; pass `--fail-fast` to stop at the first failure instead. `diff` never reports a
+resource as missing when it could not actually read server state — it falls back to a per-app
+read and, if that's unreadable too, marks the resource `unknown` and exits non-zero with a
+warning naming what it couldn't read.
+
 ## Features
 
 All features are idempotent — running `up` twice produces no changes.

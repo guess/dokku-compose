@@ -6,7 +6,7 @@ import { maskSensitiveData } from '../core/mask.js'
 import { ensureDokkuVersion } from '../modules/version.js'
 import chalk from 'chalk'
 
-type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra'
+type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra' | 'unknown'
 
 interface FeatureDiff {
   status: DiffStatus
@@ -22,20 +22,76 @@ interface DiffResult {
   apps: Record<string, AppDiff>
   services: Record<string, { status: DiffStatus }>
   inSync: boolean
+  /** Bulk or per-app reads that could not be trusted; diff falls back but flags them. */
+  readWarnings: string[]
+}
+
+/**
+ * `ssl` is special: the current value from certs:report is only ever a
+ * boolean (cert present or not), while desired can be an object
+ * ({certfile, keyfile}) or a boolean. A plain computeChange() would compare
+ * `true` against `{certfile, keyfile}` as unequal scalars and report
+ * "changed" on every run even when the cert is already in place. Treat:
+ *  - desired object + current true  -> in-sync (a cert is present)
+ *  - desired object + current false -> missing
+ *  - desired false + current true -> changed (should be removed)
+ *  - current undefined (report was empty/unreadable) -> defer to the
+ *    generic path so the unknown handling applies, same as any other
+ *    resource whose read failed; `undefined` must never be coerced to
+ *    "missing" here, or an installed cert reads back as absent.
+ *  - anything else (both booleans) -> fall through to the normal comparison
+ */
+function diffSslStatus(desired: unknown, current: unknown): DiffStatus | undefined {
+  if (typeof desired !== 'object' || desired === null) return undefined
+  if (current === undefined) return undefined
+  if (current === true) return 'in-sync'
+  if (current === false || current === null) return 'missing'
+  return undefined
+}
+
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined ||
+    (Array.isArray(value) && value.length === 0) ||
+    (typeof value === 'object' && Object.keys(value as any).length === 0)
 }
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
-  const result: DiffResult = { apps: {}, services: {}, inSync: true }
+  const result: DiffResult = { apps: {}, services: {}, inSync: true, readWarnings: [] }
+  const appNames = Object.keys(config.apps)
 
   await ensureDokkuVersion(ctx, config.dokku?.version)
 
-  // Bulk prefetch: run all readAll queries in parallel
-  const prefetched = new Map<string, Map<string, unknown>>()
+  // An app that does not exist on the server yet cannot have any of its
+  // resources read — every resource report for it is naturally empty. That
+  // is a normal first run, not a read failure, so this must be resolved
+  // before the unreadable heuristic below (which only wants to see apps
+  // that exist and still came back empty).
+  const appExists = new Map<string, boolean>()
+  await Promise.all(
+    appNames.map(async app => {
+      appExists.set(app, await ctx.check('apps:exists', app))
+    })
+  )
+  const existingAppNames = appNames.filter(app => appExists.get(app))
+
+  // Bulk prefetch: run all readAll queries in parallel. A resource whose
+  // bulk report comes back with zero parseable app sections, despite apps
+  // existing, means the read itself failed (e.g. a Dokku bash-plugin report
+  // command that silently produced no output) — not that every app is
+  // missing that resource. Treat that as "unreadable" rather than trusting
+  // an empty map, and fall back to a per-app read below.
+  const prefetched = new Map<string, Map<string, unknown> | null>()
   await Promise.all(
     ALL_APP_RESOURCES
       .filter(r => !r.forceApply && !r.key.startsWith('_') && r.readAll)
       .map(async r => {
-        prefetched.set(r.key, await r.readAll!(ctx))
+        try {
+          const bulk = await r.readAll!(ctx)
+          const unreadable = existingAppNames.length > 0 && bulk.size === 0
+          prefetched.set(r.key, unreadable ? null : bulk)
+        } catch {
+          prefetched.set(r.key, null)
+        }
       })
   )
 
@@ -55,15 +111,58 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
       if (desired === undefined) continue
 
+      // The app itself does not exist yet: every desired resource on it is
+      // simply missing, never "unknown" — there is nothing unreadable about
+      // an app that has not been created.
+      if (!appExists.get(app)) {
+        appDiff[resource.key] = { status: 'missing', desired, current: undefined }
+        result.inSync = false
+        continue
+      }
+
       const bulk = prefetched.get(resource.key)
-      const current = bulk ? bulk.get(app) : await resource.read(ctx, app)
+      let current: unknown
+      let bulkUnreadable = false
+
+      if (bulk === null) {
+        bulkUnreadable = true
+        current = await resource.read(ctx, app)
+      } else if (bulk) {
+        current = bulk.get(app)
+        // `ssl`'s bulk report can be well-formed overall (readAll's
+        // unreadable check passes) yet still miss the `enabled` key for one
+        // app's section. That per-app gap must fall back to a direct read,
+        // same as a fully-unreadable bulk report, rather than being coerced
+        // into "missing".
+        if (resource.key === 'ssl' && current === undefined) {
+          current = await resource.read(ctx, app)
+          if (current === undefined) bulkUnreadable = true
+        }
+      } else {
+        current = await resource.read(ctx, app)
+      }
+
+      const sslStatus = resource.key === 'ssl' ? diffSslStatus(desired, current) : undefined
+
+      if (sslStatus) {
+        appDiff[resource.key] = { status: sslStatus, desired, current }
+        if (sslStatus !== 'in-sync') result.inSync = false
+        continue
+      }
+
       const change = computeChange(current as any, desired as any)
 
       if (!change.changed) {
         appDiff[resource.key] = { status: 'in-sync', desired, current }
-      } else if (current === null || current === undefined ||
-                 (Array.isArray(current) && current.length === 0) ||
-                 (typeof current === 'object' && Object.keys(current as any).length === 0)) {
+      } else if (bulkUnreadable && isEmptyValue(current)) {
+        // The bulk report failed AND the per-app fallback also came back
+        // empty — we cannot tell "genuinely unset" from "read failed" here,
+        // so refuse to call it missing.
+        appDiff[resource.key] = { status: 'unknown', desired, current }
+        result.inSync = false
+        const msg = `could not read '${resource.key}' for app '${app}' (bulk report was empty and the per-app read returned nothing)`
+        result.readWarnings.push(msg)
+      } else if (isEmptyValue(current)) {
         appDiff[resource.key] = { status: 'missing', desired, current }
         result.inSync = false
       } else {
@@ -91,7 +190,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 }
 
 export function maskDiffResult(diff: DiffResult): DiffResult {
-  const masked: DiffResult = { apps: {}, services: diff.services, inSync: diff.inSync }
+  const masked: DiffResult = { apps: {}, services: diff.services, inSync: diff.inSync, readWarnings: diff.readWarnings }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
     for (const [feature, d] of Object.entries(appDiff)) {
@@ -117,7 +216,9 @@ export function formatSummary(diff: DiffResult): string {
     } else {
       lines.push(`  app: ${chalk.bold(app)}`)
       for (const [feature, d] of changes) {
-        const sym = d.status === 'missing' ? chalk.green('+') : chalk.yellow('~')
+        const sym = d.status === 'missing' ? chalk.green('+')
+          : d.status === 'unknown' ? chalk.red('?')
+          : chalk.yellow('~')
         lines.push(`    ${sym} ${feature}: ${formatFeatureSummary(d)}`)
       }
     }
@@ -135,6 +236,12 @@ export function formatSummary(diff: DiffResult): string {
     .filter(d => d.status !== 'in-sync').length +
     Object.values(diff.services).filter(d => d.status !== 'in-sync').length
 
+  if (diff.readWarnings.length > 0) {
+    lines.push('')
+    lines.push(chalk.red('  Could not read some server state — treated as unknown, not missing:'))
+    for (const w of diff.readWarnings) lines.push(chalk.red(`    - ${w}`))
+  }
+
   lines.push('')
   if (total === 0) {
     lines.push(chalk.green('  Everything in sync.'))
@@ -146,6 +253,7 @@ export function formatSummary(diff: DiffResult): string {
 }
 
 function formatFeatureSummary(d: FeatureDiff): string {
+  if (d.status === 'unknown') return '(could not read server state — not reported as missing)'
   if (d.status === 'missing') return '(not set on server)'
   if (Array.isArray(d.desired) && Array.isArray(d.current)) {
     return `${(d.current as unknown[]).length} → ${(d.desired as unknown[]).length} items`
@@ -162,6 +270,12 @@ export function formatVerbose(diff: DiffResult): string {
 
     for (const [feature, d] of changes) {
       lines.push(`@@ app: ${app} / ${feature} @@`)
+      if (d.status === 'unknown') {
+        // Not a +/- drift block — an unknown means the read failed, not
+        // that the values differ, and must not look like a proposed change.
+        lines.push(chalk.red(`  ? could not read server state — not reported as missing`))
+        continue
+      }
       const currentLines = d.current !== undefined
         ? JSON.stringify(d.current, null, 2).split('\n')
         : []
@@ -176,6 +290,12 @@ export function formatVerbose(diff: DiffResult): string {
       lines.push(`@@ services @@`)
       lines.push(chalk.green(`+ ${svc}`))
     }
+  }
+
+  if (diff.readWarnings.length > 0) {
+    lines.push('')
+    lines.push(chalk.red('Could not read some server state — treated as unknown, not missing:'))
+    for (const w of diff.readWarnings) lines.push(chalk.red(`  - ${w}`))
   }
 
   lines.push('')

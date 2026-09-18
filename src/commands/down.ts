@@ -4,10 +4,23 @@ import { destroyApp } from '../modules/apps.js'
 import { destroyPostgres } from '../modules/postgres.js'
 import { destroyRedis } from '../modules/redis.js'
 import { destroyAppLinks } from '../modules/links.js'
-import { logAction, logDone, logSkip } from '../core/logger.js'
+import { logAction, logDone, logSkip, logError } from '../core/logger.js'
 
 export interface DownOptions {
   force: boolean
+  /** Stop at the first per-app failure instead of continuing to the next app. */
+  failFast?: boolean
+}
+
+/** Thrown by runDown when one or more apps failed during the per-app teardown. */
+export class DownFailedError extends Error {
+  constructor(public readonly failures: { app: string; error: unknown }[]) {
+    super(
+      `down failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')} ` +
+      `— service and network teardown was skipped because app teardown failed`
+    )
+    this.name = 'DownFailedError'
+  }
 }
 
 export async function runDown(
@@ -20,18 +33,30 @@ export async function runDown(
     ? appFilter
     : Object.keys(config.apps)
 
-  // Phase 1: Per-app teardown
+  // Phase 1: Per-app teardown. Same default-continue / --fail-fast pattern as `up`.
+  const failures: { app: string; error: unknown }[] = []
   for (const app of apps) {
     const appConfig = config.apps[app]
     if (!appConfig) continue
 
-    // Unlink services first
-    if (appConfig.links && (config.postgres || config.redis)) {
-      await destroyAppLinks(ctx, app, appConfig.links, config)
-    }
+    try {
+      // Unlink services first
+      if (appConfig.links && (config.postgres || config.redis)) {
+        await destroyAppLinks(ctx, app, appConfig.links, config)
+      }
 
-    // Destroy the app
-    await destroyApp(ctx, app)
+      // Destroy the app
+      await destroyApp(ctx, app)
+    } catch (error) {
+      if (opts.failFast) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      logError(app, message)
+      failures.push({ app, error })
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new DownFailedError(failures)
   }
 
   // Phase 2: Destroy services (if no remaining apps link to them)

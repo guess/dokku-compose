@@ -3,20 +3,25 @@ import type { Change } from '../core/change.js'
 import type { Context } from '../core/context.js'
 import { parseBulkReport } from './parsers.js'
 
-type SslValue = false | true | { certfile: string; keyfile: string }
+// `undefined` means "could not read this" — a real app answers `true` or
+// `false` to `--ssl-enabled`; an empty/unreadable report must not be
+// coerced into `false`, or an installed cert reads back as missing.
+type SslValue = false | true | { certfile: string; keyfile: string } | undefined
 
 export const Certs: Resource<SslValue> = {
   key: 'ssl',
   read: async (ctx, target) => {
-    const raw = await ctx.query('certs:report', target, '--ssl-enabled')
-    return raw.trim() === 'true'
+    const raw = (await ctx.query('certs:report', target, '--ssl-enabled')).trim()
+    if (raw === '') return undefined
+    return raw === 'true'
   },
   readAll: async (ctx: Context) => {
     const raw = await ctx.query('certs:report')
     const bulk = parseBulkReport(raw, 'ssl')
     const result = new Map<string, SslValue>()
     for (const [app, report] of bulk) {
-      result.set(app, report['enabled'] === 'true')
+      const enabled = report['enabled']
+      result.set(app, enabled === undefined ? undefined : enabled === 'true')
     }
     return result
   },
