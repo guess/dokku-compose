@@ -2,10 +2,32 @@ import { execa } from 'execa'
 import { createHash } from 'crypto'
 import * as os from 'os'
 import * as path from 'path'
+import { maskSensitiveArgs } from './mask.js'
 
 export interface RunnerOptions {
   host?: string    // DOKKU_HOST for SSH
   dryRun?: boolean
+}
+
+/**
+ * Thrown by Runner.run() when a mutation command exits non-zero. Carries the
+ * (masked) command line, exit code and a trimmed stderr tail so callers can
+ * surface a clear error instead of silently reporting success.
+ */
+export class DokkuCommandError extends Error {
+  constructor(
+    public readonly args: string[],
+    public readonly exitCode: number,
+    public readonly stderr: string
+  ) {
+    const maskedCmd = maskSensitiveArgs(args.join(' '))
+    const stderrTail = stderr.trim()
+    super(
+      `dokku ${maskedCmd} failed (exit ${exitCode})` +
+      (stderrTail ? `: ${stderrTail}` : '')
+    )
+    this.name = 'DokkuCommandError'
+  }
 }
 
 export interface Runner {
@@ -44,20 +66,28 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     return `'${arg.replace(/'/g, "'\\''")}'`
   }
 
-  async function execDokku(args: string[]): Promise<{ stdout: string; ok: boolean }> {
+  async function execDokku(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number; ok: boolean }> {
+    // stdin must never be inherited as an open pipe: several Dokku bash-plugin
+    // commands (nginx:report, certs:report, domains:report, git:report,
+    // docker-options:report, builder-dockerfile:*, postgres:create/link, ...)
+    // silently do nothing and exit 0 with empty stdout when stdin is a pipe,
+    // while Go-plugin commands are unaffected. `stdin: 'ignore'` reproduces the
+    // working `stdin: 'inherit'`/interactive-shell behaviour without attaching
+    // this process's stdin to the child. No call site here pipes input to
+    // dokku/ssh, so this is safe everywhere.
     if (opts.host) {
       try {
-        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)])
-        return { stdout: String(result.stdout ?? ''), ok: true }
+        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)], { stdin: 'ignore' })
+        return { stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), exitCode: result.exitCode ?? 0, ok: true }
       } catch (e: any) {
-        return { stdout: String(e.stdout ?? ''), ok: false }
+        return { stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? ''), exitCode: e.exitCode ?? 1, ok: false }
       }
     } else {
       try {
-        const result = await execa('dokku', args)
-        return { stdout: String(result.stdout ?? ''), ok: true }
+        const result = await execa('dokku', args, { stdin: 'ignore' })
+        return { stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), exitCode: result.exitCode ?? 0, ok: true }
       } catch (e: any) {
-        return { stdout: String(e.stdout ?? ''), ok: false }
+        return { stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? ''), exitCode: e.exitCode ?? 1, ok: false }
       }
     }
   }
@@ -70,10 +100,15 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
         log.push(args.map(a => a.includes(' ') ? shellQuote(a) : a).join(' '))
         return
       }
-      await execDokku(args)
+      const { ok, exitCode, stderr } = await execDokku(args)
+      if (!ok) {
+        throw new DokkuCommandError(args, exitCode, stderr)
+      }
     },
 
     async query(...args: string[]): Promise<string> {
+      // Lenient by design: callers (e.g. `config:get` of a missing key) rely
+      // on a non-zero exit reading back as empty output, not a thrown error.
       const { stdout } = await execDokku(args)
       return stdout.trim()
     },
@@ -86,7 +121,7 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     async close(): Promise<void> {
       if (!opts.host || !controlPath) return
       try {
-        await execa('ssh', ['-O', 'exit', '-o', `ControlPath=${controlPath}`, `dokku@${opts.host}`])
+        await execa('ssh', ['-O', 'exit', '-o', `ControlPath=${controlPath}`, `dokku@${opts.host}`], { stdin: 'ignore' })
       } catch {
         // Socket may not exist yet (e.g. dry-run or no commands ran) — ignore
       }

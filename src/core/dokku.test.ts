@@ -10,7 +10,7 @@ mock.module('execa', () => ({
 }))
 
 // Import after mocking so the module sees the mock
-const { createRunner } = await import('./dokku.js')
+const { createRunner, DokkuCommandError } = await import('./dokku.js')
 
 describe('createRunner with host', () => {
   beforeEach(() => {
@@ -59,6 +59,18 @@ describe('createRunner with host', () => {
     expect(callArgs).toContain("'0 5 * * *'")
   })
 
+  it('passes stdin: ignore over SSH — regression for bash-plugin reports returning empty', async () => {
+    // On a real Dokku box, execa's default stdin:'pipe' makes bash-plugin
+    // commands (nginx:report, certs:report, postgres:create, ...) silently
+    // exit 0 with empty stdout, while Go-plugin commands are unaffected.
+    // stdin:'ignore' reproduces the working inherit/interactive behaviour.
+    const runner = createRunner({ host: 'myserver.com' })
+    mockExecaFn.mockClear()
+    await runner.query('nginx:report')
+    const callOpts = mockExecaFn.mock.calls[0][2] as any
+    expect(callOpts).toEqual({ stdin: 'ignore' })
+  })
+
   it('runner has a close() method', () => {
     const runner = createRunner({ host: 'myserver.com' })
     expect(typeof runner.close).toBe('function')
@@ -70,8 +82,86 @@ describe('createRunner with host', () => {
     await runner.close()
     expect(mockExecaFn).toHaveBeenCalledWith(
       'ssh',
-      expect.arrayContaining(['-O', 'exit'])
+      expect.arrayContaining(['-O', 'exit']),
+      expect.objectContaining({ stdin: 'ignore' })
     )
+  })
+})
+
+describe('createRunner without host (local dokku)', () => {
+  beforeEach(() => {
+    mockExecaFn.mockClear()
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '' }))
+  })
+
+  it('passes stdin: ignore to the local dokku call', async () => {
+    const runner = createRunner({})
+    await runner.query('nginx:report')
+    expect(mockExecaFn).toHaveBeenCalledWith('dokku', ['nginx:report'], { stdin: 'ignore' })
+  })
+})
+
+describe('run() surfacing failures', () => {
+  beforeEach(() => {
+    mockExecaFn.mockClear()
+  })
+
+  it('rejects with a DokkuCommandError carrying the command and stderr on non-zero exit', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = 'app not found'
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    await expect(runner.run('apps:create', 'myapp')).rejects.toThrow(DokkuCommandError)
+    await expect(runner.run('apps:create', 'myapp')).rejects.toThrow(/apps:create myapp/)
+    await expect(runner.run('apps:create', 'myapp')).rejects.toThrow(/app not found/)
+  })
+
+  it('does not throw when the command succeeds', async () => {
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '', exitCode: 0 }))
+    const runner = createRunner({})
+    await expect(runner.run('apps:create', 'myapp')).resolves.toBeUndefined()
+  })
+
+  it('masks sensitive args in the thrown error message', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = 'boom'
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    await expect(
+      runner.run('config:set', 'myapp', 'API_TOKEN=supersecretvalue')
+    ).rejects.toThrow(/API_TOKEN=\*\*\*\*alue/)
+  })
+
+  it('check() returns false on non-zero exit instead of throwing', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = ''
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    await expect(runner.check('postgres:exists', 'myapp-postgres')).resolves.toBe(false)
+  })
+
+  it('query() stays lenient and returns trimmed stdout even on non-zero exit', async () => {
+    mockExecaFn.mockImplementation(async () => {
+      const err: any = new Error('command failed')
+      err.stdout = ''
+      err.stderr = 'no such key'
+      err.exitCode = 1
+      throw err
+    })
+    const runner = createRunner({})
+    await expect(runner.query('config:get', 'myapp', 'MISSING_KEY')).resolves.toBe('')
   })
 })
 
