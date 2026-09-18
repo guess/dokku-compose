@@ -23,15 +23,68 @@ import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
 import { ensureGlobalLogs } from '../modules/logs.js'
 import { ensureGlobalNginx } from '../modules/nginx.js'
+import { logError } from '../core/logger.js'
+import type { AppConfig } from '../core/schema.js'
+
+export interface RunUpOptions {
+  /** Stop at the first per-app failure instead of continuing to the next app. */
+  failFast?: boolean
+}
+
+/** Thrown by runUp when one or more apps failed during the per-app phase. */
+export class UpFailedError extends Error {
+  constructor(public readonly failures: { app: string; error: unknown }[]) {
+    super(
+      `up failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')}`
+    )
+    this.name = 'UpFailedError'
+  }
+}
+
+async function processApp(ctx: Context, config: Config, app: string, appConfig: AppConfig): Promise<void> {
+  // Lifecycle
+  await reconcile(Apps, ctx, app, true)
+
+  // Networking
+  await reconcile(Domains, ctx, app, appConfig.domains)
+  await reconcile(Networks, ctx, app, appConfig.networks)
+  await reconcile(NetworkProps, ctx, app, appConfig.network)
+  await reconcile(Proxy, ctx, app, appConfig.proxy?.enabled)
+  await reconcile(Ports, ctx, app, appConfig.ports)
+
+  // Links (between networking and config)
+  if (config.postgres || config.redis) {
+    await ensureAppLinks(ctx, app, appConfig.links ?? [], config)
+  }
+
+  // Configuration
+  await reconcile(Certs, ctx, app, appConfig.ssl)
+  await reconcile(Storage, ctx, app, appConfig.storage)
+  await reconcile(Nginx, ctx, app, appConfig.nginx)
+  await reconcile(Checks, ctx, app, appConfig.checks)
+  await reconcile(Logs, ctx, app, appConfig.logs)
+  await reconcile(Registry, ctx, app, appConfig.registry)
+  await reconcile(Scheduler, ctx, app, appConfig.scheduler)
+  await reconcile(ConfigResource, ctx, app, appConfig.env)
+
+  // Build
+  await reconcile(Builder, ctx, app, appConfig.build)
+  await reconcile(Git, ctx, app, appConfig.git ?? config.git)
+  await reconcile(DockerOptions, ctx, app, appConfig.docker_options)
+}
 
 export async function runUp(
   ctx: Context,
   config: Config,
-  appFilter: string[]
+  appFilter: string[],
+  opts: RunUpOptions = {}
 ): Promise<void> {
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
+
+  // Global phases: every app depends on these, so a failure here aborts the
+  // whole run immediately, regardless of --fail-fast.
 
   // Phase 0: Version check
   await ensureDokkuVersion(ctx, config.dokku?.version)
@@ -54,39 +107,25 @@ export async function runUp(
   if (config.redis) await ensureRedis(ctx, config.redis)
   if (config.postgres) await ensurePostgresBackups(ctx, config.postgres)
 
-  // Phase 5: Per-app
+  // Phase 5: Per-app. Default (documented) behaviour is to continue to the
+  // next app on failure and report a summary at the end, exiting non-zero.
+  // --fail-fast stops at the first failure instead.
+  const failures: { app: string; error: unknown }[] = []
   for (const app of apps) {
     const appConfig = config.apps[app]
     if (!appConfig) continue
 
-    // Lifecycle
-    await reconcile(Apps, ctx, app, true)
-
-    // Networking
-    await reconcile(Domains, ctx, app, appConfig.domains)
-    await reconcile(Networks, ctx, app, appConfig.networks)
-    await reconcile(NetworkProps, ctx, app, appConfig.network)
-    await reconcile(Proxy, ctx, app, appConfig.proxy?.enabled)
-    await reconcile(Ports, ctx, app, appConfig.ports)
-
-    // Links (between networking and config)
-    if (config.postgres || config.redis) {
-      await ensureAppLinks(ctx, app, appConfig.links ?? [], config)
+    try {
+      await processApp(ctx, config, app, appConfig)
+    } catch (error) {
+      if (opts.failFast) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      logError(app, message)
+      failures.push({ app, error })
     }
+  }
 
-    // Configuration
-    await reconcile(Certs, ctx, app, appConfig.ssl)
-    await reconcile(Storage, ctx, app, appConfig.storage)
-    await reconcile(Nginx, ctx, app, appConfig.nginx)
-    await reconcile(Checks, ctx, app, appConfig.checks)
-    await reconcile(Logs, ctx, app, appConfig.logs)
-    await reconcile(Registry, ctx, app, appConfig.registry)
-    await reconcile(Scheduler, ctx, app, appConfig.scheduler)
-    await reconcile(ConfigResource, ctx, app, appConfig.env)
-
-    // Build
-    await reconcile(Builder, ctx, app, appConfig.build)
-    await reconcile(Git, ctx, app, appConfig.git ?? config.git)
-    await reconcile(DockerOptions, ctx, app, appConfig.docker_options)
+  if (failures.length > 0) {
+    throw new UpFailedError(failures)
   }
 }

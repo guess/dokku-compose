@@ -15,6 +15,7 @@ import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from './com
 import { validate } from './commands/validate.js'
 
 import { maskSensitiveArgs, maskSensitiveData } from './core/mask.js'
+import chalk from 'chalk'
 
 const program = new Command()
   .name('dokku-compose')
@@ -39,7 +40,7 @@ program
     const runner = makeRunner(opts)
     const ctx = createContext(runner)
     try {
-      await runUp(ctx, config, apps)
+      await runUp(ctx, config, apps, { failFast: opts.failFast ?? false })
       if (opts.dryRun) {
         console.log('\n# Commands that would run:')
         for (const cmd of runner.dryRunLog) {
@@ -47,6 +48,9 @@ program
           console.log(`dokku ${line}`)
         }
       }
+    } catch (error: any) {
+      console.error(chalk.red(`\n${error.message}`))
+      process.exitCode = 1
     } finally {
       await ctx.close()
     }
@@ -57,13 +61,17 @@ program
   .description('Destroy apps and services (requires --force)')
   .option('-f, --file <path>', 'Config file', 'dokku-compose.yml')
   .option('--force', 'Required to destroy apps')
+  .option('--fail-fast', 'Stop on first error')
   .action(async (apps, opts) => {
     if (!opts.force) { console.error('--force required'); process.exit(1) }
     const config = loadConfig(opts.file)
     const runner = makeRunner({})
     const ctx = createContext(runner)
     try {
-      await runDown(ctx, config, apps, { force: true })
+      await runDown(ctx, config, apps, { force: true, failFast: opts.failFast ?? false })
+    } catch (error: any) {
+      console.error(chalk.red(`\n${error.message}`))
+      process.exitCode = 1
     } finally {
       await ctx.close()
     }

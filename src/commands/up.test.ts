@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createRunner } from '../core/dokku.js'
+import { createRunner, DokkuCommandError } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { runUp } from './up.js'
+import { runUp, UpFailedError } from './up.js'
 import { loadConfig } from '../core/config.js'
 import path from 'path'
 
@@ -65,5 +65,80 @@ describe('runUp', () => {
     await runUp(ctx, config, ['funqtion'])
     expect(runner.run).toHaveBeenCalledWith('apps:create', 'funqtion')
     expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'studio')
+  })
+
+  it('continues to the next app when one fails, and throws a summary at the end (default behaviour)', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
+    runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
+      // The first app's app-create fails; everything else succeeds.
+      if (args[0] === 'apps:create' && args[1] === 'funqtion') {
+        throw new DokkuCommandError(args, 1, 'app already exists under a different owner')
+      }
+    })
+    const ctx = createContext(runner)
+    const config = loadConfig(path.join(FIXTURES, 'full.yml'))
+
+    let thrown: unknown
+    try {
+      await runUp(ctx, config, ['funqtion', 'studio'])
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeInstanceOf(UpFailedError)
+    expect((thrown as UpFailedError).failures.map(f => f.app)).toEqual(['funqtion'])
+    // studio still got processed even though funqtion failed
+    expect(runner.run).toHaveBeenCalledWith('apps:create', 'studio')
+  })
+
+  it('--fail-fast stops at the first failing app instead of continuing', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
+    runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'apps:create' && args[1] === 'funqtion') {
+        throw new DokkuCommandError(args, 1, 'boom')
+      }
+    })
+    const ctx = createContext(runner)
+    const config = loadConfig(path.join(FIXTURES, 'full.yml'))
+
+    let thrown: unknown
+    try {
+      await runUp(ctx, config, ['funqtion', 'studio'], { failFast: true })
+    } catch (e) {
+      thrown = e
+    }
+
+    expect(thrown).toBeInstanceOf(DokkuCommandError)
+    // studio's phase never started
+    expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'studio')
+  })
+
+  it('aborts the whole run when a global-phase command fails, before any per-app work', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
+    runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'network:create') {
+        throw new DokkuCommandError(args, 1, 'network already in use')
+      }
+    })
+    const ctx = createContext(runner)
+    const config = loadConfig(path.join(FIXTURES, 'full.yml'))
+
+    await expect(runUp(ctx, config, ['funqtion'])).rejects.toThrow(DokkuCommandError)
+    expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'funqtion')
   })
 })

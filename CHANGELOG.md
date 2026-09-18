@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every `execa` call now passes `stdin: 'ignore'`.** On a real Dokku box, execa's default `stdin: 'pipe'` made several Dokku bash-plugin commands (`nginx:report`, `certs:report`, `domains:report`, `git:report`, `docker-options:report`, `builder-dockerfile:*`, `postgres:create`, `postgres:link`, ...) silently do nothing and exit 0 with empty stdout, while Go-plugin commands were unaffected. This made `diff` report `ssl`, `domains` etc. as missing when they were actually set, and made `up` print "done" for mutations (like creating and linking a postgres service) that never ran.
+- **A failed mutation is no longer reported as done.** `Runner.run()` now throws a `DokkuCommandError` (masked command, exit code, stderr) on a non-zero exit instead of swallowing it. `check()` still returns `false` and `query()` still returns lenient (possibly empty) output on failure — their existing contracts are unchanged.
+- **`up` (and `down`) now fail loudly.** A failing global-phase command (plugins, docker auth, global config, networks, services) aborts the whole run. In the per-app phase, a failing app is reported with its command and stderr, and the run continues to the next app by default — the documented behaviour — then exits non-zero with a summary of which apps failed. `--fail-fast` (already declared but previously unwired) now actually stops at the first failure.
+- **`diff` no longer reports "missing" for state it could not read.** If a bulk report comes back with zero parseable sections while apps exist, `diff` falls back to a per-app read instead of treating every app as missing that resource; if the per-app read is also empty, the resource is reported as `unknown` (not `missing`) and `diff` exits non-zero with a warning naming what it could not read.
+- **`ssl` no longer shows as "changed" on every `diff`/`up` run.** `certs:report` only ever reports a boolean (cert present or not), so comparing it against a desired `{certfile, keyfile}` object always looked different. `diff` now treats a desired cert object against a present cert (`true`) as in-sync, and against an absent one (`false`) as missing.
+
+### Breaking (behavioural, not API)
+
+- `up`/`down` and any script wrapping them will now see non-zero exit codes for failures that previously exited 0 silently. `diff` can now exit non-zero with a read-warning even when nothing is actually out of sync, if server state could not be read at all.
+
 ## [0.11.0] - 2026-04-28
 
 ### Added
