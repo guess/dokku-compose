@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-18
+
 ### Fixed
 
 - **Every `execa` call now passes `stdin: 'ignore'`.** On a real Dokku box, execa's default `stdin: 'pipe'` made several Dokku bash-plugin commands (`nginx:report`, `certs:report`, `domains:report`, `git:report`, `docker-options:report`, `builder-dockerfile:*`, `postgres:create`, `postgres:link`, ...) silently do nothing and exit 0 with empty stdout, while Go-plugin commands were unaffected. This made `diff` report `ssl`, `domains` etc. as missing when they were actually set, and made `up` print "done" for mutations (like creating and linking a postgres service) that never ran.
