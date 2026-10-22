@@ -22,9 +22,19 @@ const GitSchema = z.object({
   deploy_branch: z.string().optional(),
 })
 
+const LinkSchema = z.union([
+  z.string(),
+  z.object({
+    service: z.string(),
+    alias: z.string().min(1).optional(),
+    env_var: z.string().min(1).optional(),
+    querystring: z.string().min(1).optional(),
+  }).strict().refine(l => !(l.alias && l.env_var), { message: '`alias` and `env_var` cannot be combined' }),
+])
+
 const AppSchema = z.object({
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
-  links: z.array(z.string()).optional(),
+  links: z.array(LinkSchema).optional(),
   ports: z.array(PortSchema).optional(),
   env: EnvMapSchema.optional(),
   ssl: z.union([

@@ -41,6 +41,8 @@ postgres:
     version: "17-3.5"
     image: postgis/postgis
 
+  myapp-reports: {}
+
 redis:
   myapp-redis:
     version: "7.2-alpine"
@@ -52,7 +54,10 @@ apps:
       - www.myapp.example.com
     links:
       - myapp-db
-      - myapp-redis
+      - myapp-reports
+      - service: myapp-redis
+        alias: CACHE
+        querystring: "timeout=5"
     ports:
       - "http:80:5000"
       - "https:443:5000"

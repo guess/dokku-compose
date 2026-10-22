@@ -1,0 +1,8 @@
+postgres:
+  myapp-db: {}
+apps:
+  myapp:
+    links:
+      - service: myapp-db
+        alias: BLUE
+        env_var: BLUE_URL

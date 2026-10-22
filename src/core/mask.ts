@@ -104,3 +104,12 @@ export function maskSensitiveData(data: unknown): unknown {
   }
   return data
 }
+
+/** Mask the value of each `key=value` pair of a querystring whose key looks sensitive. */
+export function maskQuerystring(qs: string): string {
+  return qs.split('&').map(pair => {
+    const i = pair.indexOf('=')
+    if (i === -1 || !SENSITIVE_RE.test(pair.slice(0, i))) return pair
+    return `${pair.slice(0, i)}=${maskValue(pair.slice(i + 1))}`
+  }).join('&')
+}
