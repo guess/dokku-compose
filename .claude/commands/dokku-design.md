@@ -14,7 +14,7 @@ Work through the `$ARGUMENTS.context` namespace from `docs/dokku-audit.md`, desi
 
 Read these files to understand the current state:
 
-- `docs/dokku-audit.md` — find the section for `$ARGUMENTS.context`
+- `docs/dokku-audit.md` — the `$ARGUMENTS.context` rows in **Commands** and **Properties**, and the **Priorities** items they name
 - `lib/<module>.sh` — the current implementation (if it exists)
 - `tests/<module>.bats` — the current tests (if they exist)
 - Fetch the upstream Dokku docs (the link is in the audit) to understand all available commands and their behavior
@@ -78,13 +78,9 @@ Three docs to update:
 
 ### 5a. `docs/dokku-audit.md`
 
-Update the section for `$ARGUMENTS.context`:
-- Commands table: mark newly supported commands as `yes`
-- YAML Keys: update from "Proposed" to actual (remove "NOT YET IMPLEMENTED" notes)
-- Gaps: remove resolved gaps, note any remaining
-- Decision: update status and description
-- Summary table: update status if changed (partial → supported, etc.)
-- Statistics: update counts if status changed
+- **Commands**: change the status and note in `scripts/dokku-audit/commands.tsv` (or `datastores.tsv`) for every command the change covers, then regenerate the tables and summary as described in the doc's "Re-auditing" section
+- **Properties**: change the mark (✅ 🟡 ❌ ⛔) and note for every property the change covers
+- **Priorities**: remove a finished item, or narrow it to what remains
 
 ### 5b. `docs/reference/<module>.md`
 

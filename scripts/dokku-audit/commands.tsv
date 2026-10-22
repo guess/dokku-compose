@@ -1,0 +1,217 @@
+# Dokku command	status	dokku-compose note
+# status: Y supported, R read by dokku-compose, P partial, N missing, X won't add
+cleanup	X	Maintenance
+deploy	X	Deploy trigger
+help	X	Read-only
+report	X	Read-only
+url	X	Read-only
+urls	X	Read-only
+version	R	Version floor check before every server command
+shell	X	Interactive
+enter	X	Interactive
+run	X	One-off command
+logs	X	Read-only
+config	X	Read-only (alias of `config:show`)
+events	X	Read-only
+events:list	X	Read-only
+events:on	N	A11: server-wide toggle
+events:off	N	A11
+trace:on	X	Debugging toggle
+trace:off	X	Debugging toggle
+app-json:report	R	`build.app_json` read
+app-json:set	P	`build.app_json` (`appjson-path`); no global (F10)
+apps:clone	X	One-shot action
+apps:create	Y	`apps:`
+apps:destroy	Y	`down`
+apps:exists	R	Before create and in `diff`/`ps`
+apps:list	R	`export`
+apps:lock	N	A4
+apps:locked	N	A4 (read side)
+apps:rename	X	One-shot action
+apps:report	X	Read-only
+apps:set	N	A4: `disable-autocreation` (global)
+apps:unlock	N	A4
+builder-dockerfile:report	R	`build.dockerfile` read
+builder-dockerfile:set	Y	`build.dockerfile` (`dockerfile-path`)
+builder-herokuish:report	X	Read-only
+builder-herokuish:set	N	A8: `allowed`
+builder-lambda:report	X	Read-only
+builder-lambda:set	N	A8: `lambdayml-path`
+builder-nixpacks:report	X	Read-only
+builder-nixpacks:set	N	A8: `nixpackstoml-path`
+builder-pack:report	X	Read-only
+builder-pack:set	N	A8: `projecttoml-path`
+builder-railpack:report	X	Read-only
+builder-railpack:set	N	A8: `railpackjson-path`
+builder:report	R	`build.context` read
+builder:set	P	`build.context` (`build-dir`) only; `selected`, `skip-cleanup` and global missing (F5, F10)
+buildpacks:add	N	A8
+buildpacks:clear	N	A8
+buildpacks:detect	X	Read-only
+buildpacks:list	X	Read-only
+buildpacks:remove	N	A8
+buildpacks:report	X	Read-only
+buildpacks:set	N	A8: `--replace` gives one-call convergence
+buildpacks:set-property	N	A8: `stack`
+builds:cancel	X	Runtime action
+builds:info	X	Read-only
+builds:list	X	Read-only
+builds:output	X	Read-only
+builds:prune	X	Maintenance
+builds:report	X	Read-only
+builds:set	N	A5: `retention`
+certs:add	P	`ssl: {certfile, keyfile}`; re-added on every `up` (F1)
+certs:chain	X	Not implemented in Dokku
+certs:generate	X	One-shot action
+certs:key	X	Not implemented in Dokku
+certs:remove	Y	`ssl: false`
+certs:report	R	`ssl` read (`--ssl-enabled` only)
+certs:rollback	X	Not implemented in Dokku
+certs:show	X	Read-only (F1 could read it to compare)
+certs:update	N	F1: replace a changed cert in place
+checks:disable	Y	`checks.disabled`
+checks:enable	Y	`checks` (re-enable)
+checks:report	R	`checks` read
+checks:run	X	Runtime action
+checks:set	P	`checks.<key>`; accepts any key, only `wait-to-retire` is valid; no global (F5, F10)
+checks:skip	Y	`checks.skipped`
+config:bundle	X	Read-only
+config:clear	X	Destructive one-shot
+config:export	R	`env` read (`--format json`)
+config:get	R	`env` read
+config:import	X	`env:` covers it
+config:keys	X	Read-only
+config:set	P	`env:` per app (managed keys) and global; global never unsets removed keys (F4)
+config:show	X	Read-only
+config:unset	P	Per-app `env:` only; global keys removed from the file stay (F4)
+cron:list	X	Read-only
+cron:report	X	Read-only
+cron:resume	N	A2: via `cron:set <app> maintenance.<id>`
+cron:run	X	Runtime action
+cron:set	N	A2: `maintenance`, `maintenance.<id>`, `mailto`, `mailfrom`
+cron:suspend	N	A2: via `cron:set <app> maintenance.<id>`
+docker-options:add	Y	`docker_options.{build,deploy,run}`, `build.args`
+docker-options:clear	X	`docker_options` converges with add/remove
+docker-options:remove	Y	`docker_options`, `build.args` (prune)
+docker-options:report	R	`docker_options` read
+domains:add	Y	`domains:`
+domains:add-global	X	`domains:` (global) uses `set-global`
+domains:clear	Y	`domains: []`
+domains:clear-global	Y	Top-level `domains: []`
+domains:disable	Y	`domains: false`
+domains:enable	Y	`domains:` list
+domains:remove	Y	`domains:`
+domains:remove-global	X	Top-level `domains:` uses `set-global`
+domains:report	R	`domains` read
+domains:reset	X	One-shot action
+domains:set	Y	`domains:`
+domains:set-global	Y	Top-level `domains:`
+git:allow-host	N	A3
+git:auth	N	A3 (qlustr runs it in `setup/lib.sh`)
+git:auth-status	N	A3: makes `git:auth` idempotent
+git:from-archive	X	Deploy trigger
+git:from-image	X	Deploy trigger
+git:generate-deploy-key	X	One-shot action
+git:initialize	X	Done by deploys
+git:load-image	X	Deploy trigger
+git:public-key	X	Read-only
+git:report	R	`git` read
+git:set	P	`git.deploy_branch` only; 5 other keys and global missing (F5, F10)
+git:status	X	Read-only (hidden)
+git:sync	X	Deploy trigger
+git:unlock	X	Recovery action (hidden)
+logs:failed	X	Read-only
+logs:report	R	`logs` read
+logs:set	P	`logs:` per app and global; `vector-image`, `vector-networks` not in the prune list (F5)
+logs:vector-logs	X	Read-only
+logs:vector-start	X	Daemon control
+logs:vector-stop	X	Daemon control
+network:create	Y	Top-level `networks:`
+network:destroy	Y	`down`
+network:exists	R	Before create
+network:info	X	Read-only
+network:list	R	`export`
+network:rebuild	X	Maintenance
+network:rebuildall	X	Maintenance
+network:report	R	`networks`, `network` read
+network:set	P	`networks`, `network.*`; `static-web-listener` and global missing (F5, F10)
+nginx:access-logs	X	Read-only
+nginx:error-logs	X	Read-only
+nginx:reload	X	Daemon control
+nginx:report	R	`nginx` read
+nginx:set	P	`nginx:` per app and global; `nginx-conf-sigil-path`, `nginx-service-command` not in the prune list (F5)
+nginx:show-config	X	Read-only
+nginx:start	X	Daemon control
+nginx:stop	X	Daemon control
+nginx:validate-config	X	Maintenance
+plugin:disable	N	A13
+plugin:enable	N	A13
+plugin:install	Y	`plugins:`
+plugin:install-dependencies	X	Run by install
+plugin:installed	X	Read-only (hidden)
+plugin:list	R	`plugins` read (`--format json`)
+plugin:trigger	X	Internal
+plugin:uninstall	N	A13: no removal when a plugin leaves the file
+plugin:update	Y	`plugins.<name>.version` (forward only)
+ports:add	X	`ports:` converges with `set`
+ports:clear	X	`ports:` converges with `set`
+ports:list	X	Read-only
+ports:remove	X	`ports:` converges with `set`
+ports:report	R	`ports` read
+ports:set	Y	`ports:`
+proxy:build-config	R	Run after `nginx:set` (hidden in help)
+proxy:clear-config	X	Maintenance
+proxy:disable	Y	`proxy.enabled: false`
+proxy:enable	Y	`proxy.enabled: true`
+proxy:report	R	`proxy` read
+proxy:set	N	F5: `type`, `proxy-port`, `proxy-ssl-port`
+ps:inspect	X	Read-only
+ps:rebuild	X	Runtime action
+ps:report	R	`scale`, `ps` read; deployed check
+ps:restart	X	Runtime action
+ps:restore	X	Runtime action
+ps:scale	Y	`scale:` (`--skip-deploy`)
+ps:set	P	`ps:` has 3 of 7 keys; no global (F5, F10)
+ps:start	X	Runtime action
+ps:stop	X	Runtime action
+registry:auth-status	N	F4: makes `docker_auth` idempotent
+registry:login	P	`docker_auth:` (global); logs in on every run, never logs out (F4)
+registry:logout	N	F4: when a server leaves `docker_auth:`
+registry:report	R	`registry` read
+registry:set	P	`registry:` per app; no global (F10)
+repo:gc	X	Maintenance
+repo:purge-cache	X	Maintenance
+resource:limit	N	A1
+resource:limit-clear	N	A1
+resource:report	N	A1 (read side)
+resource:reserve	N	A1
+resource:reserve-clear	N	A1
+run:detached	X	One-off command
+run:list	X	Read-only
+run:logs	X	Read-only
+run:retire	X	Maintenance
+run:stop	X	Runtime action
+scheduler-docker-local:report	X	Read-only
+scheduler-docker-local:set	N	A6: `init-process`, `parallel-schedule-count`
+scheduler:report	R	`scheduler` read
+scheduler:set	P	`scheduler:` (`selected`); `shell` and global missing (F5, F10)
+ssh-keys:add	N	A7
+ssh-keys:list	N	A7 (read side)
+ssh-keys:remove	N	A7
+storage:annotations:report	X	k3s only
+storage:annotations:set	X	k3s only
+storage:create	N	F9: named entries with `--chown`
+storage:destroy	N	F9
+storage:ensure-directory	X	Deprecated in Dokku: use `storage:create`
+storage:exec	X	Interactive
+storage:info	X	Read-only
+storage:labels:report	X	k3s only
+storage:labels:set	X	k3s only
+storage:list	X	Read-only
+storage:list-entries	N	F9 (read side)
+storage:migrate	X	Maintenance
+storage:mount	Y	`storage:` (`--replace` would converge in one call, F9)
+storage:report	R	`storage` read (`--storage-deploy-mounts`)
+storage:set	N	F9
+storage:unmount	Y	`storage:`
+storage:wait	X	k3s only
