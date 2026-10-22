@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
+import { reconcile } from '../core/reconcile.js'
 import { Networks, NetworkProps } from './network.js'
 
 describe('Networks.readAll (bulk)', () => {
@@ -88,5 +89,48 @@ describe('NetworkProps', () => {
     )
     const config = await NetworkProps.read(ctx, 'myapp')
     expect(config).toEqual({})
+  })
+})
+
+describe('NetworkProps --prune', () => {
+  const BOX = [
+    '=====> myapp network information',
+    '       Network attach post create: net-a',
+    '       Network attach post deploy: net-b',
+    '       Network bind all interfaces: true',
+    '       Network initial network: net-c',
+    '       Network tld: internal',
+  ].join('\n')
+  function ctxFor(report: string) {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async () => report)
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+
+  it('resets tld, bind-all-interfaces, initial-network and attach-post-create with no value, hyphenated; never attach-post-deploy', async () => {
+    const ctx = ctxFor(BOX)
+    await reconcile(NetworkProps, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([
+      ['network:set', 'myapp', 'attach-post-create'],
+      ['network:set', 'myapp', 'initial-network'],
+      ['network:set', 'myapp', 'bind-all-interfaces'],
+      ['network:set', 'myapp', 'tld'],
+    ])
+  })
+
+  it('keeps declared keys', async () => {
+    const ctx = ctxFor(BOX)
+    await reconcile(NetworkProps, ctx, 'myapp', { tld: 'internal', bind_all_interfaces: true }, undefined, true)
+    expect(ctx.commands).toEqual([
+      ['network:set', 'myapp', 'attach-post-create'],
+      ['network:set', 'myapp', 'initial-network'],
+    ])
+  })
+
+  it('attach-post-deploy is owned by networks: and a missing key does not clear it', async () => {
+    const ctx = ctxFor(BOX)
+    await reconcile(Networks, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([])
   })
 })

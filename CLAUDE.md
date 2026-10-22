@@ -68,7 +68,7 @@ bun run build
 - `export.ts` — Query server state → emit YAML
 - `diff.ts` — Compare local YAML vs server state (summary + verbose modes)
 
-**Execution flow for `up`:** Plugins → Global config → Networks → Postgres → Redis → Postgres backups → Per-app (create → domains → links → networks → proxy → ports → certs → storage → nginx → checks → logs → registry → scheduler → env vars → builder → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead).
+**Execution flow for `up`:** Plugins → Global config → Networks → Postgres → Redis → Postgres backups → Per-app (create → domains → links → networks → proxy → ports → certs → storage → nginx → checks → logs → registry → scheduler → env vars → builder → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead). With `--prune`, the nginx, logs, registry, scheduler, ps, network, checks and build resources also reset the settings the file no longer declares (`Resource.prune`, run after the normal apply; a block absent from the file is read once to find them).
 
 **Idempotency pattern:** Every `ensure*` function queries current Dokku state before acting. If state already matches, it logs "already configured" and skips. `runner.check()` is for boolean state queries; `runner.query()` for output-capturing queries; `runner.run()` for mutations.
 

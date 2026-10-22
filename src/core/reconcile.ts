@@ -8,7 +8,8 @@ export interface Resource<T = unknown> {
   read: (ctx: Context, target: string) => Promise<T>
   /** Bulk read for all apps in one SSH call. Used by export/diff. */
   readAll?: (ctx: Context) => Promise<Map<string, T>>
-  onChange: (ctx: Context, target: string, change: any) => void | Promise<void>
+  /** `deferFollowUp`: the caller will run `prune` next, which does the follow-up work (e.g. a proxy rebuild) once. */
+  onChange: (ctx: Context, target: string, change: any, deferFollowUp?: boolean) => void | Promise<void>
   /** Skip diff, always call onChange. For resources without parseable reports. */
   forceApply?: boolean
   /**
@@ -23,6 +24,11 @@ export interface Resource<T = unknown> {
    * `diff` shows them as `-`; nothing here removes them.
    */
   removals?(current: T, desired: T | undefined): string[]
+  /**
+   * Returns the `removed` settings (from `removals`) to Dokku's defaults. Called
+   * only under `up --prune`, after the normal apply. Never destroys anything.
+   */
+  prune?(ctx: Context, target: string, removed: string[], current: T, desired: T | undefined): Promise<void>
 }
 
 export async function reconcile<T>(
@@ -31,19 +37,46 @@ export async function reconcile<T>(
   target: string,
   desired: T | undefined,
   /** Called with the removals found in the state this reconcile already read. */
-  onRemovals?: (removed: string[]) => void
+  onRemovals?: (removed: string[]) => void,
+  /** `up --prune`: reset the settings the file no longer declares (one extra read when the block is absent or force-applied). */
+  prune = false
 ): Promise<void> {
-  if (desired === undefined) return
+  const canPrune = prune && !!resource.prune && !!resource.removals
+  const pruneFrom = async (current: T) => {
+    const removed = resource.removals!(current, desired)
+    if (removed.length === 0) return
+    logAction(target, `${resource.key} (prune)`)
+    await resource.prune!(ctx, target, removed, current, desired)
+    logDone()
+  }
+
+  if (desired === undefined) {
+    if (canPrune) await pruneFrom(await resource.read(ctx, target))
+    return
+  }
   logAction(target, `${resource.key}`)
 
   if (resource.forceApply) {
     await resource.onChange(ctx, target, { before: undefined, after: desired, changed: true })
     logDone()
+    if (canPrune) await pruneFrom(await resource.read(ctx, target))
     return
   }
 
   const before = await resource.read(ctx, target)
   if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
+  if (canPrune) {
+    const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
+    const pending = resource.removals!(before, desired).length > 0
+    if (change.changed) {
+      await resource.onChange(ctx, target, change, pending)
+      logDone()
+    } else {
+      logSkip()
+    }
+    await pruneFrom(before)
+    return
+  }
   const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
   if (!change.changed) {
     logSkip()

@@ -38,6 +38,21 @@ function propertyRemovals(allowed: readonly string[]) {
     Object.keys(current ?? {}).filter(k => allowed.includes(k) && !(desired && k in desired))
 }
 
+/** Return each removed key to Dokku's default: `<setCmd> <app> <key>` with no value. */
+function propertyPrune(setCmd: string, afterPrune: string[] = []) {
+  return async (ctx: Context, target: string, removed: string[]): Promise<void> => {
+    for (const key of removed) await ctx.run(setCmd, target, key)
+    for (const cmd of afterPrune) {
+      try {
+        await ctx.run(cmd, target)
+      } catch (err) {
+        if (await isAppDeployed(ctx, target)) throw err
+        logWarn(target, `${cmd} failed on an undeployed app — its proxy config will be built on first deploy`)
+      }
+    }
+  }
+}
+
 function propertyResource(opts: {
   key: string
   namespace: string
@@ -50,6 +65,7 @@ function propertyResource(opts: {
     // Keys only on the server never make the block "changed"; diff shows them as removals.
     additive: true,
     removals: propertyRemovals(opts.settable),
+    prune: propertyPrune(opts.setCmd, opts.afterChange),
 
     async read(ctx: Context, target: string): Promise<Record<string, string>> {
       const raw = await ctx.query(`${opts.namespace}:report`, target)
@@ -61,11 +77,11 @@ function propertyResource(opts: {
       return parseBulkReport(raw, opts.namespace)
     },
 
-    async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {
+    async onChange(ctx: Context, target: string, change: MapChange, deferFollowUp = false): Promise<void> {
       for (const [key, value] of Object.entries({ ...change.added, ...change.modified })) {
         await ctx.run(opts.setCmd, target, key, String(value))
       }
-      if (opts.afterChange) {
+      if (opts.afterChange && !deferFollowUp) {
         for (const cmd of opts.afterChange) {
           try {
             await ctx.run(cmd, target)
@@ -109,6 +125,7 @@ export const Scheduler: Resource<string> = {
   key: 'scheduler',
   // A scheduler selected on the app but not declared in the file.
   removals: (current, desired) => (desired === undefined && current ? ['scheduler'] : []),
+  prune: async (ctx, target) => { await ctx.run('scheduler:set', target, 'selected') },
 
   async read(ctx: Context, target: string): Promise<string> {
     const raw = await ctx.query('scheduler:report', target)
