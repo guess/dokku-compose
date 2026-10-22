@@ -112,21 +112,38 @@ describe('Scheduler resource', () => {
 })
 
 describe('Logs resource', () => {
-  function makeCtx(queryResult: string) {
+  function makeCtx(json: Record<string, string>) {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(queryResult)
+    runner.queryStrict = vi.fn(async (...args: string[]) => {
+      if (args.join(' ') !== 'logs:report myapp --format json') throw new Error(`unexpected: ${args.join(' ')}`)
+      return JSON.stringify(json)
+    })
     runner.run = vi.fn()
     return createContext(runner)
   }
 
   it('sets only modified log properties', async () => {
-    const ctx = makeCtx(
-      '       Logs max size:                 10m\n'
-    )
+    const ctx = makeCtx({ 'max-size': '10m', 'vector-sink': '' })
     await reconcile(Logs, ctx, 'myapp', { 'max-size': '20m' })
     expect(ctx.commands).toEqual([
       ['logs:set', 'myapp', 'max-size', '20m'],
     ])
+  })
+
+  // The stdout report prints a sink as `console://redacted`; only json shows the value set.
+  it('reads the sink unredacted, so a sink already set runs nothing', async () => {
+    const ctx = makeCtx({ 'vector-sink': 'console://?encoding[codec]=json', 'global-vector-sink': 'http://other' })
+    await reconcile(Logs, ctx, 'myapp', { 'vector-sink': 'console://?encoding[codec]=json' })
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('a failed json read is an error, never an empty report', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.queryStrict = vi.fn(async () => 'not json')
+    runner.run = vi.fn()
+    const ctx = createContext(runner)
+    await expect(reconcile(Logs, ctx, 'myapp', { 'max-size': '20m' })).rejects.toThrow('did not return JSON')
+    expect(ctx.commands).toEqual([])
   })
 })
 
@@ -150,13 +167,8 @@ describe('readAll (bulk)', () => {
     expect(result.get('app2')).toEqual({ 'client-max-body-size': '50m' })
   })
 
-  it('Logs.readAll returns per-app maps', async () => {
-    const ctx = makeCtx(
-      '=====> app1 logs information\n' +
-      '       Logs max size:                10m\n'
-    )
-    const result = await Logs.readAll!(ctx)
-    expect(result.get('app1')).toEqual({ 'max-size': '10m' })
+  it('Logs has no bulk read: the bulk stdout report redacts sinks', () => {
+    expect(Logs.readAll).toBeUndefined()
   })
 
   it('Scheduler.readAll returns per-app strings', async () => {
@@ -203,6 +215,7 @@ describe('Registry resource', () => {
 function pruneCtx(reports: Record<string, string>, run?: (...a: string[]) => Promise<void>) {
   const runner = createRunner({ dryRun: false })
   runner.query = vi.fn(async (...a: string[]) => reports[a.join(' ')] ?? '')
+  runner.queryStrict = vi.fn(async (...a: string[]) => reports[a.join(' ')] ?? '')
   runner.run = vi.fn(run ?? (async () => {}))
   return { ctx: createContext(runner), runner }
 }
@@ -264,7 +277,7 @@ describe('Nginx --prune', () => {
 describe('Logs / Registry / Scheduler --prune', () => {
   it('logs and registry: <plugin>:set <app> <key> with no value', async () => {
     const { ctx } = pruneCtx({
-      'logs:report myapp': '       Logs max size: 10m\n       Logs vector sink: console://\n',
+      'logs:report myapp --format json': JSON.stringify({ 'max-size': '10m', 'vector-sink': 'console://' }),
       'registry:report myapp': '       Registry server: ghcr.io\n',
     })
     await reconcile(Logs, ctx, 'myapp', { 'max-size': '10m' }, undefined, true)

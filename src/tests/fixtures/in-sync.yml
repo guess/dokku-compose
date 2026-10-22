@@ -1,0 +1,108 @@
+# Declares every resource dokku-compose manages. src/tests/in-sync.test.ts
+# pairs it with a fake server whose state equals it: `diff` must report the
+# box in sync and `up --dry-run` must run no command.
+dokku:
+  version: "0.38.31"
+
+plugins:
+  postgres:
+    url: https://github.com/dokku/dokku-postgres.git
+    version: "2.4.0"
+  redis:
+    url: https://github.com/dokku/dokku-redis.git
+
+networks:
+  - backend-net
+
+domains:
+  - example.com
+
+nginx:
+  client-max-body-size: "20m"
+
+logs:
+  max-size: "50m"
+  vector-sink: "console://?encoding[codec]=json"
+
+git:
+  deploy_branch: main
+
+postgres:
+  myapp-db:
+    version: "17-3.5"
+    image: postgis/postgis
+
+redis:
+  myapp-redis:
+    version: "7.2-alpine"
+
+apps:
+  myapp:
+    domains:
+      - myapp.example.com
+      - www.myapp.example.com
+    links:
+      - myapp-db
+      - myapp-redis
+    ports:
+      - "http:80:5000"
+      - "https:443:5000"
+    env:
+      APP_ENV: production
+    ssl:
+      certfile: src/tests/fixtures/certs/myapp.crt
+      keyfile: src/tests/fixtures/certs/myapp.key
+    storage:
+      - "/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"
+    proxy:
+      enabled: true
+    networks:
+      - backend-net
+    network:
+      attach_post_create:
+        - backend-net
+      initial_network: bridge
+      bind_all_interfaces: true
+      tld: internal
+    nginx:
+      client-max-body-size: "15m"
+    logs:
+      max-size: "10m"
+      vector-sink: "console://?encoding[codec]=json"
+    registry:
+      server: registry.example.com
+    scheduler: docker-local
+    scale:
+      web: 2
+      worker: 1
+    ps:
+      restart-policy: "on-failure:10"
+      stop-timeout-seconds: 60
+    checks:
+      disabled:
+        - worker
+      skipped:
+        - release
+      wait-to-retire: 60
+    build:
+      dockerfile: docker/Dockerfile
+      app_json: docker/app.json
+      context: apps/myapp
+      args:
+        NODE_ENV: production
+        GREETING: "hello big world"
+        API_URL: "https://api.example.com/v1?debug=1"
+    docker_options:
+      deploy:
+        - "--shm-size 256m"
+      run:
+        - "--ulimit nofile=12"
+
+  myapp-worker:
+    ssl: false
+    checks: false
+    git:
+      deploy_branch: release
+
+  myapp-edge:
+    ssl: true

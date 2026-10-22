@@ -32,20 +32,50 @@ describe('ensureAppDomains', () => {
 })
 
 describe('ensureGlobalDomains', () => {
-  it('clears global domains when false', async () => {
+  function setup(vhosts: string | Error) {
     const runner = createRunner({ dryRun: false })
+    runner.queryStrict = vi.fn(async (...args: string[]) => {
+      if (args.join(' ') !== 'domains:report --global --domains-global-vhosts') throw new Error(`unexpected ${args.join(' ')}`)
+      if (vhosts instanceof Error) throw vhosts
+      return vhosts
+    })
     runner.run = vi.fn()
-    const ctx = createContext(runner)
-    await ensureGlobalDomains(ctx, false)
-    expect(runner.run).toHaveBeenCalledWith('domains:clear-global')
+    return createContext(runner)
+  }
+
+  it('the same domains in another order run nothing', async () => {
+    const ctx = setup('www.example.com example.com')
+    await ensureGlobalDomains(ctx, ['example.com', 'www.example.com'])
+    expect(ctx.commands).toEqual([])
   })
 
-  it('sets global domains when list provided', async () => {
-    const runner = createRunner({ dryRun: false })
-    runner.run = vi.fn()
-    const ctx = createContext(runner)
+  it('changed domains run domains:set-global with the declared list', async () => {
+    const ctx = setup('old.example.com')
     await ensureGlobalDomains(ctx, ['example.com', 'www.example.com'])
-    expect(runner.run).toHaveBeenCalledWith('domains:set-global', 'example.com', 'www.example.com')
+    expect(ctx.commands).toEqual([['domains:set-global', 'example.com', 'www.example.com']])
+  })
+
+  it('no global domains on the server: domains:set-global', async () => {
+    const ctx = setup('')
+    await ensureGlobalDomains(ctx, ['example.com'])
+    expect(ctx.commands).toEqual([['domains:set-global', 'example.com']])
+  })
+
+  it('domains: false clears only when the server has global domains', async () => {
+    const set = setup('example.com')
+    await ensureGlobalDomains(set, false)
+    expect(set.commands).toEqual([['domains:clear-global']])
+    const empty = setup('')
+    await ensureGlobalDomains(empty, false)
+    expect(empty.commands).toEqual([])
+  })
+
+  it('an unreadable report is an error, and nothing is set or cleared', async () => {
+    for (const desired of [['example.com'], false] as const) {
+      const ctx = setup(new Error('dokku domains:report failed (exit 1)'))
+      await expect(ensureGlobalDomains(ctx, desired as string[] | false)).rejects.toThrow('domains:report failed')
+      expect(ctx.commands).toEqual([])
+    }
   })
 })
 

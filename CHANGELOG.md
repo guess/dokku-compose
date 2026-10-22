@@ -6,6 +6,20 @@
 
 - **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option as Dokku stored it) instead of splitting the text report, and are added with the `KEY=VALUE` word shell-quoted so Dokku stores it as one word. A value containing ` --x`, `-t x` stored beside a build arg, spaces, `?`, `$` or a quote is no longer re-added on every `up`, and `up --prune` removes a stale one by its stored text. `diff` and `export` read build settings per app.
 
+### Changed (behaviour)
+
+- **When `diff` says a box is in sync, `up` changes nothing.** A test harness pairs a compose file declaring every resource with a server whose state equals it, and requires `diff` in sync and an empty `up --dry-run` command log.
+- **SSL certificates are compared, not re-added.** `up` reads `certs:report --ssl-enabled`, then `certs:show <app> crt`, and compares the certificate with `certfile` (trailing whitespace ignored): the same one runs nothing, a different one runs `certs:update` and shows in `diff` as `~ ssl`. The key is never read. An unreadable certificate is unknown, never "no certificate".
+- **`checks:` reads first** and runs only the calls that differ. Process types go to `checks:disable`, `checks:skip` and `checks:enable` as one comma-separated argument, as Dokku reads them (before, only the first type was applied).
+- **Global `domains:`, `logs:` and `nginx:` read first** (`domains:report --global`, `logs:report --global --format json`, `nginx:report --global --format json`) and set only what differs; `domains: false` clears only when global domains are set.
+- **App `logs:` is read as JSON**, because the plain report prints a sink as `<type>://redacted`; a declared `vector-sink` was re-set on every `up`.
+- **App `domains:` with more than one domain** no longer removes and re-adds them on every `up`: Dokku prints the vhosts on one line, space-separated.
+
+### Added
+
+- **`diff` shows global `domains:`, `logs:` and `nginx:` drift** under a `global` section (log sinks masked), and a declared network missing on the server under `networks:`.
+- **`diff --verbose` prints `Everything in sync.`** when nothing differs.
+
 ## [0.13.1] - 2026-10-22
 
 ### Changed (behaviour)

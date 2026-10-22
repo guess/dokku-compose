@@ -57,7 +57,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `buildpacks` |  |  | 5 | 3 |
 | `builds` |  |  | 1 | 6 |
 | `caddy` |  |  | 3 | 5 |
-| `certs` | 2 | 1 | 1 | 5 |
+| `certs` | 5 |  |  | 4 |
 | `checks` | 4 | 1 |  | 1 |
 | `config` | 2 | 2 |  | 5 |
 | `cron` |  |  | 3 | 3 |
@@ -87,7 +87,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 3 |  | 4 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **66** | **20** | **93** | **176** |
+| **Total** | **69** | **19** | **92** | **175** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -99,7 +99,7 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 
 | # | Item | Why | Size |
 |---|---|---|:-:|
-| F1 | **Settings re-applied on every `up`; a replaced cert file is invisible** | `certs:report --ssl-enabled` reads back `true`, which never equals `{certfile, keyfile}` in `reconcile`, so every `up` runs `certs:add`. `diff` goes the other way: it counts `true` as in sync, so a replaced cert file never shows as drift. Compare the file's certificate with `certs:show <app> crt` in both, and use `certs:update` for a changed one. qultr-prod declares cert files on three apps. `checks:` is `forceApply`, so `up` also runs its `checks:disable`/`skip`/`set` calls every time. | 2 |
+| F1 | ✅ **Settings re-applied on every `up`; a replaced cert file is invisible** | Fixed (LAB-749): certs read `certs:report --ssl-enabled` then `certs:show <app> crt` and compare the crt with the file in `up` and `diff`, using `certs:update` for a changed one; `checks:`, global domains, global logs and global nginx read before they write. A harness (`src/tests/in-sync.test.ts`) declares every resource and requires an in-sync server to get no command from `up`. | 2 |
 | F2 | **Datastore `version` and `image` changes ignored** | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is not applied, not warned about and not shown by `diff`. Show it as drift; apply it with `:upgrade` only behind an explicit opt-in. | 3 |
 | F3 | **Postgres backup state kept outside Dokku** | The backup config is tracked as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`, which Dokku merges into every app's environment. A change made on the server is never seen, and removing `backup:` leaves the schedule and credentials in place. Read the real state (`:backup-schedule-cat`, the 2.x `backup-*` properties), run `:backup-unschedule`/`:backup-deauth` when the block goes, add encryption, drop the env var. | 5 |
 | F4 | **Global `env:` and `docker_auth:` only ever add** | Top-level `env:` runs `config:set --global` on every `up` and never unsets a key removed from the file. `docker_auth:` runs `registry:login` on every `up` and never logs out. Track global keys with a managed-keys marker as app `env:` does; use `registry:auth-status` (new in 0.38) to skip a login that already matches, and `registry:logout` for a removed server. | 3 |
@@ -107,21 +107,21 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 | F6 | **Link options** | `links:` runs `:link` with no options, so the URL always lands in `DATABASE_URL`/`REDIS_URL`. Add `alias`, `env_var` and `querystring` (`--alias`, `--env-var`, `--querystring`), which a second database on one app needs. | 2 |
 | F7 | **Redis backups** | dokku-redis has the same backup commands as dokku-postgres; `redis:` has no `backup:`. Do it after F3 so both share one implementation. | 2 |
 | F8 | **Datastore settings after create** | No create flag beyond `--image`/`--image-version`, and no `:set`. dokku-postgres/redis 2.x make every setting a reconcilable `:set` property: `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `restart-policy`, `log-driver`, `log-opt`, `expose-*`, plus `:mount`. | 5 |
-| F9 | **Named storage entries** | Dokku 0.38 adds named entries (`storage:create` with `--chown`, `storage:set`, `storage:destroy`) and deprecates `storage:ensure-directory`. Declaring entries would replace qlustr's manual `mkdir` + `chown 32767` step for each new mount. `storage:mount --replace` would also converge an app's mounts in one call. | 5 |
-| F10 | **Global defaults for supported namespaces** | Global settings exist only for `domains`, `env`, `nginx`, `logs` and registry logins. Dokku also takes `--global` for `scheduler`, `registry:set`, `checks`, `ps`, `builder`, `network`, `proxy`, `git` and `app-json`. qlustr runs `git:set --global deploy-branch` by hand in `setup/setup.sh`. | 3 |
+| F9 | **Named storage entries** | Dokku 0.38 adds named entries (`storage:create` with `--chown`, `storage:set`, `storage:destroy`) and deprecates `storage:ensure-directory`. Declaring entries would replace a manual `mkdir` + `chown 32767` step for each new mount. `storage:mount --replace` would also converge an app's mounts in one call. | 5 |
+| F10 | **Global defaults for supported namespaces** | Global settings exist only for `domains`, `env`, `nginx`, `logs` and registry logins. Dokku also takes `--global` for `scheduler`, `registry:set`, `checks`, `ps`, `builder`, `network`, `proxy`, `git` and `app-json`. Box setup scripts run `git:set --global deploy-branch` by hand today. | 3 |
 
 ### Add new namespaces
 
 | # | Item | Why | Size |
 |---|---|---|:-:|
-| A1 | **`resource:` limits and reservations** | `resource:limit` / `resource:reserve`, per app and per process type, for CPU, memory and more. qlustr caps memory with `docker_options.deploy: ["--memory=…"]` today, which covers every process type at once and does not show in `resource:report`. | 3 |
+| A1 | **`resource:` limits and reservations** | `resource:limit` / `resource:reserve`, per app and per process type, for CPU, memory and more. A production box can cap memory with `docker_options.deploy: ["--memory=…"]` today, which covers every process type at once and does not show in `resource:report`. | 3 |
 | A2 | **`cron:` settings** | `cron:set`: `maintenance` (app and global), `maintenance.<id>` (one task, what `cron:suspend`/`:resume` write), `mailto` and `mailfrom` (global). Task definitions stay in `app.json`. | 2 |
-| A3 | **Git host auth** | `git:auth` (made idempotent by the new `git:auth-status`) and `git:allow-host`. qlustr runs `git:auth` by hand in `setup/lib.sh`. | 2 |
+| A3 | **Git host auth** | `git:auth` (made idempotent by the new `git:auth-status`) and `git:allow-host`. Box setup scripts run `git:auth` by hand today. | 2 |
 | A4 | **App locks and `apps:set`** | `apps:lock`/`apps:unlock` as a `locked:` key; global `apps:set disable-autocreation`. | 1 |
 | A5 | **Build record retention** | `builds:set retention`, per app and global (new in 0.38). | 1 |
 | A6 | **docker-local scheduler settings** | `scheduler-docker-local:set init-process`, `parallel-schedule-count`, per app and global. | 1 |
 | A7 | **`ssh-keys:`** | Declare who can push to the server; converge with `ssh-keys:add`/`:remove`. | 3 |
-| A8 | **Other builders and buildpacks** | `builder:set selected` plus the herokuish, pack, nixpacks, railpack and lambda settings, and `buildpacks:set --replace`/`set-property stack`. Nothing qlustr runs needs them: every app deploys a prebuilt image. | 5 |
+| A8 | **Other builders and buildpacks** | `builder:set selected` plus the herokuish, pack, nixpacks, railpack and lambda settings, and `buildpacks:set --replace`/`set-property stack`. Not needed where every app deploys a prebuilt image. | 5 |
 | A9 | **Other proxies** | caddy, haproxy, openresty and traefik `:set` properties and `:labels:add`/`:remove`, after F5 adds `proxy.type`. | 5 |
 | A10 | **Other datastore plugins** | mysql, mariadb, mongo, rabbitmq, elasticsearch and the rest share dokku-postgres's command set, so one generic service module built after F2, F3 and F8 would cover them all. Also the letsencrypt plugin. | 5 |
 | A11 | **Event logging toggle** | `events:on`/`events:off`, a server-wide setting. | 1 |
@@ -241,7 +241,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `builds:report` | Display a build report for one or more apps | ⛔ | Read-only |
 | `builds:set` | Set or clear a builds property | ❌ | A5: `retention` |
 | `git:allow-host` | Adds a host to known_hosts | ❌ | A3 |
-| `git:auth` | Configures netrc authentication for a given git server | ❌ | A3 (qlustr runs it in `setup/lib.sh`) |
+| `git:auth` | Configures netrc authentication for a given git server | ❌ | A3 (box setup scripts run it by hand) |
 | `git:auth-status` | Reports whether the netrc entry matches the requested state (exit 0… | ❌ | A3: makes `git:auth` idempotent |
 | `git:from-archive` | Updates an app's git repository with a given archive file | ⛔ | Deploy trigger |
 | `git:from-image` | Updates an app's git repository with a given docker image | ⛔ | Deploy trigger |
@@ -346,15 +346,15 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 
 | Command | What it does | Status | dokku-compose |
 |---|---|:-:|---|
-| `certs:add` | Add an ssl endpoint to an app. Can also import from a tarball on stdin | 🟡 | `ssl: {certfile, keyfile}`; re-added on every `up` (F1) |
+| `certs:add` | Add an ssl endpoint to an app. Can also import from a tarball on stdin | ✅ | `ssl: {certfile, keyfile}` when no cert is installed |
 | `certs:chain` | [NOT IMPLEMENTED] Print the ordered and complete chain for the give… | ⛔ | Not implemented in Dokku |
 | `certs:generate` | Generate a key and certificate signing request (and self-signed cer… | ⛔ | One-shot action |
 | `certs:key` | [NOT IMPLEMENTED] Print the correct key for the given certificate | ⛔ | Not implemented in Dokku |
 | `certs:remove` | Remove an SSL Endpoint from an app | ✅ | `ssl: false` |
 | `certs:report` | Displays an ssl report for one or more apps | ✅ | `ssl` read (`--ssl-enabled` only) |
 | `certs:rollback` | [NOT IMPLEMENTED] Rollback an SSL Endpoint for an app | ⛔ | Not implemented in Dokku |
-| `certs:show` | Show the server.crt or server.key on stdout | ⛔ | Read-only (F1 could read it to compare) |
-| `certs:update` | Update an SSL Endpoint on an app. Can also import from a tarball on… | ❌ | F1: replace a changed cert in place |
+| `certs:show` | Show the server.crt or server.key on stdout | ✅ | `ssl` read: `crt` only, compared with `certfile`; the key is never read |
+| `certs:update` | Update an SSL Endpoint on an app. Can also import from a tarball on… | ✅ | `ssl: {certfile, keyfile}` when the installed cert differs |
 | `domains:add` | Add domains to app | ✅ | `domains:` |
 | `domains:add-global` | Add global domain names | ⛔ | `domains:` (global) uses `set-global` |
 | `domains:clear` | Clear all domains for app | ✅ | `domains: []` |
@@ -571,7 +571,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `:unmount` | ❌ | ❌ | F8 |
 | `:connect` | ⛔ | ⛔ | Interactive |
 | `:enter` | ⛔ | ⛔ | Interactive |
-| `:expose` | ❌ | ❌ | postgres: F8 (low: qlustr avoids it on Docker 29); redis: F8 |
+| `:expose` | ❌ | ❌ | postgres: F8 (low: its ambassador container breaks on Docker 29); redis: F8 |
 | `:unexpose` | ❌ | ❌ | F8 |
 | `:reexpose` | ⛔ | ⛔ | Maintenance |
 | `:promote` | ⛔ | ⛔ | One-shot action |

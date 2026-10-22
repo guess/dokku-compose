@@ -18,7 +18,7 @@ networks:
 | list of names | `network:create <name>` for each |
 | absent | no action |
 
-Networks are created idempotently — skipped if they already exist.
+Networks are created idempotently — skipped if they already exist. `diff` checks each one with `network:exists` and shows a missing network as `+ <name>: not created` under `networks:`.
 
 ## `apps.<app>.networks`
 

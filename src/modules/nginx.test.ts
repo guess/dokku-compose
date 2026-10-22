@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { ensureAppNginx, exportAppNginx } from './nginx.js'
+import { ensureAppNginx, ensureGlobalNginx, exportAppNginx } from './nginx.js'
 
 describe('ensureAppNginx', () => {
   it('sets nginx properties', async () => {
@@ -89,5 +89,41 @@ describe('exportAppNginx', () => {
     const ctx = createContext(runner)
     const result = await exportAppNginx(ctx, 'myapp')
     expect(result).toBeUndefined()
+  })
+})
+
+describe('ensureGlobalNginx', () => {
+  function setup(answer: string | Error) {
+    const runner = createRunner({ dryRun: false })
+    runner.queryStrict = vi.fn(async (...args: string[]) => {
+      if (args.join(' ') !== 'nginx:report --global --format json') throw new Error(`unexpected ${args.join(' ')}`)
+      if (answer instanceof Error) throw answer
+      return answer
+    })
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+
+  it('values already set globally run nothing', async () => {
+    const ctx = setup(JSON.stringify({ 'global-client-max-body-size': '20m', 'computed-client-max-body-size': '20m', 'global-proxy-read-timeout': '60' }))
+    await ensureGlobalNginx(ctx, { 'client-max-body-size': '20m', 'proxy-read-timeout': 60 })
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('sets only the keys that differ or are missing', async () => {
+    const ctx = setup(JSON.stringify({ 'global-client-max-body-size': 'other', 'proxy-read-timeout': '60', 'global-proxy-read-timeout': '' }))
+    await ensureGlobalNginx(ctx, { 'client-max-body-size': '20m', 'proxy-read-timeout': 60 })
+    expect(ctx.commands).toEqual([
+      ['nginx:set', '--global', 'client-max-body-size', '20m'],
+      ['nginx:set', '--global', 'proxy-read-timeout', '60'],
+    ])
+  })
+
+  it('an unreadable report is an error, and nothing is set', async () => {
+    for (const answer of [new Error('nginx:report failed'), '']) {
+      const ctx = setup(answer)
+      await expect(ensureGlobalNginx(ctx, { 'client-max-body-size': '20m' })).rejects.toThrow()
+      expect(ctx.commands).toEqual([])
+    }
   })
 })

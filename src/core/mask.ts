@@ -91,7 +91,8 @@ export function maskSensitiveData(data: unknown): unknown {
   if (typeof data === 'object') {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-      if (typeof value === 'string' && SENSITIVE_RE.test(key)) {
+      // A log sink is a DSN that can carry credentials (logs `vector-sink`, `vector-cron-sink`).
+      if (typeof value === 'string' && (SENSITIVE_RE.test(key) || /sink/i.test(key))) {
         result[key] = maskValue(value)
       } else if (typeof value === 'object' && value !== null) {
         result[key] = maskSensitiveData(value)

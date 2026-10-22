@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { runExport } from './export.js'
+import { emptyAnswer, logsAppJson } from '../tests/fake-server.js'
 
 // Strict reads go through the same stub as lenient ones; an empty JSON
 // report reads as nothing set.
@@ -42,11 +43,12 @@ describe('runExport', () => {
     const bulkCalls = queryCalls.filter(
       c => c[0].endsWith(':report') && c.length === 1 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
     )
-    // Should have bulk calls for: nginx, logs, registry, scheduler, proxy, ports, domains, storage, certs, network, git
+    // Should have bulk calls for: nginx, registry, scheduler, proxy, ports, domains, storage, network, git, builder
     expect(bulkCalls.length).toBeGreaterThanOrEqual(10)
-    // Should NOT have per-app report calls (except config and ps, which have no readAll; ps reads per-app JSON;
-    // build settings read per app because build-list only exists in the per-app docker-options JSON)
-    const perApp = ['apps:report', 'ps:report', 'builder:report', 'builder-dockerfile:report', 'app-json:report', 'docker-options:report']
+    // Should NOT have per-app report calls, except those with no bulk read: ps reads per-app JSON,
+    // build settings read per app (build-list only exists in the per-app docker-options JSON),
+    // logs reads per-app JSON (the bulk report redacts sinks), and certs reads the installed certificate.
+    const perApp = ['apps:report', 'ps:report', 'builder:report', 'builder-dockerfile:report', 'app-json:report', 'docker-options:report', 'logs:report', 'certs:report']
     const perAppReportCalls = queryCalls.filter(
       c => c[0].endsWith(':report') && c.length >= 2 && !perApp.includes(c[0])
     )
@@ -89,5 +91,21 @@ describe('runExport', () => {
     expect(result.apps['myapp'].nginx).toEqual({ 'client-max-body-size': '50m' })
     expect(result.apps['myapp'].proxy).toEqual({ enabled: true })
     expect(result.apps['myapp'].ports).toEqual(['http:80:3000'])
+  })
+
+  it('exports app logs with no logs-, computed- or global- prefixed keys', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'apps:list') return 'myapp'
+      if (args.join(' ') === 'logs:report myapp --format json') {
+        return logsAppJson({ 'max-size': '10m', 'logs-max-size': '10m', 'computed-max-size': '10m', 'logs-computed-max-size': '10m', 'global-vector-image': 'x' })
+      }
+      return emptyAnswer(...args) ?? ''
+    })
+    runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
+    const result = await runExport(runner, {})
+    expect(result.apps.myapp.logs).toEqual({ 'max-size': '10m' })
   })
 })

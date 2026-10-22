@@ -48,6 +48,8 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
     for (const resource of ALL_APP_RESOURCES) {
       if (resource.key.startsWith('_')) continue  // skip internal keys like _app
       if (resource.forceApply) continue  // skip forceApply resources — they can't be read
+      // The checks report holds comma-joined lists the schema does not take as is.
+      if (resource.key === 'checks') continue
 
       const bulk = prefetched.get(resource.key)
       const value = bulk ? bulk.get(app) : await resource.read(ctx, app)
@@ -58,7 +60,10 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
       if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value as object).length === 0) continue
 
       // Handle schema mapping: Proxy resource reads boolean, schema wants { enabled: boolean }
-      if (resource.key === 'proxy') {
+      if (resource.key === 'ssl') {
+        // An installed cert exports as `true`: the file paths are not on the server.
+        (appConfig as any).ssl = value !== false
+      } else if (resource.key === 'proxy') {
         (appConfig as any).proxy = { enabled: value as boolean }
       } else {
         (appConfig as any)[resource.key] = value

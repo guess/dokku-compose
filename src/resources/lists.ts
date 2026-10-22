@@ -8,10 +8,6 @@ function splitWords(raw: string): string[] {
   return raw.split(/\s+/).map(s => s.trim()).filter(Boolean)
 }
 
-function splitLines(raw: string): string[] {
-  return raw.split('\n').map(s => s.trim()).filter(Boolean)
-}
-
 export const Ports: Resource<string[]> = {
   key: 'ports',
   read: async (ctx, target) => {
@@ -36,8 +32,10 @@ export const Ports: Resource<string[]> = {
 export const Domains: Resource<string[]> = {
   key: 'domains',
   read: async (ctx, target) => {
+    // Dokku 0.38.31 prints the vhosts space-joined (`normalizeWhitespace` in
+    // plugins/domains/report.go), so split on any whitespace, not lines.
     const raw = await ctx.query('domains:report', target, '--domains-app-vhosts')
-    return splitLines(raw)
+    return splitWords(raw)
   },
   readAll: async (ctx: Context) => {
     const raw = await ctx.query('domains:report')

@@ -1,18 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { computeDiff, formatSummary, formatVerbose } from './diff.js'
+import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from './diff.js'
 import type { Config } from '../core/schema.js'
 import type { Context } from '../core/context.js'
+import { emptyAnswer, logsGlobalJson } from '../tests/fake-server.js'
+import { readFileSync } from 'node:fs'
 
 function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, boolean> = {}): Context {
   return {
     query: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
       if (key === 'version' && !(key in queryMap)) return 'dokku version 0.38.31'
-      return queryMap[key] ?? ''
+      return queryMap[key] ?? emptyAnswer(...args) ?? ''
     }),
     queryStrict: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
-      return queryMap[key] ?? ''
+      return queryMap[key] ?? emptyAnswer(...args) ?? ''
     }),
     check: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
@@ -110,28 +112,34 @@ describe('computeDiff — bulk report read failures', () => {
     expect(diff.readWarnings.length).toBeGreaterThan(0)
   })
 
-  it('ssl: desired object vs current true (cert present) is in-sync, not changed', async () => {
-    const sslDesired: Config = {
-      apps: {
-        api: { ssl: { certfile: '/certs/api.crt', keyfile: '/certs/api.key' } }
-      }
-    }
-    const ctx = makeCtx({
-      'certs:report': '=====> api ssl information\n       Ssl enabled:                  true\n',
-    })
+})
+
+describe('computeDiff — ssl compares the installed certificate', () => {
+  const sslDesired: Config = {
+    apps: { api: { ssl: { certfile: 'src/tests/fixtures/certs/myapp.crt', keyfile: 'src/tests/fixtures/certs/myapp.key' } } },
+  }
+  const fileCrt = readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
+
+  it('the same certificate (trailing whitespace aside) is in sync', async () => {
+    const ctx = makeCtx({ 'certs:report api --ssl-enabled': 'true', 'certs:show api crt': fileCrt.trimEnd() + '\n\n' })
     const diff = await computeDiff(ctx, sslDesired)
     expect(diff.apps['api'].ssl?.status).toBe('in-sync')
+    expect(diff.inSync).toBe(true)
   })
 
-  it('ssl: desired object vs current false (no cert) is missing', async () => {
-    const sslDesired: Config = {
-      apps: {
-        api: { ssl: { certfile: '/certs/api.crt', keyfile: '/certs/api.key' } }
-      }
+  it('a replaced certificate is drift, shown without the certificate text', async () => {
+    const ctx = makeCtx({ 'certs:report api --ssl-enabled': 'true', 'certs:show api crt': '-----BEGIN CERTIFICATE-----\nT3RoZXI=\n-----END CERTIFICATE-----' })
+    const diff = await computeDiff(ctx, sslDesired)
+    expect(diff.apps['api'].ssl?.status).toBe('changed')
+    expect(diff.inSync).toBe(false)
+    for (const out of [formatSummary(diff), formatVerbose(diff)]) {
+      expect(out).toContain('(certificate installed)')
+      expect(out).not.toContain('BEGIN CERTIFICATE')
     }
-    const ctx = makeCtx({
-      'certs:report': '=====> api ssl information\n       Ssl enabled:                  false\n',
-    })
+  })
+
+  it('no certificate is missing', async () => {
+    const ctx = makeCtx({ 'certs:report api --ssl-enabled': 'false' })
     const diff = await computeDiff(ctx, sslDesired)
     expect(diff.apps['api'].ssl?.status).toBe('missing')
   })
@@ -210,20 +218,6 @@ describe('computeDiff — ssl unreadable report', () => {
     expect(diff.apps['api'].ssl?.status).not.toBe('missing')
   })
 
-  it('bulk certs:report section missing the enabled key falls back to per-app read', async () => {
-    const sslDesired: Config = {
-      apps: {
-        api: { ssl: { certfile: '/certs/api.crt', keyfile: '/certs/api.key' } }
-      }
-    }
-    const ctx = makeCtx({
-      // Bulk report parses (non-empty), but api's section has no "enabled" line.
-      'certs:report': '=====> api ssl information\n       Other:  x\n',
-      'certs:report api --ssl-enabled': 'true',
-    })
-    const diff = await computeDiff(ctx, sslDesired)
-    expect(diff.apps['api'].ssl?.status).toBe('in-sync')
-  })
 })
 
 describe('formatSummary', () => {
@@ -346,7 +340,7 @@ describe('computeDiff — settings removed from the file', () => {
 
   it('logs and registry', async () => {
     const ctx = makeCtx({
-      'logs:report': '=====> api logs information\n       Logs max size:  10m\n',
+      'logs:report api --format json': JSON.stringify({ 'max-size': '10m', 'computed-max-size': '10m' }),
       'registry:report': '=====> api registry information\n       Registry server:  ghcr.io\n',
     })
     const diff = await computeDiff(ctx, { apps: { api: {} } })
@@ -367,12 +361,12 @@ describe('computeDiff — settings removed from the file', () => {
     expect(diff.inSync).toBe(true)
   })
 
-  it('checks (applied without diffing): leftover settings are "-"', async () => {
-    const ctx = makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n       Checks computed wait to retire: 5\n' })
+  it('checks: leftover settings are "-"', async () => {
+    const ctx = makeCtx({ 'checks:report api': '       Checks disabled list: none\n       Checks wait to retire: 10\n       Checks computed wait to retire: 5\n' })
     const diff = await computeDiff(ctx, { apps: { api: {} } })
     expect(diff.apps.api.checks).toMatchObject({ status: 'extra', removed: ['wait-to-retire'] })
-    const declared = await computeDiff(makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n' }), { apps: { api: { checks: { 'wait-to-retire': 10 } } } })
-    expect(declared.apps.api.checks).toBeUndefined()
+    const declared = await computeDiff(makeCtx({ 'checks:report api': '       Checks disabled list: none\n       Checks wait to retire: 10\n' }), { apps: { api: { checks: { 'wait-to-retire': 10 } } } })
+    expect(declared.apps.api.checks?.status).toBe('in-sync')
     expect(declared.inSync).toBe(true)
   })
 
@@ -454,5 +448,96 @@ describe('computeDiff — settings removed from the file', () => {
     const out = formatVerbose(await computeDiff(ctx, { apps: { api: {} } }))
     expect(out).toContain('@@ app: api / nginx @@')
     expect(out).toContain('- proxy-read-timeout')
+  })
+})
+
+describe('computeDiff — global settings, networks and the in-sync line', () => {
+  const globals: Config = { logs: { 'max-size': '50m' }, nginx: { 'client-max-body-size': '20m' }, apps: {} }
+
+  it('global logs and nginx already set are in sync', async () => {
+    const ctx = makeCtx({
+      'logs:report --global --format json': JSON.stringify({ 'global-max-size': '50m', 'computed-max-size': '50m' }),
+      'nginx:report --global --format json': JSON.stringify({ 'global-client-max-body-size': '20m' }),
+    })
+    const diff = await computeDiff(ctx, globals)
+    expect(diff.global).toEqual({})
+    expect(diff.inSync).toBe(true)
+  })
+
+  it('a changed global value is "~", an unset one "+", each under a global section', async () => {
+    const ctx = makeCtx({
+      'logs:report --global --format json': JSON.stringify({ 'global-max-size': '10m' }),
+      'nginx:report --global --format json': JSON.stringify({ 'global-client-max-body-size': '' }),
+    })
+    const diff = await computeDiff(ctx, globals)
+    expect(diff.global.logs).toMatchObject({ status: 'changed', current: { 'max-size': '10m' } })
+    expect(diff.global.nginx).toMatchObject({ status: 'missing' })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('2 resource(s) out of sync')
+    expect(formatVerbose(diff)).toContain('@@ global / logs @@')
+    expect(formatVerbose(diff)).not.toContain('Everything in sync.')
+  })
+
+  it('an unreadable global report is unknown with a warning, never missing', async () => {
+    const ctx = makeCtx({ 'logs:report --global --format json': '', 'nginx:report --global --format json': '{}' })
+    const diff = await computeDiff(ctx, { logs: { 'max-size': '50m' }, apps: {} })
+    expect(diff.global.logs?.status).toBe('unknown')
+    expect(diff.readWarnings.join('\n')).toContain("global 'logs'")
+    expect(diff.inSync).toBe(false)
+  })
+
+  it('a declared network missing on the server shows as missing; an existing one does not', async () => {
+    const ctx = makeCtx({}, { 'network:exists backend-net': true, 'network:exists other-net': false })
+    const diff = await computeDiff(ctx, { networks: ['backend-net', 'other-net'], apps: {} })
+    expect(diff.networks).toEqual({ 'other-net': { status: 'missing' } })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('other-net: not created')
+    expect(formatVerbose(diff)).toContain('+ other-net')
+  })
+
+  it('verbose prints "Everything in sync." when nothing differs', async () => {
+    const diff = await computeDiff(makeCtx({}, { 'network:exists backend-net': true }), { networks: ['backend-net'], apps: {} })
+    expect(diff.inSync).toBe(true)
+    expect(formatVerbose(diff)).toContain('Everything in sync.')
+  })
+
+  it('checks that differ from the server are drift', async () => {
+    const ctx = makeCtx({ 'checks:report api': '       Checks disabled list: none\n       Checks wait to retire: 10\n' })
+    const diff = await computeDiff(ctx, { apps: { api: { checks: { 'wait-to-retire': 60 } } } })
+    expect(diff.apps.api.checks?.status).toBe('changed')
+    expect(diff.inSync).toBe(false)
+  })
+})
+
+describe('computeDiff — review round 1', () => {
+  it('global domains: equal (any order) is in sync, different is drift, unreadable is unknown', async () => {
+    const same = await computeDiff(makeCtx({ 'domains:report --global --domains-global-vhosts': 'b.example.com a.example.com' }), { domains: ['a.example.com', 'b.example.com'], apps: {} })
+    expect(same.global).toEqual({})
+    expect(same.inSync).toBe(true)
+    const off = await computeDiff(makeCtx({ 'domains:report --global --domains-global-vhosts': 'a.example.com' }), { domains: false, apps: {} })
+    expect(off.global.domains?.status).toBe('changed')
+    expect(formatSummary(off)).toContain('1 resource(s) out of sync')
+    const ctx = makeCtx({})
+    ctx.queryStrict = vi.fn(async () => { throw new Error('boom') })
+    const unread = await computeDiff(ctx, { domains: ['a.example.com'], apps: {} })
+    expect(unread.global.domains?.status).toBe('unknown')
+    expect(unread.readWarnings.join('\n')).toContain("global 'domains'")
+  })
+
+  it('an unreadable certfile is unknown with a warning naming it, and the diff continues', async () => {
+    const ctx = makeCtx({ 'certs:report api --ssl-enabled': 'true', 'certs:show api crt': 'x', 'ports:report api --ports-map': 'http:80:3000' })
+    const diff = await computeDiff(ctx, { apps: { api: { ssl: { certfile: 'no/such/file.crt', keyfile: 'k' }, ports: ['http:80:3000'] } } })
+    expect(diff.apps.api.ssl?.status).toBe('unknown')
+    expect(diff.apps.api.ports?.status).toBe('in-sync')
+    expect(diff.readWarnings.join('\n')).toContain('no/such/file.crt')
+  })
+
+  it('log sinks are masked in diff output', async () => {
+    const dsn = 'http://user:hunter2@logs.example.com/ingest'
+    const ctx = makeCtx({ 'logs:report --global --format json': logsGlobalJson({ 'global-vector-sink': 'http://old' }) })
+    const diff = maskDiffResult(await computeDiff(ctx, { logs: { 'vector-sink': dsn }, apps: {} }))
+    const out = formatVerbose(diff) + formatSummary(diff)
+    expect(out).not.toContain('hunter2')
+    expect(out).not.toContain('http://old')
   })
 })

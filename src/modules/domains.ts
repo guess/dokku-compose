@@ -1,5 +1,5 @@
 import type { Context } from '../core/context.js'
-import { logAction, logDone } from '../core/logger.js'
+import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export async function ensureAppDomains(
   ctx: Context,
@@ -18,16 +18,33 @@ export async function ensureAppDomains(
   logDone()
 }
 
+/**
+ * The global vhosts, read from `domains:report --global --domains-global-vhosts`
+ * (Dokku 0.38.31 prints them space-joined, `normalizeWhitespace` in
+ * `plugins/domains/report.go`).
+ */
+export async function readGlobalDomains(ctx: Context): Promise<string[]> {
+  const raw = await ctx.queryStrict('domains:report', '--global', '--domains-global-vhosts')
+  return raw.split(/\s+/).filter(Boolean)
+}
+
+/** Whether the server's global vhosts already match the file's `domains:` (order ignored). */
+export function globalDomainsInSync(current: string[], desired: string[] | false): boolean {
+  if (desired === false) return current.length === 0
+  const sa = new Set(current)
+  const sb = new Set(desired)
+  return sa.size === sb.size && [...sa].every(x => sb.has(x))
+}
+
 export async function ensureGlobalDomains(
   ctx: Context,
   domains: string[] | false
 ): Promise<void> {
   logAction('global', 'Configuring domains')
-  if (domains === false) {
-    await ctx.run('domains:clear-global')
-  } else {
-    await ctx.run('domains:set-global', ...domains)
-  }
+  const current = await readGlobalDomains(ctx)
+  if (globalDomainsInSync(current, domains)) { logSkip(); return }
+  if (domains === false) await ctx.run('domains:clear-global')
+  else await ctx.run('domains:set-global', ...domains)
   logDone()
 }
 
