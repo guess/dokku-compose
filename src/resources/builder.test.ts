@@ -17,32 +17,32 @@ describe('Builder resource', () => {
 
   it('reads build config from real dokku reports', async () => {
     const ctx = makeCtx({
-      'builder:report qultr': `=====> qultr builder information
-       Builder build dir:               apps/qultr-api
+      'builder:report myapp': `=====> myapp builder information
+       Builder build dir:               apps/myapp-api
        Builder computed build dir:
        Builder computed selected:
        Builder detected:              dockerfile
        Builder global build dir:
        Builder global selected:
        Builder selected:`,
-      'builder-dockerfile:report qultr': `=====> qultr builder-dockerfile information
+      'builder-dockerfile:report myapp': `=====> myapp builder-dockerfile information
        Builder dockerfile computed dockerfile path: docker/prod/api/Dockerfile
        Builder dockerfile global dockerfile path: Dockerfile
        Builder dockerfile dockerfile path: docker/prod/api/Dockerfile`,
-      'app-json:report qultr': `=====> qultr app-json information
+      'app-json:report myapp': `=====> myapp app-json information
        App json computed selected:    docker/prod/api/app.json
        App json global selected:      app.json
        App json selected:             docker/prod/api/app.json`,
-      'docker-options:report qultr --format json': JSON.stringify({ 'build-list': ['--build-arg APP_NAME=qultr', '--build-arg APP_PATH=apps/qultr-api', '--link dokku.postgres.qultr-db:dokku-postgres-qultr-db'] }),
+      'docker-options:report myapp --format json': JSON.stringify({ 'build-list': ['--build-arg APP_NAME=myapp', '--build-arg APP_PATH=apps/myapp-api', '--link dokku.postgres.myapp-db:dokku-postgres-myapp-db'] }),
     })
 
-    const config = await Builder.read(ctx, 'qultr')
+    const config = await Builder.read(ctx, 'myapp')
 
     expect(config).toEqual({
-      context: 'apps/qultr-api',
+      context: 'apps/myapp-api',
       dockerfile: 'docker/prod/api/Dockerfile',
       app_json: 'docker/prod/api/app.json',
-      args: { APP_NAME: 'qultr', APP_PATH: 'apps/qultr-api' },
+      args: { APP_NAME: 'myapp', APP_PATH: 'apps/myapp-api' },
     })
   })
 
@@ -84,7 +84,10 @@ describe('Builder resource', () => {
   })
 })
 
-const BUILD_LIST = ['--build-arg A=1', '--build-arg MSG=hello big world', '--link x:y', '--build-arg B=2', '--build-arg B=3']
+// Entries are the forms Dokku 0.38 stores (docker-options:add shell-splits its
+// arguments, starts a new option at each `-` token and single-quotes words with
+// shell characters), e.g. `--label key="hello world"` is stored as `--label 'key=hello world'`.
+const BUILD_LIST = ['--build-arg A=1', "--build-arg 'MSG=hello big world'", '--link x:y', '--build-arg B=2', '--build-arg B=3']
 
 describe('Builder --prune', () => {
   function setup(list: string[] = BUILD_LIST) {
@@ -95,11 +98,11 @@ describe('Builder --prune', () => {
     return createContext(runner)
   }
 
-  it('removes exactly the stale --build-arg options (every occurrence, spaces kept); other build options stay', async () => {
+  it('removes exactly the stale --build-arg options (every occurrence, stored text kept); other build options stay', async () => {
     const ctx = setup()
     await reconcile(Builder, ctx, 'myapp', { args: { A: '1' } }, undefined, true)
     expect(ctx.commands).toEqual([
-      ['docker-options:remove', 'myapp', 'build', '--build-arg MSG=hello big world'],
+      ['docker-options:remove', 'myapp', 'build', "--build-arg 'MSG=hello big world'"],
       ['docker-options:remove', 'myapp', 'build', '--build-arg B=2'],
       ['docker-options:remove', 'myapp', 'build', '--build-arg B=3'],
     ])
@@ -110,26 +113,49 @@ describe('Builder --prune', () => {
     await reconcile(Builder, a, 'myapp', { args: { A: '1' } })
     expect(a.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
     const b = setup()
-    await reconcile(Builder, b, 'myapp', { args: { A: '1', MSG: 'x', B: '2' } }, undefined, true)
+    await reconcile(Builder, b, 'myapp', { args: { A: '1', MSG: 'hello big world', B: '2' } }, undefined, true)
     expect(b.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
   })
 
-  // Unusual values: the text report cannot be split reliably, build-list entries are exact.
-  const UNUSUAL = ['--build-arg FLAGS=-a --x --y', '--build-arg KEEP=1', '-t img', '--build-arg SPACED=a b  c']
+  // What Dokku stores for: ' --x' in a value, a short flag after a build arg, a double space,
+  // '?', '$' and a single quote in values.
+  const UNUSUAL = [
+    "--build-arg 'FLAGS=-a --x --y'",
+    '--build-arg KEEP=1',
+    '-t img',
+    "--build-arg 'SPACED=a  b'",
+    "--build-arg 'URL=https://x?a=1&b=$HOME'",
+    "--build-arg 'Q=it'\\''s'",
+  ]
+  const DECLARED = { FLAGS: '-a --x --y', KEEP: '1', SPACED: 'a  b', URL: 'https://x?a=1&b=$HOME', Q: "it's" }
 
-  it('unusual values round-trip: read as written, no re-add when declared, exact removal when not', async () => {
+  it('unusual values are read as written and a declared quoted arg is neither re-added nor pruned', async () => {
     const current = await Builder.read(setup(UNUSUAL), 'myapp')
-    expect(current.args).toEqual({ FLAGS: '-a --x --y', KEEP: '1', SPACED: 'a b  c' })
+    expect(current.args).toEqual(DECLARED)
 
     const same = setup(UNUSUAL)
-    await reconcile(Builder, same, 'myapp', { args: { FLAGS: '-a --x --y', KEEP: '1', SPACED: 'a b  c' } }, undefined, true)
+    await reconcile(Builder, same, 'myapp', { args: DECLARED }, undefined, true)
     expect(same.commands).toEqual([])
+  })
 
+  it('prune removes a stale quoted arg by its stored text and keeps declared quoted ones', async () => {
     const prune = setup(UNUSUAL)
-    await reconcile(Builder, prune, 'myapp', { args: { KEEP: '1' } }, undefined, true)
+    const { SPACED: _s, URL: _u, ...rest } = DECLARED
+    await reconcile(Builder, prune, 'myapp', { args: rest }, undefined, true)
     expect(prune.commands).toEqual([
-      ['docker-options:remove', 'myapp', 'build', '--build-arg FLAGS=-a --x --y'],
-      ['docker-options:remove', 'myapp', 'build', '--build-arg SPACED=a b  c'],
+      ['docker-options:remove', 'myapp', 'build', "--build-arg 'SPACED=a  b'"],
+      ['docker-options:remove', 'myapp', 'build', "--build-arg 'URL=https://x?a=1&b=$HOME'"],
+    ])
+  })
+
+  it('adds a changed arg as one shell word so Dokku stores it intact', async () => {
+    const ctx = setup([])
+    await reconcile(Builder, ctx, 'myapp', { args: { FLAGS: '-a --x', URL: 'https://x?a=1', Q: "it's", PLAIN: 'v-1' } })
+    expect(ctx.commands).toEqual([
+      ['docker-options:add', 'myapp', 'build', "--build-arg 'FLAGS=-a --x'"],
+      ['docker-options:add', 'myapp', 'build', "--build-arg 'URL=https://x?a=1'"],
+      ['docker-options:add', 'myapp', 'build', "--build-arg 'Q=it'\\''s'"],
+      ['docker-options:add', 'myapp', 'build', '--build-arg PLAIN=v-1'],
     ])
   })
 

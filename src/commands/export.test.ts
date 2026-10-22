@@ -44,9 +44,11 @@ describe('runExport', () => {
     )
     // Should have bulk calls for: nginx, logs, registry, scheduler, proxy, ports, domains, storage, certs, network, git
     expect(bulkCalls.length).toBeGreaterThanOrEqual(10)
-    // Should NOT have per-app report calls (except config and ps, which have no readAll; ps reads per-app JSON)
+    // Should NOT have per-app report calls (except config and ps, which have no readAll; ps reads per-app JSON;
+    // build settings read per app because build-list only exists in the per-app docker-options JSON)
+    const perApp = ['apps:report', 'ps:report', 'builder:report', 'builder-dockerfile:report', 'app-json:report', 'docker-options:report']
     const perAppReportCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length >= 2 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
+      c => c[0].endsWith(':report') && c.length >= 2 && !perApp.includes(c[0])
     )
     expect(perAppReportCalls).toEqual([])
   })

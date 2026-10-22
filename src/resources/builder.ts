@@ -1,7 +1,8 @@
 import type { Resource } from '../core/reconcile.js'
 import type { Context } from '../core/context.js'
-import { parseReport, parseBulkReport } from './parsers.js'
+import { parseReport } from './parsers.js'
 import { logWarn } from '../core/logger.js'
+import { shellSplit, quoteShellArg } from '../core/shellwords.js'
 
 type BuildConfig = {
   dockerfile?: string
@@ -14,13 +15,16 @@ type BuildOption = { key: string; value: string; raw: string }
 
 /**
  * The `--build-arg` options among the stored build docker options. Each entry
- * of `build-list` is one option's exact text (Dokku 0.38+), so a value with
- * spaces or ` --x` in it is never split. `raw` is what `docker-options:remove` needs.
+ * of `build-list` is one option as Dokku stored it: shell-quoted, so the
+ * KEY=VALUE word is unquoted here. `raw` is the stored text, which
+ * `docker-options:remove` matches word by word.
  */
 function parseBuildOptions(buildList: string[]): BuildOption[] {
   const out: BuildOption[] = []
   for (const raw of buildList) {
-    const m = raw.match(/^--build-arg\s+([^=\s]+)=?(.*)$/s)
+    const words = shellSplit(raw) ?? raw.trim().split(/\s+/)
+    if (words[0] !== '--build-arg' || words.length < 2) continue
+    const m = words.slice(1).join(' ').match(/^([^=\s]+)=?(.*)$/s)
     if (m) out.push({ key: m[1], value: m[2], raw })
   }
   return out
@@ -99,31 +103,6 @@ export const Builder: Resource<BuildConfig> = {
     )
   },
 
-  async readAll(ctx: Context): Promise<Map<string, BuildConfig>> {
-    const [builderRaw, dockerfileRaw, appJsonRaw] = await Promise.all([
-      ctx.query('builder:report'),
-      ctx.query('builder-dockerfile:report'),
-      ctx.query('app-json:report'),
-    ])
-    const builderBulk = parseBulkReport(builderRaw, 'builder')
-    const dockerfileBulk = parseBulkReport(dockerfileRaw, 'builder-dockerfile')
-    const appJsonBulk = parseBulkReport(appJsonRaw, 'app-json')
-
-    // `build-list` only comes from the per-app JSON report, so read it app by app.
-    const apps = [...builderBulk.keys()]
-    const buildLists = await Promise.all(apps.map(app => readBuildList(ctx, app)))
-    const result = new Map<string, BuildConfig>()
-    apps.forEach((app, i) => {
-      result.set(app, buildConfigFromReports(
-        builderBulk.get(app) ?? {},
-        dockerfileBulk.get(app) ?? {},
-        appJsonBulk.get(app) ?? {},
-        buildLists[i]
-      ))
-    })
-    return result
-  },
-
   async onChange(ctx: Context, target: string, { after }: { after: BuildConfig }): Promise<void> {
     if (after.dockerfile)
       await ctx.run('builder-dockerfile:set', target, 'dockerfile-path', after.dockerfile)
@@ -133,7 +112,7 @@ export const Builder: Resource<BuildConfig> = {
       await ctx.run('builder:set', target, 'build-dir', after.context)
     if (after.args) {
       for (const [key, value] of Object.entries(after.args)) {
-        await ctx.run('docker-options:add', target, 'build', `--build-arg ${key}=${value}`)
+        await ctx.run('docker-options:add', target, 'build', `--build-arg ${quoteShellArg(`${key}=${value}`)}`)
       }
     }
   },

@@ -32,4 +32,4 @@ apps:
 
 `up` already removes an option on the server that is missing from a declared `docker_options` block, and `diff` shows it with a red `-`. A `docker_options` block gone from the file is left alone.
 
-`--build-arg` options in the build phase belong to [`build.args`](builder.md), which reads them from the JSON report's `build-list` so any value round-trips. This block's own options are still read from the text report, where options are space-joined without quoting, so avoid values that contain ` --`.
+`--build-arg` options in the build phase belong to [`build.args`](builder.md), which reads and writes them as Dokku stores them (quoted words from the JSON report's `build-list`). This block's own options are still read from the text report, where options are space-joined without quoting, so a value containing ` --` or a short flag is not reliably told apart.
