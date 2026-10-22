@@ -4,9 +4,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import { loadConfig } from '../core/config.js'
-import { computeDiff, formatVerbose } from '../commands/diff.js'
+import { computeDiff, formatSummary, formatVerbose } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, logsAppJson, logsGlobalJson, nginxGlobalJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -54,6 +54,8 @@ function inSyncServer(): FakeServer {
         { name: 'postgres', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
         { name: 'redis', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
       ]),
+      'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5'),
+      'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine'),
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
       'logs:report --global --format json': logsGlobalJson({
@@ -187,8 +189,34 @@ describe('a server whose state equals the file', () => {
     expect(runner.dryRunLog).toEqual(['domains:set-global example.com'])
   })
 
+  it('a service whose version or image differs shows in diff, and up warns and runs no :upgrade', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgres', '16.1')
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.0-alpine')
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.services['myapp-db']).toMatchObject({
+      status: 'changed',
+      mismatches: [
+        { field: 'version', desired: '17-3.5', current: '16.1' },
+        { field: 'image', desired: 'postgis/postgis', current: 'postgres' },
+      ],
+    })
+    expect(diff.services['myapp-redis']).toMatchObject({ status: 'changed', mismatches: [{ field: 'version', desired: '7.2-alpine', current: '7.0-alpine' }] })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('version: 16.1 → 17-3.5')
+    expect(formatSummary(diff).match(/services: myapp-db/g)).toHaveLength(1)
+    expect(formatVerbose(diff)).toContain('- 16.1')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual([])
+    const warned = warn.mock.calls.map(c => String(c[0])).filter(l => l.includes('on the server but'))
+    expect(warned).toHaveLength(2)
+    expect(warned[0]).toContain('myapp-db: version is 16.1 on the server but 17-3.5 in the file; image is postgres on the server but postgis/postgis in the file')
+    warn.mockRestore()
+  })
+
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.
-  it.todo('LAB-750: postgres:/redis: version and image are compared with the server, and diff shows a change')
   it.todo('LAB-757: postgres backup: is read from the server (no hash env var), and an unchanged schedule runs no write')
   it.todo('LAB-751: top-level env: and docker_auth: read first; an in-sync global env or registry login runs no write')
   it.todo('LAB-753: links: options (alias, env_var, querystring) are declared and compared')

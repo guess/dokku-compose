@@ -54,4 +54,8 @@ All `backup.auth` fields are required when backup is configured.
 
 ### Export
 
+### Changing `version` or `image` later
+
+`up` creates a service with them and never changes an existing one: an upgrade can need a dump and downtime, so run `postgres:upgrade` yourself. When the declared value differs from `postgres:info <name> --format json` (`image-version`, `image`), `up` logs one warning per service with both values of each field, and `diff` shows `~ version` or `~ image` and exits non-zero. A field the file does not declare never drifts; a declared `image: postgres` equals the default.
+
 `dokku-compose export` discovers Postgres services by querying `postgres:list` and `postgres:info` on the server. Custom images (e.g., `postgis/postgis`) are included when they differ from the default `postgres` image.

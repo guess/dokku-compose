@@ -17,6 +17,7 @@
 
 ### Added
 
+- **`diff` shows a datastore `version` or `image` change** (`~ version`, `~ image`) for `postgres:` and `redis:` services, read from `<plugin>:info <svc> --format json`, and exits non-zero. `up` warns once per service with both values of each field and runs no `:upgrade`; a service that declares neither field never drifts.
 - **`diff` shows global `domains:`, `logs:` and `nginx:` drift** under a `global` section (log sinks masked), and a declared network missing on the server under `networks:`.
 - **`diff --verbose` prints `Everything in sync.`** when nothing differs.
 
