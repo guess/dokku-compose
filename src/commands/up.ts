@@ -15,7 +15,7 @@ import { Git } from '../resources/git.js'
 import { Checks } from '../resources/checks.js'
 import { Networks, NetworkProps } from '../resources/network.js'
 import { ensurePlugins } from '../modules/plugins.js'
-import { ensureDockerAuth } from '../modules/docker-auth.js'
+import { ensureDockerAuth, pruneDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
 import { ensurePostgres, ensurePostgresBackups } from '../modules/postgres.js'
 import { ensureRedis } from '../modules/redis.js'
@@ -167,7 +167,10 @@ async function runUpPhases(
 
   // Phase 1: Plugins & host-level auth
   if (config.plugins) await ensurePlugins(ctx, config.plugins)
-  if (config.docker_auth) await ensureDockerAuth(ctx, config.docker_auth)
+  if (config.docker_auth) {
+    await ensureDockerAuth(ctx, config.docker_auth)
+    if (opts.prune) await pruneDockerAuth(ctx, config.docker_auth)
+  }
 
   // Phase 2: Global config
   if (config.domains !== undefined) await ensureGlobalDomains(ctx, config.domains)

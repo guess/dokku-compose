@@ -7,6 +7,10 @@ export interface Context {
   queryStrict(...args: string[]): Promise<string>
   /** Boolean check — delegates to runner, not cached */
   check(...args: string[]): Promise<boolean>
+  /** Exit code of a read (uncached); `input` goes to stdin, never the command line */
+  status(args: string[], input?: string): Promise<number>
+  /** Mutation with `input` on stdin; records the command without the input */
+  runWithInput(input: string, ...args: string[]): Promise<void>
   /** Mutation — records command, executes via runner */
   run(...args: string[]): Promise<void>
   /** All commands that were run (or would be in dry-run) */
@@ -72,6 +76,15 @@ export function createContext(runner: Runner): Context {
 
     check(...args: string[]): Promise<boolean> {
       return runner.check(...args)
+    },
+
+    status(args: string[], input?: string): Promise<number> {
+      return runner.status(args, input)
+    },
+
+    async runWithInput(input: string, ...args: string[]): Promise<void> {
+      commands.push(args)
+      await runner.runWithInput(input, ...args)
     },
 
     async run(...args: string[]): Promise<void> {

@@ -10,6 +10,8 @@ export interface FakeServer {
   queries: Record<string, string>
   /** `check` answers, keyed the same way. */
   checks: Record<string, boolean>
+  /** `status` exit codes, keyed the same way (stdin input is not part of the key). */
+  statuses?: Record<string, number>
 }
 
 /** One app's section of a Dokku stdout report, as `<ns>:report <app>` prints it. */
@@ -36,6 +38,11 @@ export function fakeContext(server: FakeServer): { ctx: Context; runner: Runner 
     const key = args.join(' ')
     if (key in server.checks) return server.checks[key]
     throw new Error(`fake server: no check answer for 'dokku ${key}'`)
+  })
+  runner.status = vi.fn(async (args: string[]) => {
+    const key = args.join(' ')
+    if (server.statuses && key in server.statuses) return server.statuses[key]
+    throw new Error(`fake server: no status answer for 'dokku ${key}'`)
   })
   return { ctx: createContext(runner), runner }
 }

@@ -7,15 +7,16 @@ Module: `src/modules/version.ts`
 ## Supported Dokku versions
 
 dokku-compose never installs or upgrades Dokku and never pins an exact version.
-It has a built-in minimum, **Dokku 0.38.22**: the first release where
-`plugin:list`, `ps:scale`, `config:export` and `ps:report` all accept
-`--format json` (`plugin:list` is the last to gain it, in 0.38.22).
+It has a built-in minimum, **Dokku 0.38.29**: the first release with
+`registry:auth-status`, which `docker_auth:` uses to skip a login that already
+matches. Every command dokku-compose reads as JSON (`plugin:list`, `ps:scale`,
+`config:export`, `ps:report`) accepts `--format json` from 0.38.22 on.
 
 Every command that talks to a server (`up`, `diff`, `down`, `export`, `ps`)
 runs `dokku version` before any other Dokku call and stops on an older server:
 
 ```
-dokku-compose 0.13.1 needs Dokku >= 0.38.22; this server runs 0.37.9. Upgrade Dokku first.
+dokku-compose 0.13.1 needs Dokku >= 0.38.29; this server runs 0.37.9. Upgrade Dokku first.
 ```
 
 `validate` and `init` never touch a server and are not checked.

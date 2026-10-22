@@ -16,6 +16,8 @@ function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, bool
       const key = args.join(' ')
       return queryMap[key] ?? emptyAnswer(...args) ?? ''
     }),
+    status: vi.fn(async () => 1),
+    runWithInput: vi.fn(),
     check: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
       if (key in checkMap) return checkMap[key]

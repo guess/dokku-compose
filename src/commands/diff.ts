@@ -9,6 +9,8 @@ import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceMismatches, type ServiceMismatch } from '../modules/service-drift.js'
+import { readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
+import { readDockerAuthDrift } from '../modules/docker-auth.js'
 import type { Resource } from '../core/reconcile.js'
 import chalk from 'chalk'
 
@@ -294,6 +296,46 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     }
   }
 
+  // Top-level env: by key name only; values are never shown (they are often secrets).
+  if (config.env !== undefined && config.env !== false) {
+    try {
+      const { changed, removed, markerOutdated } = await readGlobalEnvDrift(ctx, config.env)
+      if (changed.length > 0 || removed.length > 0 || markerOutdated) {
+        result.global.env = {
+          status: changed.length === 0 && removed.length > 0 ? 'extra' : 'changed',
+          desired: Object.fromEntries(changed.map(k => [k, '****'])),
+          removed,
+          note: changed.length === 0 && removed.length === 0 ? `${GLOBAL_MANAGED_KEYS_VAR} not written yet` : undefined,
+        }
+        result.inSync = false
+      }
+    } catch (err) {
+      result.global.env = { status: 'unknown', desired: Object.keys(config.env) }
+      result.readWarnings.push(`could not read global 'env': ${err instanceof Error ? err.message : String(err)}`)
+      result.inSync = false
+    }
+  }
+
+  // Top-level docker_auth: servers whose login is missing or differs (never a password)
+  if (config.docker_auth) {
+    try {
+      const { stale, extra } = await readDockerAuthDrift(ctx, config.docker_auth)
+      if (stale.length > 0 || extra.length > 0) {
+        result.global.docker_auth = {
+          status: stale.length > 0 ? 'changed' : 'extra',
+          desired: Object.fromEntries(stale.map(server => [server, 'login missing or differs'])),
+          removed: extra,
+          note: extra.length > 0 ? 'up --prune logs out of these' : undefined,
+        }
+        result.inSync = false
+      }
+    } catch (err) {
+      result.global.docker_auth = { status: 'unknown', desired: Object.keys(config.docker_auth) }
+      result.readWarnings.push(`could not read global 'docker_auth': ${err instanceof Error ? err.message : String(err)}`)
+      result.inSync = false
+    }
+  }
+
   // Top-level logs: and nginx: against the server's global values
   for (const [name, declared, read] of [
     ['logs', config.logs, readGlobalLogs],
@@ -411,7 +453,7 @@ export function formatSummary(diff: DiffResult): string {
   for (const [name, d] of Object.entries(diff.global)) {
     const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
     lines.push(`  global`)
-    lines.push(`    ${sym} ${name}: ${formatChange(d)}`)
+    lines.push(`    ${sym} ${name}: ${formatFeatureSummary(d)}`)
   }
 
   for (const net of Object.keys(diff.networks)) {
@@ -468,7 +510,8 @@ function formatChange(d: FeatureDiff): string {
   if (Array.isArray(d.desired) && Array.isArray(d.current)) {
     return `${(d.current as unknown[]).length} → ${(d.desired as unknown[]).length} items`
   }
-  return `${JSON.stringify(d.current, showUnset)} → ${JSON.stringify(d.desired, showUnset)}`
+  const desired = JSON.stringify(d.desired, showUnset)
+  return d.current === undefined ? desired : `${JSON.stringify(d.current, showUnset)} → ${desired}`
 }
 
 // The env resource reads a marked key that is gone from the app as this sentinel.
@@ -519,7 +562,9 @@ export function formatVerbose(diff: DiffResult): string {
       continue
     }
     if (d.current !== undefined) for (const line of JSON.stringify(d.current, null, 2).split('\n')) lines.push(chalk.red(`- ${line}`))
-    for (const line of JSON.stringify(d.desired, null, 2).split('\n')) lines.push(chalk.green(`+ ${line}`))
+    if (d.status !== 'extra') for (const line of JSON.stringify(d.desired, null, 2).split('\n')) lines.push(chalk.green(`+ ${line}`))
+    for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r} (not in the file)`))
+    if (d.note) lines.push(`  (${d.note})`)
   }
 
   for (const net of Object.keys(diff.networks)) {

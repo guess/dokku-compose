@@ -34,6 +34,9 @@ function inSyncServer(): FakeServer {
   const worker = 'myapp-worker'
   const edge = 'myapp-edge'
   return {
+    statuses: {
+      'registry:auth-status --global --password-stdin registry.example.com bot': 0,
+    },
     checks: {
       'apps:exists myapp': true,
       'apps:exists myapp-worker': true,
@@ -63,6 +66,12 @@ function inSyncServer(): FakeServer {
         'global-vector-sink': SINK, 'logs-global-vector-sink': SINK, 'computed-vector-sink': SINK, 'logs-computed-vector-sink': SINK,
       }),
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
+      // Global env as config:export --global prints it: a hand-set key and an old backup hash beside the managed ones.
+      'config:export --global --format json': JSON.stringify({
+        TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X',
+        HAND_SET: 'x', DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB: 'abc123',
+      }),
+      'registry:report --global --registry-global-auth-servers': 'registry.example.com',
 
       // myapp
       [`domains:report ${app} --domains-app-enabled`]: 'true',
@@ -229,6 +238,33 @@ describe('a server whose state equals the file', () => {
     expect(warned).toHaveLength(2)
     expect(warned[0]).toContain('myapp-db: version is 16.1 on the server but 17-3.5 in the file; image is postgres on the server but postgis/postgis in the file')
     warn.mockRestore()
+  it('a removed global key and a changed registry password show in diff without values, and up fixes exactly those', async () => {
+    const server = inSyncServer()
+    server.queries['config:export --global --format json'] = JSON.stringify({
+      TZ: 'UTC', FEATURE_X: 'true', OLD_FLAG: 'secret-value', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X,OLD_FLAG', HAND_SET: 'x',
+    })
+    server.statuses!['registry:auth-status --global --password-stdin registry.example.com bot'] = 2
+    server.queries['registry:report --global --registry-global-auth-servers'] = 'old.example.com,registry.example.com'
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.global.env).toMatchObject({ status: 'extra', removed: ['OLD_FLAG'] })
+    expect(diff.global.docker_auth).toMatchObject({ status: 'changed', removed: ['old.example.com'] })
+    expect(diff.inSync).toBe(false)
+    const shown = formatVerbose(diff)
+    expect(shown).not.toContain('secret-value')
+    expect(shown).not.toContain('s3cret')
+    expect(shown).not.toContain('DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS')
+
+    const up = fakeContext(server)
+    await runUp(up.ctx, loadConfig(FIXTURE), [])
+    expect(up.runner.dryRunLog).toEqual([
+      'registry:login --global --password-stdin registry.example.com bot',
+      'config:unset --global OLD_FLAG',
+      'config:set --global DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS=TZ,FEATURE_X',
+    ])
+
+    const pruned = fakeContext(server)
+    await runUp(pruned.ctx, loadConfig(FIXTURE), [], { prune: true })
+    expect(pruned.runner.dryRunLog).toContain('registry:logout --global old.example.com')
   })
 
   it('several build args, one changed and one added: up runs remove-old + add-new + add-added, then nothing', async () => {
@@ -270,6 +306,5 @@ describe('a server whose state equals the file', () => {
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.
   it.todo('LAB-757: postgres backup: is read from the server (no hash env var), and an unchanged schedule runs no write')
-  it.todo('LAB-751: top-level env: and docker_auth: read first; an in-sync global env or registry login runs no write')
   it.todo('LAB-753: links: options (alias, env_var, querystring) are declared and compared')
 })

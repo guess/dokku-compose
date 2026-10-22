@@ -3,8 +3,10 @@ import type { Context } from '../core/context.js'
 import { logWarn } from '../core/logger.js'
 
 /**
- * The oldest Dokku this dokku-compose supports: the first release where every
- * command it reads as JSON accepts `--format json`.
+ * The oldest Dokku this dokku-compose supports: the first release with
+ * `registry:auth-status` (and `--password-stdin` on it), which `docker_auth:`
+ * uses to skip an unchanged login. Every command read as JSON accepts
+ * `--format json` from 0.38.22 on.
  *
  * Source (dokku/dokku release notes and tags, checked with `gh api`):
  * - `config:export --format json`: v0.15.5 (#3511)
@@ -12,9 +14,12 @@ import { logWarn } from '../core/logger.js'
  * - `ps:scale --format json`: v0.38.21 (#8796)
  * - `plugin:list --format json`: v0.38.22 (#8801); v0.38.21's
  *   plugins/plugin/internal-functions has no format handling, v0.38.22's does.
- * So 0.38.22 is the first release with all four.
+ * - `registry:auth-status`: v0.38.29; plugins/registry/auth_status.go is
+ *   absent at v0.38.28 and present at v0.38.29 (exit codes 0 match,
+ *   1 missing, 2 differs, 3 invalid arguments, 4 unknown).
+ * So 0.38.29 is the first release with all of them.
  */
-export const MIN_DOKKU_VERSION = '0.38.22'
+export const MIN_DOKKU_VERSION = '0.38.29'
 
 const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/
 

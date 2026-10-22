@@ -42,6 +42,14 @@ export interface Runner {
   queryStrict(...args: string[]): Promise<string>
   /** Execute a read-only command, returns true if exit 0 */
   check(...args: string[]): Promise<boolean>
+  /**
+   * Execute a read-only command and return its exit code (never throws on a
+   * non-zero exit). `input`, when given, is written to the command's stdin, so
+   * a secret never appears on a command line. Runs in dry-run too, as a read.
+   */
+  status(args: string[], input?: string): Promise<number>
+  /** Like run(), with `input` written to stdin. Dry-run logs the command, never the input. */
+  runWithInput(input: string, ...args: string[]): Promise<void>
   /** In dry-run mode, the list of commands that would have run */
   dryRunLog: string[]
   /** Close the SSH control socket (no-op if not using SSH) */
@@ -71,7 +79,7 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     return `'${arg.replace(/'/g, "'\\''")}'`
   }
 
-  async function execDokku(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number; ok: boolean }> {
+  async function execDokku(args: string[], input?: string): Promise<{ stdout: string; stderr: string; exitCode: number; ok: boolean }> {
     // stdin must never be inherited as an open pipe: several Dokku bash-plugin
     // commands (nginx:report, certs:report, domains:report, git:report,
     // docker-options:report, builder-dockerfile:*, postgres:create/link, ...)
@@ -79,17 +87,19 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     // while Go-plugin commands are unaffected. `stdin: 'ignore'` reproduces the
     // working `stdin: 'inherit'`/interactive-shell behaviour without attaching
     // this process's stdin to the child. No call site here pipes input to
-    // dokku/ssh, so this is safe everywhere.
+    // dokku/ssh except status()/runWithInput(), which feed a secret to a
+    // Go-plugin command that reads it (`--password-stdin`).
+    const stdio = input === undefined ? { stdin: 'ignore' as const } : { input }
     if (opts.host) {
       try {
-        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)], { stdin: 'ignore' })
+        const result = await execa('ssh', [...sshControlFlags, `dokku@${opts.host}`, '--', ...args.map(shellQuote)], stdio)
         return { stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), exitCode: result.exitCode ?? 0, ok: true }
       } catch (e: any) {
         return { stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? ''), exitCode: e.exitCode ?? 1, ok: false }
       }
     } else {
       try {
-        const result = await execa('dokku', args, { stdin: 'ignore' })
+        const result = await execa('dokku', args, stdio)
         return { stdout: String(result.stdout ?? ''), stderr: String(result.stderr ?? ''), exitCode: result.exitCode ?? 0, ok: true }
       } catch (e: any) {
         return { stdout: String(e.stdout ?? ''), stderr: String(e.stderr ?? ''), exitCode: e.exitCode ?? 1, ok: false }
@@ -127,6 +137,20 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
     async check(...args: string[]): Promise<boolean> {
       const { ok } = await execDokku(args)
       return ok
+    },
+
+    async status(args: string[], input?: string): Promise<number> {
+      const { exitCode, ok } = await execDokku(args, input)
+      return ok ? 0 : exitCode
+    },
+
+    async runWithInput(input: string, ...args: string[]): Promise<void> {
+      if (opts.dryRun) {
+        log.push(args.map(a => a.includes(' ') ? shellQuote(a) : a).join(' '))
+        return
+      }
+      const { ok, exitCode, stderr } = await execDokku(args, input)
+      if (!ok) throw new DokkuCommandError(args, exitCode, input ? stderr.split(input).join('****') : stderr)
     },
 
     async close(): Promise<void> {

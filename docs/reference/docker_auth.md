@@ -21,7 +21,17 @@ docker_auth:
     password: "${REGISTRY_PASSWORD}"
 ```
 
-On each `up` run, dokku-compose runs `dokku registry:login --global <server> <username> <password>` for every entry. Docker stores credentials in `~/.docker/config.json` and overwrites in place, so re-running is idempotent and rotation is just an `up` away.
+On each `up` run, dokku-compose first asks `dokku registry:auth-status --global --password-stdin <server> <username>` (Dokku >= 0.38.29), with the password on stdin, whether the stored login matches, password included:
+
+| Exit | Meaning | `up` |
+|:-:|---|---|
+| 0 | the login matches | skips it |
+| 1 | no login for the server | logs in |
+| 2 | a different login is stored | logs in |
+| 4 | a login is stored but its secret is unreadable (credential helper) | logs in |
+| 3 | invalid arguments | stops with an error |
+
+It logs in with `dokku registry:login --global --password-stdin <server> <username>`, again with the password on stdin, so a password never appears on a command line. Rotating a password is just an `up` away. `diff` lists a server whose login is missing or differs under `global / docker_auth`, never the password.
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -34,11 +44,11 @@ This top-level `docker_auth:` is host-global pull authentication. It is **not** 
 
 ## Removal Semantics
 
-Removing an entry from `docker_auth:` does **not** automatically log out — host credentials persist. To revoke, run `dokku registry:logout --global <server>` manually on the host. Same posture as `plugins:` (installed plugins aren't auto-removed).
+Removing an entry from `docker_auth:` does not log out on a plain `up`. `up --prune` reads `registry:report --global --registry-global-auth-servers` and runs `dokku registry:logout --global <server>` for each server the file does not list (Docker Hub aliases such as `hub.docker.com` count as `docker.io`). `diff` shows those servers as `- <server> (not in the file)`. Logouts only run when `docker_auth:` is declared.
 
 ## Secrets
 
-Passwords are masked in `--dry-run` output (last 4 characters preserved). Pass `--sensitive` to dump the unmasked command list — useful for debugging, dangerous to copy/paste.
+Passwords go to Dokku on stdin, so they never appear in `--dry-run` output, logs or error messages.
 
 ## Common Use Case: Private GHCR
 
@@ -49,11 +59,11 @@ docker_auth:
     password: "${GHCR_PAT}"
 ```
 
-With a `qlustr.env`-style file:
+With an env file of 1Password references:
 
 ```
-GHCR_USERNAME=op://strates-${APP_ENV}/github/user
-GHCR_PAT=op://strates-${APP_ENV}/github/packages-pat
+GHCR_USERNAME=op://myvault/github/user
+GHCR_PAT=op://myvault/github/packages-pat
 ```
 
-And `op run --env-file=qlustr.env -- dokku-compose up`, the values are resolved from 1Password at apply time and never written to disk on the host.
+And `op run --env-file=myapp.env -- dokku-compose up`, the values are resolved from 1Password at apply time and never written to disk on the host.
