@@ -83,6 +83,33 @@ describe('Domains resource', () => {
     ])
   })
 
+  function newAppCtx() {
+    const runner = createRunner({ dryRun: true })
+    runner.queryStrict = vi.fn(async () => { throw new Error('app myapp does not exist') })
+    runner.query = vi.fn(async () => '')
+    runner.check = vi.fn(async () => false)
+    return createContext(runner)
+  }
+
+  it('plans domains: [list] for an app that does not exist yet', async () => {
+    const ctx = newAppCtx()
+    await reconcile(Domains, ctx, 'myapp', ['a.example.com'])
+    expect(ctx.commands).toEqual([['domains:add', 'myapp', 'a.example.com']])
+  })
+
+  it('plans domains: false for an app that does not exist yet', async () => {
+    const ctx = newAppCtx()
+    await reconcile(Domains, ctx, 'myapp', false)
+    expect(ctx.commands).toEqual([['domains:disable', 'myapp']])
+  })
+
+  it('still throws when an existing app cannot be read', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.queryStrict = vi.fn(async () => { throw new Error('boom') })
+    runner.check = vi.fn(async () => true)
+    await expect(reconcile(Domains, createContext(runner), 'myapp', false)).rejects.toThrow('boom')
+  })
+
   it('throws, running nothing, when the enabled state is unreadable', async () => {
     const ctx = makeCtx(enabled('weird'))
     await expect(reconcile(Domains, ctx, 'myapp', false)).rejects.toThrow(/domains-app-enabled/)

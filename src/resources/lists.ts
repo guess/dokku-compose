@@ -47,7 +47,16 @@ function parseEnabled(raw: string): boolean {
 export const Domains: Resource<string[] | false> = {
   key: 'domains',
   read: async (ctx, target) => {
-    const enabled = parseEnabled(await ctx.queryStrict('domains:report', target, '--domains-app-enabled'))
+    let enabledRaw: string
+    try {
+      enabledRaw = await ctx.queryStrict('domains:report', target, '--domains-app-enabled')
+    } catch (err) {
+      // An app `up --dry-run` has not created yet has no report: plan from nothing.
+      // An existing app whose report fails is an error, never a guess.
+      if (!(await ctx.check('apps:exists', target))) return []
+      throw err
+    }
+    const enabled = parseEnabled(enabledRaw)
     if (!enabled) return false
     // Dokku 0.38.31 prints the vhosts space-joined (`normalizeWhitespace` in
     // plugins/domains/report.go), so split on any whitespace, not lines.
