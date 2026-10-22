@@ -135,4 +135,18 @@ describe('runExport', () => {
     warn.mockRestore()
     expect(Object.keys(result.apps)).toContain('myapp')
   })
+
+  it('exports the last stored value of a build arg stored twice, never a joined one', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'apps:list') return 'myapp'
+      if (args.join(' ') === 'docker-options:report myapp --format json') return JSON.stringify({ 'build-list': ['--build-arg B=2', '--build-arg B=3'] })
+      return emptyAnswer(...args) ?? ''
+    })
+    runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
+    const result = await runExport(runner, {})
+    expect(result.apps.myapp.build).toEqual({ args: { B: '3' } })
+  })
 })

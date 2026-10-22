@@ -1,6 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { Context } from '../core/context.js'
 import { parseReport } from './parsers.js'
+import { computeAdditiveChange } from '../core/change.js'
 import { logWarn } from '../core/logger.js'
 import { shellSplit, quoteShellArg } from '../core/shellwords.js'
 
@@ -32,9 +33,8 @@ function parseBuildOptions(buildList: string[]): BuildOption[] {
 
 function parseBuildArgs(buildList: string[]): Record<string, string> {
   const args: Record<string, string> = {}
-  // A key stored more than once (older versions appended duplicates) reads as its values joined by a newline,
-  // which never equals a declared value, so it is drift until one option is left.
-  for (const o of parseBuildOptions(buildList)) args[o.key] = o.key in args ? `${args[o.key]}\n${o.value}` : o.value
+  // The last stored option wins, as it does for Docker.
+  for (const o of parseBuildOptions(buildList)) args[o.key] = o.value
   return args
 }
 
@@ -67,6 +67,11 @@ function buildConfigFromReports(
 
   const args = parseBuildArgs(buildList)
   if (Object.keys(args).length > 0) config.args = args
+  // Keys stored more than once (older versions appended duplicates). Not enumerable, so export never writes it.
+  const seen = new Set<string>()
+  const duplicated = new Set<string>()
+  for (const o of parseBuildOptions(buildList)) (seen.has(o.key) ? duplicated : seen).add(o.key)
+  Object.defineProperty(config, 'duplicateArgs', { value: duplicated, enumerable: false })
 
   return config
 }
@@ -74,6 +79,10 @@ function buildConfigFromReports(
 export const Builder: Resource<BuildConfig> = {
   key: 'build',
   additive: true,
+  // Additive compare, plus: a declared arg stored more than once is drift until one option is left.
+  inSync: (current, desired) =>
+    !computeAdditiveChange(current, desired).changed &&
+    !Object.keys(desired.args ?? {}).some(k => (current as any)?.duplicateArgs?.has(k)),
   // Build args (`--build-arg KEY=...` build docker options) whose KEY is not in `build.args`.
   removals: (current, desired) =>
     Object.keys(current?.args ?? {})
@@ -121,7 +130,8 @@ export const Builder: Resource<BuildConfig> = {
       // appends without dedupe), then adds the new value.
       const stored = parseBuildOptions(await readBuildList(ctx, target))
       const current = parseBuildArgs(stored.map(o => o.raw))
-      const changedKeys = new Set(Object.keys(after.args).filter(k => k in current && current[k] !== after.args![k]))
+      const dup = (before as any)?.duplicateArgs as Set<string> | undefined
+      const changedKeys = new Set(Object.keys(after.args).filter(k => k in current && (current[k] !== after.args![k] || dup?.has(k))))
       if (changedKeys.size > 0) {
         for (const o of stored.filter(o => changedKeys.has(o.key))) {
           await ctx.run('docker-options:remove', target, 'build', o.raw)

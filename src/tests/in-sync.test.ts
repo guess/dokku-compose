@@ -254,7 +254,11 @@ describe('a server whose state equals the file', () => {
       const opt = canon(m[2])
       const norm = (o: string) => o.replace(/'/g, '')
       if (m[1] === 'add') stored.push(opt)
-      else stored.splice(stored.findIndex(o => norm(o) === norm(opt)), 1)
+      else {
+        const i = stored.findIndex(o => norm(o) === norm(opt))
+        if (i < 0) throw new Error(`remove matched no stored option: ${opt}`)
+        stored.splice(i, 1)
+      }
     }
     server.queries[key] = JSON.stringify({ ...JSON.parse(server.queries[key]), 'build-list': stored })
     const second = fakeContext(server)
