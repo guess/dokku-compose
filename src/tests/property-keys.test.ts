@@ -1,6 +1,6 @@
-// Every settable property of Dokku 0.38.31, per namespace. The key sets in
-// fixtures/dokku-0.38.31/settable-keys.json come from Dokku's own source, so a key
-// added to or dropped from a list here (or by a Dokku upgrade) fails these tests.
+// Every settable property of Dokku 0.38.31, per namespace. The key sets come from real
+// `<ns>:report --format json` output in fixtures/dokku-0.38.31/reports, so a key added to
+// or dropped from a list here (or by a Dokku upgrade) fails these tests.
 import { describe, it, expect, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { createRunner } from '../core/dokku.js'
