@@ -29,7 +29,7 @@ apps:
 | `env:` | Dokku commands |
 |--------|----------------|
 | a map | `config:unset --no-restart <app> <removed>...` (if any), then `config:set --no-restart <app> KEY=VAL... DOKKU_COMPOSE_MANAGED_KEYS=<keys>` |
-| block removed (or `{}`) | `config:unset --no-restart <app> <every marked key>...`, then `config:unset --no-restart <app> DOKKU_COMPOSE_MANAGED_KEYS`; the marker is removed, never written empty |
+| block removed, `false` or `{}` | `config:unset --no-restart <app> <every marked key>...`, then `config:unset --no-restart <app> DOKKU_COMPOSE_MANAGED_KEYS`; the marker is removed, never written empty |
 | removed, and the app has no marker | no action |
 
 Removing a key from `env:` and re-running `up` unsets it and drops it from the marker.
@@ -37,6 +37,7 @@ Removing a key from `env:` and re-running `up` unsets it and drops it from the m
 ## Failures
 
 - **A failed `config:unset`** is reported with the app and the masked command. The marker is not rewritten, so it still names the key and the next `up` retries.
+- A failed unset also blocks new keys in that run: the `config:set` is not attempted until the unset succeeds on a later run.
 - **A failed `config:export`** is an error. It is never read as "no variables", which would mark every key as new and rewrite the marker without unsetting anything.
 - A failure in any other resource does not stop env from reconciling; `up` keeps going through the app's resources and exits non-zero with a summary at the end.
 

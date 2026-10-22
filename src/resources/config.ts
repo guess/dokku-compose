@@ -2,6 +2,7 @@ import type { Resource } from '../core/reconcile.js'
 import type { MapChange } from '../core/change.js'
 
 const MANAGED_KEYS_VAR = 'DOKKU_COMPOSE_MANAGED_KEYS'
+const MISSING = '\u0000missing'
 
 export const Config: Resource<Record<string, string | number | boolean>> = {
   key: 'env',
@@ -9,6 +10,10 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
     const managedRaw = await ctx.query('config:get', target, MANAGED_KEYS_VAR)
     const managedKeys = managedRaw.trim() ? managedRaw.trim().split(',').filter(Boolean) : []
     const result: Record<string, string> = {}
+    // A marked key that is already gone from the app still counts as present
+    // (with a value no desired value equals), so a stale marker is cleaned up
+    // and a drifted key is set again.
+    for (const k of managedKeys) result[k] = MISSING
     if (managedKeys.length > 0) {
       const raw = await ctx.queryStrict('config:export', target, '--format', 'shell')
       for (const line of raw.split('\n')) {

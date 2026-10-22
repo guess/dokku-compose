@@ -41,6 +41,14 @@ export class UpFailedError extends Error {
   }
 }
 
+/** Thrown by processApp when one or more of an app's resources failed (each already logged). */
+class AppStepsError extends AggregateError {
+  constructor(errors: unknown[]) {
+    super(errors, errors.map(e => e instanceof Error ? e.message : String(e)).join('; '))
+    this.name = 'AppStepsError'
+  }
+}
+
 async function processApp(
   ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false
 ): Promise<void> {
@@ -58,7 +66,9 @@ async function processApp(
   }
 
   // Lifecycle
-  await step(() => reconcile(Apps, ctx, app, true))
+  // Without the app nothing else can work: stop here instead of flooding
+  // the log with follow-on failures.
+  await reconcile(Apps, ctx, app, true)
 
   // Networking
   await step(() => reconcile(Domains, ctx, app, appConfig.domains))
@@ -87,10 +97,7 @@ async function processApp(
   await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
 
-  if (errors.length === 1) throw errors[0]
-  if (errors.length > 1) {
-    throw new AggregateError(errors, errors.map(e => e instanceof Error ? e.message : String(e)).join('; '))
-  }
+  if (errors.length > 0) throw new AppStepsError(errors)
 }
 
 export async function runUp(
@@ -139,8 +146,10 @@ export async function runUp(
       await processApp(ctx, config, app, appConfig, opts.failFast)
     } catch (error) {
       if (opts.failFast) throw error
-      const message = error instanceof Error ? error.message : String(error)
-      logError(app, message)
+      // Failures from individual steps were already logged by processApp.
+      if (!(error instanceof AppStepsError)) {
+        logError(app, error instanceof Error ? error.message : String(error))
+      }
       failures.push({ app, error })
     }
   }

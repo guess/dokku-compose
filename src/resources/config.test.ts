@@ -76,4 +76,10 @@ describe('Config resource', () => {
     await expect(reconcile(Config, ctx, 'myapp', { A: '1' })).rejects.toThrow(/config:export/)
     expect(runner.run).not.toHaveBeenCalled()
   })
+
+  it('removes a stale marker when every marked key is already gone', async () => {
+    const { runner, ctx } = managed("export OTHER='keep'\n")
+    await reconcile(Config, ctx, 'myapp', {})
+    expect(runner.run).toHaveBeenCalledWith('config:unset', '--no-restart', 'myapp', 'DOKKU_COMPOSE_MANAGED_KEYS')
+  })
 })
