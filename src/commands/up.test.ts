@@ -241,3 +241,37 @@ describe('runUp — settings removed from the file', () => {
     }
   })
 })
+
+describe('runUp — hint scope', () => {
+  async function upWithLeftovers(apps: any) {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
+    runner.run = vi.fn()
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      if (args[0] === 'nginx:report') return '       Nginx proxy read timeout: 60s\n'
+      if (args[0] === 'checks:report') return '       Checks wait to retire: 30\n'
+      return ''
+    })
+    stubStrict(runner)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await runUp(createContext(runner), { apps }, [])
+      return { warns: warn.mock.calls.map(c => String(c[0])), reads: (runner.query as any).mock.calls.map((c: string[]) => c[0]) }
+    } finally {
+      warn.mockRestore()
+    }
+  }
+
+  it('a removed whole block gets no hint and no extra report read (diff is the full view)', async () => {
+    const { warns, reads } = await upWithLeftovers({ web: {} })
+    expect(warns).toEqual([])
+    expect(reads).not.toContain('nginx:report')
+  })
+
+  it('checks is applied without being read, so up never reads or counts its leftovers', async () => {
+    const { warns, reads } = await upWithLeftovers({ web: { checks: { 'wait-to-retire': 10 } } })
+    expect(warns).toEqual([])
+    expect(reads).not.toContain('checks:report')
+  })
+})

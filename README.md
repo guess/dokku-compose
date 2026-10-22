@@ -112,7 +112,7 @@ args, and entries missing from a declared list), including when the whole block 
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
-`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints one line per app with the count, pointing at `dokku-compose diff`; `--prune` (coming next) will remove them.
+`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints a one-line count per app of the leftovers it noticed in the blocks you declare; it does not look at removed whole blocks or checks. Run `dokku-compose diff` for the full list. `--prune` (coming next) will remove them.
 
 ### Errors
 

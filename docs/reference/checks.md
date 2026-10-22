@@ -87,4 +87,4 @@ apps:
 
 ## Removal
 
-A `disabled` or `skipped` list, or a `wait-to-retire` value, set on the server but absent from `apps.<app>.checks` is a removal (`checks: false` has none). `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it.
+A `disabled` or `skipped` list, or a `wait-to-retire` value, set on the server but absent from `apps.<app>.checks` is a removal (`checks: false` has none). `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and does not count it in that line (checks are applied without being read); `dokku-compose diff` shows it. `--prune` (coming next) will remove it.

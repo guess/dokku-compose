@@ -44,4 +44,4 @@ Value precedence follows Dokku's hierarchy: app-specific → global → Dokku de
 
 ## Removal
 
-A property set on the server but absent from `apps.<app>.nginx` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. Only the settable nginx properties are considered, never read-only report lines. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it.
+A property set on the server but absent from `apps.<app>.nginx` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. Only the settable nginx properties are considered, never read-only report lines. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `--prune` (coming next) will remove it.
