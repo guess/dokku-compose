@@ -77,7 +77,7 @@ export const Ps: Resource<Record<string, string | number>> = {
   additive: true,
 
   async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
-    return parsePsReport(await ctx.query('ps:report', target, '--format', 'json'))
+    return parsePsReport(await ctx.queryStrict('ps:report', target, '--format', 'json'))
   },
 
   async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {

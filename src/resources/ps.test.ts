@@ -8,6 +8,7 @@ import { computeAdditiveChange } from '../core/change.js'
 function makeCtx(results: Record<string, string>) {
   const runner = createRunner({ dryRun: false })
   runner.query = vi.fn(async (...args: string[]) => results[args[0]] ?? '')
+  runner.queryStrict = vi.fn(async (...args: string[]) => results[args[0]] ?? '')
   runner.run = vi.fn()
   return createContext(runner)
 }
@@ -85,6 +86,17 @@ describe('Ps resource, hand-set key absent from the file', () => {
     await reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 30 })
     expect(ctx.commands).toEqual([])
     expect(computeAdditiveChange(await Ps.read(ctx, 'myapp'), { 'stop-timeout-seconds': 30 }).changed).toBe(false)
+  })
+})
+
+describe('Ps read failure', () => {
+  it('propagates a failed ps:report instead of reading as nothing set', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.queryStrict = vi.fn().mockRejectedValue(new Error('ps:report failed'))
+    runner.run = vi.fn()
+    const ctx = createContext(runner)
+    await expect(reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 60 })).rejects.toThrow('ps:report failed')
+    expect(runner.run).not.toHaveBeenCalled()
   })
 })
 

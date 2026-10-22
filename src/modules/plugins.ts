@@ -86,7 +86,7 @@ export async function ensurePlugins(
   ctx: Context,
   plugins: Record<string, PluginConfig>
 ): Promise<void> {
-  const plans = planPlugins(await ctx.query('plugin:list', '--format', 'json'), plugins)
+  const plans = planPlugins(await ctx.queryStrict('plugin:list', '--format', 'json'), plugins)
 
   for (const plan of plans) {
     const config = plugins[plan.name]

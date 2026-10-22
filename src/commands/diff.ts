@@ -181,7 +181,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
   // Compare plugin pins
   if (config.plugins) {
-    const plans = planPlugins(await ctx.query('plugin:list', '--format', 'json'), config.plugins)
+    const plans = planPlugins(await ctx.queryStrict('plugin:list', '--format', 'json'), config.plugins)
     for (const plan of plans) {
       if (plan.action === 'ok') continue
       const status: DiffStatus = plan.action === 'install' ? 'missing'

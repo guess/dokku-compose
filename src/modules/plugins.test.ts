@@ -6,7 +6,7 @@ import { ensurePlugins, planPlugins } from './plugins.js'
 describe('ensurePlugins', () => {
   it('installs plugin not yet installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.queryStrict = vi.fn().mockResolvedValue('')
     runner.run = vi.fn()
     const ctx = createContext(runner)
     await ensurePlugins(ctx, {
@@ -19,7 +19,7 @@ describe('ensurePlugins', () => {
 
   it('skips plugin already installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(JSON.stringify([
+    runner.queryStrict = vi.fn().mockResolvedValue(JSON.stringify([
       { name: 'postgres', version: '1.46.2' }, { name: 'redis', version: '1.42.2' },
     ]))
     runner.run = vi.fn()
@@ -37,7 +37,7 @@ describe('ensurePlugins version pins', () => {
 
   function setup(listOut: string) {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(listOut)
+    runner.queryStrict = vi.fn().mockResolvedValue(listOut)
     runner.run = vi.fn()
     return { ctx: createContext(runner), runner }
   }
