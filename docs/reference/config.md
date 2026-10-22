@@ -2,75 +2,49 @@
 
 Dokku docs: https://dokku.com/docs/configuration/environment-variables/
 
-Module: `lib/config.sh`
+Code: `src/resources/config.ts` (apps), `src/modules/config.ts` (global)
 
 ## How It Works
 
-dokku-compose only manages env vars that match a configured prefix (default `APP_`). This keeps your YAML-declared vars separate from vars injected by Dokku itself — things like `DATABASE_URL` from linked services are never touched.
+dokku-compose records the keys it sets in a marker app variable, `DOKKU_COMPOSE_MANAGED_KEYS` (a comma-separated list). Only keys named in the marker are ever changed or unset. Variables Dokku injects itself, such as `DATABASE_URL` from a linked service, or any variable you set by hand, are never in the marker and are left alone.
 
-When you run `up`:
+On each `up`, for an app:
 
-1. **Set** — vars in your `env:` map are set on the app (or globally)
-2. **Converge** — any existing vars matching the prefix that are *not* in your YAML are automatically unset
+1. **Read** the marker, then `config:export` the app and keep the current values of the marked keys.
+2. **Unset** marked keys that are no longer in `env:`.
+3. **Set** the keys in `env:` and rewrite the marker to exactly those keys.
 
-This means removing a var from your YAML and re-running `up` will clean it up. Vars outside the prefix are always left alone.
+All commands use `--no-restart`. Values containing `${VAR}` are interpolated from your shell environment when the file is loaded; there is no key prefix.
 
-Values containing `${VAR}` are resolved from your shell environment at runtime via `envsubst`.
-
-## YAML Keys
-
-### Env Prefix (`dokku.env_prefix`)
-
-Controls the prefix for managed env vars. Only vars starting with this prefix are set, unset, or converged.
-
-Defaults to `"APP_"` if not configured.
-
-```yaml
-dokku:
-  env_prefix: "MYCO_"          # manage vars starting with MYCO_
-```
-
-| Config | Behavior |
-|--------|----------|
-| Not configured | Default prefix `APP_` |
-| `"CUSTOM_"` | Manage vars starting with `CUSTOM_` |
-
-### Global Environment (`env`)
-
-Set environment variables globally. Global vars are inherited by all apps (app-specific vars take precedence).
-
-```yaml
-env:                            # set global env vars
-  APP_GLOBAL_KEY: value
-  APP_ANALYTICS: enabled
-```
-
-| Value | Dokku Commands |
-|-------|----------------|
-| `{map}` | `config:set --global --no-restart KEY=VAL...`<br>`config:unset --no-restart --global <orphaned>...` |
-| `false` | `config:unset --no-restart --global <all-prefixed-vars>...` |
-| absent | no action |
-
-### App Environment (`apps.<app>.env`)
-
-Set environment variables for a specific app.
+## App Environment (`apps.<app>.env`)
 
 ```yaml
 apps:
   api:
-    env:                        # set prefixed vars, unset orphaned prefixed vars
+    env:
       APP_ENV: production
       APP_SECRET: "${SECRET_KEY}"
-
-  legacy:
-    env: false                  # unset all prefixed vars
-
-  other:
-    # env key absent — no change
 ```
 
-| Value | Dokku Commands |
-|-------|----------------|
-| `{map}` | `config:set --no-restart <app> KEY=VAL...`<br>`config:unset --no-restart <app> <orphaned>...` |
-| `false` | `config:unset --no-restart <app> <all-prefixed-vars>...` |
-| absent | no action |
+| `env:` | Dokku commands |
+|--------|----------------|
+| a map | `config:unset --no-restart <app> <removed>...` (if any), then `config:set --no-restart <app> KEY=VAL... DOKKU_COMPOSE_MANAGED_KEYS=<keys>` |
+| block removed (or `{}`) | `config:unset --no-restart <app> <every marked key>...`, then `config:unset --no-restart <app> DOKKU_COMPOSE_MANAGED_KEYS`; the marker is removed, never written empty |
+| removed, and the app has no marker | no action |
+
+Removing a key from `env:` and re-running `up` unsets it and drops it from the marker.
+
+## Failures
+
+- **A failed `config:unset`** is reported with the app and the masked command. The marker is not rewritten, so it still names the key and the next `up` retries.
+- **A failed `config:export`** is an error. It is never read as "no variables", which would mark every key as new and rewrite the marker without unsetting anything.
+- A failure in any other resource does not stop env from reconciling; `up` keeps going through the app's resources and exits non-zero with a summary at the end.
+
+## Global Environment (`env`)
+
+```yaml
+env:
+  APP_GLOBAL_KEY: value
+```
+
+`config:set --global KEY=VAL...`. Global variables are only set, never unset by removal, and are inherited by every app (app values take precedence). `env: false` is a no-op.

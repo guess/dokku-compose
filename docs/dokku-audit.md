@@ -174,7 +174,7 @@ apps:
 
 ### Decision
 
-**Supported.** App and global `config:set` with --no-restart. Only vars matching the prefix (default `APP_`) are managed — non-matching vars are warned and skipped. Orphaned prefixed vars are automatically unset. `env: false` unsets all prefixed vars. `${VAR}` references resolved via `envsubst`.
+**Supported.** App and global `config:set` with --no-restart. App keys are tracked in the `DOKKU_COMPOSE_MANAGED_KEYS` marker; keys removed from `env:` (or the whole block) are unset. See [config](reference/config.md).
 
 ---
 

@@ -10,7 +10,7 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
     const managedKeys = managedRaw.trim() ? managedRaw.trim().split(',').filter(Boolean) : []
     const result: Record<string, string> = {}
     if (managedKeys.length > 0) {
-      const raw = await ctx.query('config:export', target, '--format', 'shell')
+      const raw = await ctx.queryStrict('config:export', target, '--format', 'shell')
       for (const line of raw.split('\n')) {
         const match = line.match(/^export\s+(\w+)=['"]?(.*?)['"]?$/)
         if (match && managedKeys.includes(match[1])) {
@@ -23,17 +23,23 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
   onChange: async (ctx, target, change: MapChange) => {
     const { added, removed, modified } = change
     if (removed.length > 0) {
+      // If this throws, the marker is untouched and still names the keys,
+      // so the next run retries.
       await ctx.run('config:unset', '--no-restart', target, ...removed)
     }
-    const toSet = { ...added, ...modified }
     const allDesiredKeys = Object.keys(change.after)
-    const managedValue = allDesiredKeys.join(',')
+    if (allDesiredKeys.length === 0) {
+      // Whole block gone: drop the marker itself (never write it empty).
+      await ctx.run('config:unset', '--no-restart', target, MANAGED_KEYS_VAR)
+      return
+    }
+    const toSet = { ...added, ...modified }
     if (Object.keys(toSet).length > 0 || removed.length > 0) {
       const pairs = Object.entries(change.after).map(([k, v]) => `${k}=${v}`)
       await ctx.run(
         'config:set', '--no-restart', target,
         ...pairs,
-        `${MANAGED_KEYS_VAR}=${managedValue}`
+        `${MANAGED_KEYS_VAR}=${allDesiredKeys.join(',')}`
       )
     }
   },

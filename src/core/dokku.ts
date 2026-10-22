@@ -38,6 +38,8 @@ export interface Runner {
   run(...args: string[]): Promise<void>
   /** Execute a read-only command, returns stdout */
   query(...args: string[]): Promise<string>
+  /** Like query, but throws DokkuCommandError when the command exits non-zero */
+  queryStrict(...args: string[]): Promise<string>
   /** Execute a read-only command, returns true if exit 0 */
   check(...args: string[]): Promise<boolean>
   /** In dry-run mode, the list of commands that would have run */
@@ -113,6 +115,12 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
       // Lenient by design: callers (e.g. `config:get` of a missing key) rely
       // on a non-zero exit reading back as empty output, not a thrown error.
       const { stdout } = await execDokku(args)
+      return stdout.trim()
+    },
+
+    async queryStrict(...args: string[]): Promise<string> {
+      const { stdout, ok, exitCode, stderr } = await execDokku(args)
+      if (!ok) throw new DokkuCommandError(args, exitCode, stderr)
       return stdout.trim()
     },
 

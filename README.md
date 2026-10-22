@@ -123,7 +123,7 @@ All features are idempotent — running `up` twice produces no changes.
 |---------|-------------|-----------|
 | Apps | Create and destroy Dokku apps | [apps](docs/reference/apps.md) |
 | Dokku Version | Warn when the server's Dokku version is older than the pinned floor | [dokku](docs/reference/dokku.md) |
-| Environment Variables | Set config vars per app or globally, with full convergence | [config](docs/reference/config.md) |
+| Environment Variables | Set config vars per app or globally, with full convergence (keys removed from the YAML are unset) | [config](docs/reference/config.md) |
 | Build | Dockerfile path, build context, app.json, build args | [builder](docs/reference/builder.md) |
 | Docker Options | Custom Docker options per phase (build/deploy/run) | [docker_options](docs/reference/docker_options.md) |
 | Networks | Create shared Docker networks, attach to apps | [network](docs/reference/network.md) |
@@ -131,7 +131,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Port Mappings | Map external ports to container ports | [ports](docs/reference/ports.md) |
 | SSL Certificates | Add or remove SSL certs | [certs](docs/reference/certs.md) |
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
-| Storage | Persistent bind mounts with full convergence | [storage](docs/reference/storage.md) |
+| Storage | Persistent bind mounts with full convergence (keys removed from the YAML are unset) | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
 | Zero-Downtime Checks | Configure deploy checks, disable per process type | [checks](docs/reference/checks.md) |
 | Log Management | Log retention and vector sink configuration | [logs](docs/reference/logs.md) |
@@ -209,7 +209,7 @@ dokku-compose/
 │   │   └── validate.ts       # validate command (offline)
 │   └── tests/
 │       ├── fixtures/         # Test YAML configs
-│       └── *.test.ts         # Unit tests per module
+│       └── *.test.ts         # Unit tests, beside src/modules and src/resources
 └── dokku-compose.yml.example
 ```
 
@@ -227,8 +227,8 @@ bun install
 # Run all tests
 bun test
 
-# Run a specific module's tests
-bun test src/modules/postgres.test.ts
+# Run a specific file's tests
+bun test src/resources/config.test.ts
 ```
 
 Tests use [Bun's test runner](https://bun.sh/docs/cli/test) with a mocked `Runner` — no real Dokku server needed.

@@ -41,36 +41,56 @@ export class UpFailedError extends Error {
   }
 }
 
-async function processApp(ctx: Context, config: Config, app: string, appConfig: AppConfig): Promise<void> {
+async function processApp(
+  ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false
+): Promise<void> {
+  // A resource that throws is recorded and the rest of the app still runs,
+  // so one broken resource cannot hide another (e.g. env never being reached).
+  const errors: unknown[] = []
+  const step = async (fn: () => Promise<void>): Promise<void> => {
+    try {
+      await fn()
+    } catch (error) {
+      if (failFast) throw error
+      logError(app, error instanceof Error ? error.message : String(error))
+      errors.push(error)
+    }
+  }
+
   // Lifecycle
-  await reconcile(Apps, ctx, app, true)
+  await step(() => reconcile(Apps, ctx, app, true))
 
   // Networking
-  await reconcile(Domains, ctx, app, appConfig.domains)
-  await reconcile(Networks, ctx, app, appConfig.networks)
-  await reconcile(NetworkProps, ctx, app, appConfig.network)
-  await reconcile(Proxy, ctx, app, appConfig.proxy?.enabled)
-  await reconcile(Ports, ctx, app, appConfig.ports)
+  await step(() => reconcile(Domains, ctx, app, appConfig.domains))
+  await step(() => reconcile(Networks, ctx, app, appConfig.networks))
+  await step(() => reconcile(NetworkProps, ctx, app, appConfig.network))
+  await step(() => reconcile(Proxy, ctx, app, appConfig.proxy?.enabled))
+  await step(() => reconcile(Ports, ctx, app, appConfig.ports))
 
   // Links (between networking and config)
   if (config.postgres || config.redis) {
-    await ensureAppLinks(ctx, app, appConfig.links ?? [], config)
+    await step(() => ensureAppLinks(ctx, app, appConfig.links ?? [], config))
   }
 
   // Configuration
-  await reconcile(Certs, ctx, app, appConfig.ssl)
-  await reconcile(Storage, ctx, app, appConfig.storage)
-  await reconcile(Nginx, ctx, app, appConfig.nginx)
-  await reconcile(Checks, ctx, app, appConfig.checks)
-  await reconcile(Logs, ctx, app, appConfig.logs)
-  await reconcile(Registry, ctx, app, appConfig.registry)
-  await reconcile(Scheduler, ctx, app, appConfig.scheduler)
-  await reconcile(ConfigResource, ctx, app, appConfig.env)
+  await step(() => reconcile(Certs, ctx, app, appConfig.ssl))
+  await step(() => reconcile(Storage, ctx, app, appConfig.storage))
+  await step(() => reconcile(Nginx, ctx, app, appConfig.nginx))
+  await step(() => reconcile(Checks, ctx, app, appConfig.checks))
+  await step(() => reconcile(Logs, ctx, app, appConfig.logs))
+  await step(() => reconcile(Registry, ctx, app, appConfig.registry))
+  await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler))
+  await step(() => reconcile(ConfigResource, ctx, app, appConfig.env || {}))
 
   // Build
-  await reconcile(Builder, ctx, app, appConfig.build)
-  await reconcile(Git, ctx, app, appConfig.git ?? config.git)
-  await reconcile(DockerOptions, ctx, app, appConfig.docker_options)
+  await step(() => reconcile(Builder, ctx, app, appConfig.build))
+  await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
+  await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
+
+  if (errors.length === 1) throw errors[0]
+  if (errors.length > 1) {
+    throw new AggregateError(errors, errors.map(e => e instanceof Error ? e.message : String(e)).join('; '))
+  }
 }
 
 export async function runUp(
@@ -116,7 +136,7 @@ export async function runUp(
     if (!appConfig) continue
 
     try {
-      await processApp(ctx, config, app, appConfig)
+      await processApp(ctx, config, app, appConfig, opts.failFast)
     } catch (error) {
       if (opts.failFast) throw error
       const message = error instanceof Error ? error.message : String(error)
