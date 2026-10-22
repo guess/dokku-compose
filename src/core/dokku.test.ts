@@ -59,6 +59,19 @@ describe('createRunner with host', () => {
     expect(callArgs).toContain("'0 5 * * *'")
   })
 
+  it('a quoted docker option reaches the remote shell as one argument, local exec passes it untouched', async () => {
+    const opt = "--build-arg 'URL=https://x?a=1&b=it'\\''s'"
+    const ssh = createRunner({ host: 'myserver.com' })
+    mockExecaFn.mockClear()
+    await ssh.run('docker-options:add', 'myapp', 'build', opt)
+    // The remote shell strips one level of quoting, leaving the stored text Dokku shell-splits itself.
+    expect((mockExecaFn.mock.calls[0][1] as string[]).at(-1)).toBe(String.raw`'--build-arg '\''URL=https://x?a=1&b=it'\''\'\'''\''s'\'''`)
+    const local = createRunner({})
+    mockExecaFn.mockClear()
+    await local.run('docker-options:add', 'myapp', 'build', opt)
+    expect(mockExecaFn.mock.calls[0][1]).toEqual(['docker-options:add', 'myapp', 'build', opt])
+  })
+
   it('passes stdin: ignore over SSH — regression for bash-plugin reports returning empty', async () => {
     // On a real Dokku box, execa's default stdin:'pipe' makes bash-plugin
     // commands (nginx:report, certs:report, postgres:create, ...) silently

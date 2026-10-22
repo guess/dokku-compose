@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option as Dokku stored it) instead of splitting the text report, and are added with the `KEY=VALUE` word shell-quoted so Dokku stores it as one word. A value containing ` --x`, `-t x` stored beside a build arg, spaces, `?`, `$` or a quote is no longer re-added on every `up`, and `up --prune` removes a stale one by its stored text. `diff` and `export` read build settings per app.
+
 ## [0.13.1] - 2026-10-22
 
 ### Changed (behaviour)
