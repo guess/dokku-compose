@@ -71,6 +71,13 @@ describe('maskSensitiveArgs', () => {
       .toBe('registry:login --global ghcr.io octocat ****efgh')
   })
 
+  it('leaves registry:login --password-stdin alone: it carries no password', () => {
+    expect(maskSensitiveArgs('registry:login --global --password-stdin ghcr.io octocat'))
+      .toBe('registry:login --global --password-stdin ghcr.io octocat')
+    expect(maskSensitiveArgsList(['registry:login', '--global', '--password-stdin', 'ghcr.io', 'octocat']).masked)
+      .toEqual(['registry:login', '--global', '--password-stdin', 'ghcr.io', 'octocat'])
+  })
+
   it('masks short positional password in registry:login --global', () => {
     expect(maskSensitiveArgs('registry:login --global ghcr.io octocat pw'))
       .toBe('registry:login --global ghcr.io octocat ****')

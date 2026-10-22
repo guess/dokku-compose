@@ -10,6 +10,8 @@ export interface FakeServer {
   queries: Record<string, string>
   /** `check` answers, keyed the same way. */
   checks: Record<string, boolean>
+  /** `status` exit codes, keyed the same way (stdin input is not part of the key). */
+  statuses?: Record<string, number>
 }
 
 /** One app's section of a Dokku stdout report, as `<ns>:report <app>` prints it. */
@@ -37,6 +39,11 @@ export function fakeContext(server: FakeServer): { ctx: Context; runner: Runner 
     if (key in server.checks) return server.checks[key]
     throw new Error(`fake server: no check answer for 'dokku ${key}'`)
   })
+  runner.status = vi.fn(async (args: string[]) => {
+    const key = args.join(' ')
+    if (server.statuses && key in server.statuses) return server.statuses[key]
+    throw new Error(`fake server: no status answer for 'dokku ${key}'`)
+  })
   return { ctx: createContext(runner), runner }
 }
 
@@ -50,6 +57,7 @@ export function emptyAnswer(...args: string[]): string | undefined {
   if (/^certs:report \S+ --ssl-enabled$/.test(key)) return 'false'
   if (/^domains:report \S+ --domains-app-enabled$/.test(key)) return 'true'
   if (key === 'logs:report --global --format json') return logsGlobalJson()
+  if (key === 'config:export --global --format json') return '{}'
   if (key === 'nginx:report --global --format json') return nginxGlobalJson()
   if (/^logs:report \S+ --format json$/.test(key)) return logsAppJson()
   if (/^checks:report \S+$/.test(key)) return '       Checks disabled list: none\n       Checks skipped list: none\n'

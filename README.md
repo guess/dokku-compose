@@ -30,7 +30,7 @@ Like Docker Compose, but for Dokku.
 npm install -g dokku-compose
 ```
 
-Requires Node.js >= 20 and a server running Dokku >= 0.38.22 (every server command stops on an older one; dokku-compose never installs or upgrades Dokku). See the [Installation Reference](docs/reference/install.md) for details.
+Requires Node.js >= 20 and a server running Dokku >= 0.38.29 (every server command stops on an older one; dokku-compose never installs or upgrades Dokku). See the [Installation Reference](docs/reference/install.md) for details.
 
 ### 1. Export your existing server
 

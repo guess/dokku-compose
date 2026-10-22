@@ -102,7 +102,7 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 | F1 | ✅ **Settings re-applied on every `up`; a replaced cert file is invisible** | Fixed (LAB-749): certs read `certs:report --ssl-enabled` then `certs:show <app> crt` and compare the crt with the file in `up` and `diff`, using `certs:update` for a changed one; `checks:`, global domains, global logs and global nginx read before they write. A harness (`src/tests/in-sync.test.ts`) declares every resource and requires an in-sync server to get no command from `up`. | 2 |
 | F2 | ✅ **Datastore `version` and `image` changes ignored** | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is shown by `diff` as drift and warned about by `up`; applying it with `:upgrade` is left out on purpose (an upgrade can need a dump and downtime) and would need an explicit opt-in. | 3 |
 | F3 | **Postgres backup state kept outside Dokku** | The backup config is tracked as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`, which Dokku merges into every app's environment. A change made on the server is never seen, and removing `backup:` leaves the schedule and credentials in place. Read the real state (`:backup-schedule-cat`, the 2.x `backup-*` properties), run `:backup-unschedule`/`:backup-deauth` when the block goes, add encryption, drop the env var. | 5 |
-| F4 | **Global `env:` and `docker_auth:` only ever add** | Top-level `env:` runs `config:set --global` on every `up` and never unsets a key removed from the file. `docker_auth:` runs `registry:login` on every `up` and never logs out. Track global keys with a managed-keys marker as app `env:` does; use `registry:auth-status` (new in 0.38) to skip a login that already matches, and `registry:logout` for a removed server. | 3 |
+| F4 | ✅ **Global `env:` and `docker_auth:` only ever add** | Fixed (LAB-751): global `env:` keeps the marker `DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS`, sets only changed keys and unsets marked keys removed from the file; `docker_auth:` skips a login `registry:auth-status` reports as matching, logs in with `--password-stdin`, and `up --prune` runs `registry:logout` for a server the file does not list. Dokku floor raised to 0.38.29. | 3 |
 | F5 | **Property lists behind Dokku 0.38.31** | See [Properties](#properties). `diff` and `--prune` cannot see, and `validate` cannot catch, keys missing from dokku-compose's lists: nginx `nginx-conf-sigil-path`, `nginx-service-command`; logs (global) `vector-image`, `vector-networks`; `ps:` rejects `restore`, `skip-deploy`, `start-cmd`, `dockerfile-start-cmd`; network `static-web-listener`; proxy `type`, `proxy-port`, `proxy-ssl-port`; scheduler `shell`; builder `selected`, `skip-cleanup`; git `keep-git-dir`, `rev-env-var`, `source-image`, `archive-max-files`, `archive-max-size`. `checks:` accepts any key though only `wait-to-retire` is valid. `REGISTRY_KEYS` lists `auth-servers`, which is report-only: an app with its own registry login would show it as removed, and `--prune` would fail running `registry:set <app> auth-servers`. Pin the lists in a test against the audited Dokku version. | 3 |
 | F6 | **Link options** | `links:` runs `:link` with no options, so the URL always lands in `DATABASE_URL`/`REDIS_URL`. Add `alias`, `env_var` and `querystring` (`--alias`, `--env-var`, `--querystring`), which a second database on one app needs. | 2 |
 | F7 | **Redis backups** | dokku-redis has the same backup commands as dokku-postgres; `redis:` has no `backup:`. Do it after F3 so both share one implementation. | 2 |
@@ -294,9 +294,9 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `config:get` | Display a global or app-specific config value | ✅ | `env` read |
 | `config:import` | Import environment from file | ⛔ | `env:` covers it |
 | `config:keys` | Show keys set in environment | ⛔ | Read-only |
-| `config:set` | Set one or more config vars | 🟡 | `env:` per app (managed keys) and global; global never unsets removed keys (F4) |
+| `config:set` | Set one or more config vars | ✅ | `env:` per app and global, each with its own managed-keys marker; only changed keys are set |
 | `config:show` | Show keys set in environment | ⛔ | Read-only |
-| `config:unset` | Unset one or more config vars | 🟡 | Per-app `env:` only; global keys removed from the file stay (F4) |
+| `config:unset` | Unset one or more config vars | ✅ | Managed keys removed from app or global `env:` |
 | `docker-options:add` | Add Docker option to app for phase (comma separated phase list) | ✅ | `docker_options.{build,deploy,run}`, `build.args` |
 | `docker-options:clear` | Clear a docker options from application with an optional phase (com… | ⛔ | `docker_options` converges with add/remove |
 | `docker-options:remove` | Remove Docker option from app for phase (comma separated phase list) | ✅ | `docker_options`, `build.args` (prune) |
@@ -429,9 +429,9 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 
 | Command | What it does | Status | dokku-compose |
 |---|---|:-:|---|
-| `registry:auth-status` | Reports whether the stored registry credential matches the requeste… | ❌ | F4: makes `docker_auth` idempotent |
-| `registry:login` | Login to a docker registry | 🟡 | `docker_auth:` (global); logs in on every run, never logs out (F4) |
-| `registry:logout` | Logout from a docker registry | ❌ | F4: when a server leaves `docker_auth:` |
+| `registry:auth-status` | Reports whether the stored registry credential matches the requeste… | ✅ | `docker_auth:` skips a login that matches (password on stdin) |
+| `registry:login` | Login to a docker registry | ✅ | `docker_auth:` (global), `--password-stdin`, only when the login differs |
+| `registry:logout` | Logout from a docker registry | ✅ | `up --prune`, for a global login the file does not list |
 | `registry:report` | Displays a registry report for one or more apps | ✅ | `registry` read |
 | `registry:set` | Set or clear a registry property for an app | 🟡 | `registry:` per app; no global (F10) |
 

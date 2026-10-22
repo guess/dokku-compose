@@ -267,3 +267,66 @@ describe('DryRun runner', () => {
     expect(mockExecaFn).toHaveBeenCalled()
   })
 })
+
+describe('status() and runWithInput(): stdin-fed calls', () => {
+  const failWith = (code: number) => async () => {
+    const err: any = new Error('command failed')
+    err.stdout = ''
+    err.stderr = ''
+    err.exitCode = code
+    throw err
+  }
+
+  beforeEach(() => {
+    mockExecaFn.mockClear()
+    mockExecaFn.mockImplementation(async () => ({ stdout: '', stderr: '', exitCode: 0 }))
+  })
+
+  it('status() returns 0 when the command succeeds', async () => {
+    expect(await createRunner({}).status(['registry:auth-status', '--global', 'ghcr.io'])).toBe(0)
+  })
+
+  for (const code of [1, 2, 3, 4]) {
+    it(`status() returns exit code ${code} instead of throwing`, async () => {
+      mockExecaFn.mockImplementation(failWith(code))
+      expect(await createRunner({}).status(['registry:auth-status', '--global', 'ghcr.io'])).toBe(code)
+    })
+  }
+
+  it('status() feeds input on stdin, never on the command line (local)', async () => {
+    await createRunner({}).status(['registry:auth-status', '--password-stdin', '--global', 'ghcr.io', 'bot'], 'hunter2')
+    expect(mockExecaFn).toHaveBeenCalledWith(
+      'dokku', ['registry:auth-status', '--password-stdin', '--global', 'ghcr.io', 'bot'], { input: 'hunter2' })
+  })
+
+  it('status() feeds input on stdin over ssh', async () => {
+    await createRunner({ host: 'myserver.com' }).status(['registry:auth-status', '--global', 'ghcr.io'], 'hunter2')
+    const [cmd, args, opts] = mockExecaFn.mock.calls[0] as any[]
+    expect(cmd).toBe('ssh')
+    expect(args.join(' ')).not.toContain('hunter2')
+    expect(opts).toEqual({ input: 'hunter2' })
+  })
+
+  it('status() runs in dry-run, as a read', async () => {
+    mockExecaFn.mockImplementation(failWith(2))
+    expect(await createRunner({ dryRun: true }).status(['registry:auth-status', '--global', 'ghcr.io'])).toBe(2)
+  })
+
+  it('runWithInput() feeds stdin and throws on failure without the input in the message', async () => {
+    const runner = createRunner({})
+    await runner.runWithInput('hunter2', 'registry:login', '--global', '--password-stdin', 'ghcr.io', 'bot')
+    expect(mockExecaFn).toHaveBeenCalledWith(
+      'dokku', ['registry:login', '--global', '--password-stdin', 'ghcr.io', 'bot'], { input: 'hunter2' })
+    mockExecaFn.mockImplementation(failWith(1))
+    const err = await runner.runWithInput('hunter2', 'registry:login', '--global', '--password-stdin', 'ghcr.io', 'bot').catch(e => e)
+    expect(err).toBeInstanceOf(DokkuCommandError)
+    expect(String(err.message)).not.toContain('hunter2')
+  })
+
+  it('runWithInput() in dry-run logs the command but not the input', async () => {
+    const runner = createRunner({ dryRun: true })
+    await runner.runWithInput('hunter2', 'registry:login', '--global', '--password-stdin', 'ghcr.io', 'bot')
+    expect(runner.dryRunLog).toEqual(['registry:login --global --password-stdin ghcr.io bot'])
+    expect(mockExecaFn).not.toHaveBeenCalled()
+  })
+})

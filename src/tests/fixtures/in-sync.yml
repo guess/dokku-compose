@@ -11,6 +11,15 @@ plugins:
   redis:
     url: https://github.com/dokku/dokku-redis.git
 
+docker_auth:
+  registry.example.com:
+    username: bot
+    password: s3cret
+
+env:
+  TZ: UTC
+  FEATURE_X: true
+
 networks:
   - backend-net
 

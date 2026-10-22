@@ -14,7 +14,7 @@ export function maskSensitiveArgs(cmd: string): string {
   // Special-case `registry:login [--global] <server> <username> <password>` —
   // password is a positional arg, not KEY=VALUE, so the regex above can't catch it.
   masked = masked.replace(
-    /^(registry:login\s+(?:--global\s+)?\S+\s+\S+\s+)(\S+)/,
+    /^(?!.*--password-stdin)(registry:login\s+(?:--global\s+)?\S+\s+\S+\s+)(\S+)/,
     (_, prefix, password) => `${prefix}${maskValue(password)}`
   )
 
@@ -59,7 +59,7 @@ export function maskSensitiveArgsList(args: string[]): { masked: string[]; secre
 
   // `registry:login [--global] <server> <username> <password>` — password is
   // the last positional arg.
-  if (masked[0] === 'registry:login') {
+  if (masked[0] === 'registry:login' && !masked.includes('--password-stdin')) {
     mark(masked.length - 1)
   }
 
