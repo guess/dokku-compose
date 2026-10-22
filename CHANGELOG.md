@@ -9,6 +9,7 @@
 ### Fixed
 
 - **`domains: false` on an app no longer crashes `up`.** `up` reads `domains:report <app> --domains-app-enabled` and runs `domains:disable` only when the app's domains are enabled, nothing when they are already disabled. Going from `false` to a list runs `domains:enable` then `domains:set`. `diff` shows the enabled state and `export` writes `domains: false` for a disabled app.
+- **A new or changed build arg is applied once.** Nested values (build `args`) are compared key by key, so adding, changing or removing a key inside a map is a change (before, two maps always compared equal). Builder applies only what differs: an added arg is added, a changed arg removes its old stored option (by exact stored text) and adds the new one, and an unchanged arg or setting runs nothing, so the old value no longer lingers and a second `up` changes nothing. Additive resources still ignore keys only on the server, nested ones included.
 - **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option as Dokku stored it) instead of splitting the text report, and are added with the `KEY=VALUE` word shell-quoted so Dokku stores it as one word. A value containing ` --x`, `-t x` stored beside a build arg, spaces, `?`, `$` or a quote is no longer re-added on every `up`, and `up --prune` removes a stale one by its stored text. `diff` and `export` read build settings per app.
 
 ### Changed (behaviour)

@@ -1,6 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { Context } from '../core/context.js'
 import { parseReport } from './parsers.js'
+import { computeAdditiveChange } from '../core/change.js'
 import { logWarn } from '../core/logger.js'
 import { shellSplit, quoteShellArg } from '../core/shellwords.js'
 
@@ -32,6 +33,7 @@ function parseBuildOptions(buildList: string[]): BuildOption[] {
 
 function parseBuildArgs(buildList: string[]): Record<string, string> {
   const args: Record<string, string> = {}
+  // The last stored option wins, as it does for Docker.
   for (const o of parseBuildOptions(buildList)) args[o.key] = o.value
   return args
 }
@@ -65,6 +67,11 @@ function buildConfigFromReports(
 
   const args = parseBuildArgs(buildList)
   if (Object.keys(args).length > 0) config.args = args
+  // Keys stored more than once (older versions appended duplicates). Not enumerable, so export never writes it.
+  const seen = new Set<string>()
+  const duplicated = new Set<string>()
+  for (const o of parseBuildOptions(buildList)) (seen.has(o.key) ? duplicated : seen).add(o.key)
+  Object.defineProperty(config, 'duplicateArgs', { value: duplicated, enumerable: false })
 
   return config
 }
@@ -72,6 +79,10 @@ function buildConfigFromReports(
 export const Builder: Resource<BuildConfig> = {
   key: 'build',
   additive: true,
+  // Additive compare, plus: a declared arg stored more than once is drift until one option is left.
+  inSync: (current, desired) =>
+    !computeAdditiveChange(current, desired).changed &&
+    !Object.keys(desired.args ?? {}).some(k => (current as any)?.duplicateArgs?.has(k)),
   // Build args (`--build-arg KEY=...` build docker options) whose KEY is not in `build.args`.
   removals: (current, desired) =>
     Object.keys(current?.args ?? {})
@@ -106,15 +117,29 @@ export const Builder: Resource<BuildConfig> = {
     )
   },
 
-  async onChange(ctx: Context, target: string, { after }: { after: BuildConfig }): Promise<void> {
-    if (after.dockerfile)
+  async onChange(ctx: Context, target: string, { before, after }: { before?: BuildConfig; after: BuildConfig }): Promise<void> {
+    if (after.dockerfile && after.dockerfile !== before?.dockerfile)
       { await ctx.run('builder-dockerfile:set', target, 'dockerfile-path', after.dockerfile); ctx.needsRebuild(target, 'build') }
-    if (after.app_json)
+    if (after.app_json && after.app_json !== before?.app_json)
       { await ctx.run('app-json:set', target, 'appjson-path', after.app_json); ctx.needsRebuild(target, 'build') }
-    if (after.context)
+    if (after.context && after.context !== before?.context)
       { await ctx.run('builder:set', target, 'build-dir', after.context); ctx.needsRebuild(target, 'build') }
     if (after.args) {
+      // Only what differs: an unchanged arg runs nothing, a changed one first
+      // removes every stored option for its key (by exact stored text; `add`
+      // appends without dedupe), then adds the new value.
+      const stored = parseBuildOptions(await readBuildList(ctx, target))
+      const current = parseBuildArgs(stored.map(o => o.raw))
+      const dup = (before as any)?.duplicateArgs as Set<string> | undefined
+      const changedKeys = new Set(Object.keys(after.args).filter(k => k in current && (current[k] !== after.args![k] || dup?.has(k))))
+      if (changedKeys.size > 0) {
+        for (const o of stored.filter(o => changedKeys.has(o.key))) {
+          await ctx.run('docker-options:remove', target, 'build', o.raw)
+          ctx.needsRebuild(target, 'build args')
+        }
+      }
       for (const [key, value] of Object.entries(after.args)) {
+        if (key in current && !changedKeys.has(key)) continue
         await ctx.run('docker-options:add', target, 'build', `--build-arg ${quoteShellArg(`${key}=${value}`)}`)
         ctx.needsRebuild(target, 'build args')
       }

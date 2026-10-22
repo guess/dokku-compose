@@ -15,6 +15,20 @@ export interface MapChange extends Change<Record<string, string>> {
   modified: Record<string, string>
 }
 
+/** Structural equality: nested maps and lists compare key by key (lists as sets), scalars as strings. */
+function sameValue(x: unknown, y: unknown, subset = false): boolean {
+  if (x !== null && y !== null && typeof x === 'object' && typeof y === 'object') {
+    if (Array.isArray(x) || Array.isArray(y)) {
+      if (!Array.isArray(x) || !Array.isArray(y)) return false
+      return x.length === y.length && x.every(v => y.some(w => sameValue(v, w))) && y.every(w => x.some(v => sameValue(v, w)))
+    }
+    const kx = Object.keys(x), ky = Object.keys(y)
+    // subset: keys only in x (the server) are ignored, as an additive resource does at the top level
+    return (subset ? ky : kx).every(k => k in x && k in y && sameValue((x as any)[k], (y as any)[k], subset)) && (subset || kx.length === ky.length)
+  }
+  return String(x) === String(y)
+}
+
 // Overloads for proper type narrowing at call sites
 export function computeChange(before: string[], after: string[]): ListChange
 export function computeChange(before: Record<string, string>, after: Record<string, string>): MapChange
@@ -50,7 +64,7 @@ export function computeChange(before: unknown, after: unknown): Change | ListCha
     for (const key of allKeys) {
       if (!(key in b)) added[key] = a[key]
       else if (!(key in a)) removed.push(key)
-      else if (String(b[key]) !== String(a[key])) modified[key] = a[key]
+      else if (!sameValue(b[key], a[key])) modified[key] = a[key]
     }
     const changed = Object.keys(added).length > 0 || removed.length > 0 || Object.keys(modified).length > 0
     return { before, after, changed, added, removed, modified } satisfies MapChange
@@ -66,6 +80,10 @@ export function computeChange(before: unknown, after: unknown): Change | ListCha
  */
 export function computeAdditiveChange(before: unknown, after: unknown): MapChange {
   const change = computeChange((before ?? {}) as Record<string, string>, after as Record<string, string>)
+  // Nested maps are additive too: a key only on the server is not a change.
+  const b = (before ?? {}) as Record<string, unknown>
+  const a = after as Record<string, unknown>
+  for (const k of Object.keys(change.modified)) if (sameValue(b[k], a[k], true)) delete change.modified[k]
   change.changed = Object.keys(change.added).length > 0 || Object.keys(change.modified).length > 0
   return change
 }

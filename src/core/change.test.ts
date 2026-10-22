@@ -1,6 +1,6 @@
 // src/core/change.test.ts
 import { describe, it, expect } from 'vitest'
-import { computeChange } from './change.js'
+import { computeChange, computeAdditiveChange } from './change.js'
 
 describe('computeChange — scalars', () => {
   it('detects no change for equal strings', () => {
@@ -124,5 +124,22 @@ describe('computeChange — null/undefined (existence)', () => {
   it('detects no change (both null)', () => {
     const c = computeChange(null, null)
     expect(c.changed).toBe(false)
+  })
+})
+
+describe('computeChange — nested maps', () => {
+  it('detects a key added, changed or removed inside a nested map', () => {
+    expect(computeChange({ args: { A: '1' } } as any, { args: { A: '1', B: '2' } } as any).changed).toBe(true)
+    expect(computeChange({ args: { A: '1' } } as any, { args: { A: '2' } } as any).changed).toBe(true)
+    expect(computeChange({ args: { A: '1', B: '2' } } as any, { args: { A: '1' } } as any).changed).toBe(true)
+    expect(computeChange({ args: { A: '1' } } as any, { args: { A: '1' } } as any).changed).toBe(false)
+  })
+})
+
+describe('computeAdditiveChange — nested maps', () => {
+  it('adds and changes count, a nested key only on the server does not', () => {
+    expect(computeAdditiveChange({ args: { A: '1' } }, { args: { A: '1', B: '2' } }).changed).toBe(true)
+    expect(computeAdditiveChange({ args: { A: '1' } }, { args: { A: '2' } }).changed).toBe(true)
+    expect(computeAdditiveChange({ args: { A: '1', X: '9' } }, { args: { A: '1' } }).changed).toBe(false)
   })
 })

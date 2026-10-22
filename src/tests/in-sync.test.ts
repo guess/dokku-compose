@@ -231,6 +231,43 @@ describe('a server whose state equals the file', () => {
     warn.mockRestore()
   })
 
+  it('several build args, one changed and one added: up runs remove-old + add-new + add-added, then nothing', async () => {
+    const server = inSyncServer()
+    const key = 'docker-options:report myapp --format json'
+    const list = JSON.parse(server.queries[key])
+    list['build-list'] = list['build-list'].map((o: string) => o === '--build-arg NODE_ENV=production' ? '--build-arg NODE_ENV=staging' : o)
+      .filter((o: string) => !o.includes('API_URL'))
+    server.queries[key] = JSON.stringify(list)
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual([
+      "docker-options:remove myapp build '--build-arg NODE_ENV=staging'",
+      "docker-options:add myapp build '--build-arg NODE_ENV=production'",
+      "docker-options:add myapp build '--build-arg '\\''API_URL=https://api.example.com/v1?debug=1'\\'''",
+    ])
+    // Apply the logged commands to the fake build-list: add appends, remove drops the matching entry.
+    const canon = (t: string) => t.replace(/^'(.*)'$/s, '$1').replace(/'\\''/g, "'")
+    const stored: string[] = JSON.parse(server.queries[key])['build-list']
+    for (const cmd of runner.dryRunLog) {
+      const m = cmd.match(/^docker-options:(add|remove) myapp build (.*)$/s)
+      if (!m) continue
+      const opt = canon(m[2])
+      const norm = (o: string) => o.replace(/'/g, '')
+      if (m[1] === 'add') stored.push(opt)
+      else {
+        const i = stored.findIndex(o => norm(o) === norm(opt))
+        if (i < 0) throw new Error(`remove matched no stored option: ${opt}`)
+        stored.splice(i, 1)
+      }
+    }
+    server.queries[key] = JSON.stringify({ ...JSON.parse(server.queries[key]), 'build-list': stored })
+    const second = fakeContext(server)
+    await runUp(second.ctx, loadConfig(FIXTURE), [])
+    expect(second.runner.dryRunLog).toEqual([])
+    const keys = stored.filter(o => o.startsWith('--build-arg ')).map(o => o.replace(/^--build-arg '?([^=]+)=.*$/s, '$1'))
+    expect(keys.sort()).toEqual([...new Set(keys)].sort())
+  })
+
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.
   it.todo('LAB-757: postgres backup: is read from the server (no hash env var), and an unchanged schedule runs no write')
   it.todo('LAB-751: top-level env: and docker_auth: read first; an in-sync global env or registry login runs no write')
