@@ -101,12 +101,12 @@ describe('parseBulkReport', () => {
   })
 
   it('handles multi-word namespaces like docker-options', () => {
-    const raw = `=====> qultr docker options information
+    const raw = `=====> myapp docker options information
        Docker options build:          --shm-size 256m
        Docker options deploy:         --restart=on-failure:10
        Docker options run:`
     const result = parseBulkReport(raw, 'docker-options')
-    expect(result.get('qultr')).toEqual({
+    expect(result.get('myapp')).toEqual({
       'build': '--shm-size 256m',
       'deploy': '--restart=on-failure:10',
     })

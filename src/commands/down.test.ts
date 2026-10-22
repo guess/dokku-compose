@@ -40,7 +40,7 @@ describe('runDown', () => {
     runner.check = vi.fn().mockResolvedValue(true)
     runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'apps:destroy' && args[1] === 'funqtion') {
+      if (args[0] === 'apps:destroy' && args[1] === 'myapp') {
         throw new DokkuCommandError(args, 1, 'app has a running deploy')
       }
     })
@@ -49,13 +49,13 @@ describe('runDown', () => {
 
     let thrown: unknown
     try {
-      await runDown(ctx, config, ['funqtion', 'studio'], { force: true })
+      await runDown(ctx, config, ['myapp', 'studio'], { force: true })
     } catch (e) {
       thrown = e
     }
 
     expect(thrown).toBeInstanceOf(DownFailedError)
-    expect((thrown as DownFailedError).failures.map(f => f.app)).toEqual(['funqtion'])
+    expect((thrown as DownFailedError).failures.map(f => f.app)).toEqual(['myapp'])
     expect(runner.run).toHaveBeenCalledWith('apps:destroy', 'studio', '--force')
     expect((thrown as DownFailedError).message).toContain('service and network teardown was skipped')
   })
@@ -65,7 +65,7 @@ describe('runDown', () => {
     runner.check = vi.fn().mockResolvedValue(true)
     runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'apps:destroy' && args[1] === 'funqtion') {
+      if (args[0] === 'apps:destroy' && args[1] === 'myapp') {
         throw new DokkuCommandError(args, 1, 'boom')
       }
     })
@@ -73,7 +73,7 @@ describe('runDown', () => {
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
 
     await expect(
-      runDown(ctx, config, ['funqtion', 'studio'], { force: true, failFast: true })
+      runDown(ctx, config, ['myapp', 'studio'], { force: true, failFast: true })
     ).rejects.toThrow(DokkuCommandError)
     expect(runner.run).not.toHaveBeenCalledWith('apps:destroy', 'studio', '--force')
   })

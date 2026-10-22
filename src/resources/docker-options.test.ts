@@ -16,13 +16,13 @@ describe('DockerOptions resource', () => {
 
   it('reads docker options filtering out --link and --build-arg', async () => {
     const ctx = makeCtx({
-      'docker-options:report qultr': `=====> qultr docker options information
-       Docker options build:          --build-arg APP_NAME=qultr --link dokku.postgres.db:dokku-postgres-db --shm-size 256m
+      'docker-options:report myapp': `=====> myapp docker options information
+       Docker options build:          --build-arg APP_NAME=myapp --link dokku.postgres.db:dokku-postgres-db --shm-size 256m
        Docker options deploy:         --link dokku.postgres.db:dokku-postgres-db --restart=on-failure:10
        Docker options run:            --link dokku.postgres.db:dokku-postgres-db`,
     })
 
-    const config = await DockerOptions.read(ctx, 'qultr')
+    const config = await DockerOptions.read(ctx, 'myapp')
 
     expect(config).toEqual({
       build: ['--shm-size 256m'],
