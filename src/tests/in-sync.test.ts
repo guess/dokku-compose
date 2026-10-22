@@ -64,6 +64,7 @@ function inSyncServer(): FakeServer {
       ]),
       'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5'),
       'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine'),
+      'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17'),
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
       'logs:report --global --format json': logsGlobalJson({
