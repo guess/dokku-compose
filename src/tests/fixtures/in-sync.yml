@@ -99,6 +99,7 @@ apps:
         - "--ulimit nofile=12"
 
   myapp-worker:
+    domains: false
     ssl: false
     checks: false
     git:

@@ -1,6 +1,6 @@
 // src/resources/lists.ts
 import type { Resource } from '../core/reconcile.js'
-import type { ListChange } from '../core/change.js'
+import { computeChange, type ListChange } from '../core/change.js'
 import type { Context } from '../core/context.js'
 import { parseBulkReport } from './parsers.js'
 
@@ -31,9 +31,24 @@ export const Ports: Resource<string[]> = {
   },
 }
 
-export const Domains: Resource<string[]> = {
+/** Dokku prints `true` or `false` (NO_VHOST is not `1`); anything else is unreadable, never a guess. */
+function parseEnabled(raw: string): boolean {
+  const v = raw.trim()
+  if (v === 'true') return true
+  if (v === 'false') return false
+  throw new Error(`unexpected domains:report --domains-app-enabled output: '${v}'`)
+}
+
+/**
+ * An app's domains: the vhost list, or `false` when the app's domains are
+ * disabled (Dokku 0.38.31 `domains:disable` sets NO_VHOST=1 and removes the
+ * VHOST file, so a disabled app has no vhosts to compare).
+ */
+export const Domains: Resource<string[] | false> = {
   key: 'domains',
   read: async (ctx, target) => {
+    const enabled = parseEnabled(await ctx.queryStrict('domains:report', target, '--domains-app-enabled'))
+    if (!enabled) return false
     // Dokku 0.38.31 prints the vhosts space-joined (`normalizeWhitespace` in
     // plugins/domains/report.go), so split on any whitespace, not lines.
     const raw = await ctx.query('domains:report', target, '--domains-app-vhosts')
@@ -42,15 +57,28 @@ export const Domains: Resource<string[]> = {
   readAll: async (ctx: Context) => {
     const raw = await ctx.query('domains:report')
     const bulk = parseBulkReport(raw, 'domains')
-    const result = new Map<string, string[]>()
+    const result = new Map<string, string[] | false>()
     for (const [app, report] of bulk) {
-      result.set(app, report['app-vhosts'] ? splitWords(report['app-vhosts']) : [])
+      if (report['app-enabled'] === undefined) { result.set(app, splitWords(report['app-vhosts'] ?? '')); continue }
+      result.set(app, parseEnabled(report['app-enabled']) ? splitWords(report['app-vhosts'] ?? '') : false)
     }
     return result
   },
-  onChange: async (ctx, target, { added, removed }: ListChange) => {
-    for (const d of removed) await ctx.run('domains:remove', target, d)
-    for (const d of added) await ctx.run('domains:add', target, d)
+  onChange: async (ctx, target, { before, after }: { before: string[] | false | undefined; after: string[] | false }) => {
+    if (after === false) {
+      await ctx.run('domains:disable', target)
+      return
+    }
+    if (Array.isArray(before)) {
+      const { added, removed } = computeChange(before, after)
+      for (const d of removed) await ctx.run('domains:remove', target, d)
+      for (const d of added) await ctx.run('domains:add', target, d)
+      return
+    }
+    // Disabled or unreadable: enable first. `domains:enable` may write the
+    // global default vhosts, which `domains:set` then replaces with the list.
+    await ctx.run('domains:enable', target)
+    await ctx.run('domains:set', target, ...after)
   },
 }
 

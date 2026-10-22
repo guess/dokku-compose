@@ -8,7 +8,7 @@ Module: `lib/domains.sh`
 
 ### App Domains (`apps.<app>.domains`)
 
-Configure custom domains for an app. When a list is provided, vhosts are enabled and domains are set atomically. When set to `false`, vhosts are disabled and domains are cleared. When absent, no changes are made.
+Configure custom domains for an app. When a list is provided, vhosts are enabled and domains are set atomically. When set to `false`, the app's domains are disabled. When absent, no changes are made.
 
 ```yaml
 apps:
@@ -26,9 +26,11 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `[list]` | `domains:enable <app>`<br>`domains:set <app> <domains...>` |
-| `false` | `domains:disable <app>`<br>`domains:clear <app>` |
+| `[list]` | enabled: `domains:add` / `domains:remove` for the difference only<br>disabled: `domains:enable <app>`, then `domains:set <app> <domains...>` |
+| `false` | `domains:disable <app>`, only when enabled |
 | absent | no action |
+
+`up` reads `domains:report <app> --domains-app-enabled` first (Dokku reports `false` when `NO_VHOST=1`) and then the vhosts. An app that is already in the declared state runs nothing, and an enabled-state report that is neither `true` nor `false` stops `up` with an error rather than guessing. `domains:disable` removes the app's vhost file, so a disabled app has no domains; going back to a list runs `domains:enable` first, because enabling can write the global default vhosts, which `domains:set` then replaces. `diff` shows a disabled app as `false` and `export` writes `domains: false` for it.
 
 ### Global Domains (`domains`)
 

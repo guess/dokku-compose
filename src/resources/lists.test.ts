@@ -27,30 +27,65 @@ describe('Ports resource', () => {
 })
 
 describe('Domains resource', () => {
-  function makeCtx(queryResult: string) {
+  function makeCtx(answers: Record<string, string>) {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(queryResult)
+    const answer = vi.fn(async (...args: string[]) => {
+      const key = args.join(' ')
+      if (key in answers) return answers[key]
+      throw new Error(`no answer for ${key}`)
+    })
+    runner.query = answer
+    runner.queryStrict = answer
     runner.run = vi.fn()
     return createContext(runner)
   }
+  const enabled = (v: string) => ({ 'domains:report myapp --domains-app-enabled': v })
+  const vhosts = (v: string) => ({ 'domains:report myapp --domains-app-vhosts': v })
 
   it('adds new domains and removes old ones', async () => {
-    const ctx = makeCtx('old.example.com\nkeep.example.com')
+    const ctx = makeCtx({ ...enabled('true'), ...vhosts('old.example.com keep.example.com') })
     await reconcile(Domains, ctx, 'myapp', ['keep.example.com', 'new.example.com'])
     expect(ctx.commands).toContainEqual(['domains:remove', 'myapp', 'old.example.com'])
     expect(ctx.commands).toContainEqual(['domains:add', 'myapp', 'new.example.com'])
   })
 
   it('skips when domains match', async () => {
-    const ctx = makeCtx('example.com')
+    const ctx = makeCtx({ ...enabled('true'), ...vhosts('example.com') })
     await reconcile(Domains, ctx, 'myapp', ['example.com'])
     expect(ctx.commands).toEqual([])
   })
 
   // Dokku 0.38.31 prints `--domains-app-vhosts` on one line, space-separated.
   it('skips when several domains match, as Dokku prints them on one line', async () => {
-    const ctx = makeCtx('example.com www.example.com')
+    const ctx = makeCtx({ ...enabled('true'), ...vhosts('example.com www.example.com') })
     await reconcile(Domains, ctx, 'myapp', ['www.example.com', 'example.com'])
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('disables an enabled app for domains: false', async () => {
+    const ctx = makeCtx({ ...enabled('true'), ...vhosts('example.com') })
+    await reconcile(Domains, ctx, 'myapp', false)
+    expect(ctx.commands).toEqual([['domains:disable', 'myapp']])
+  })
+
+  it('runs nothing for domains: false on an already disabled app', async () => {
+    const ctx = makeCtx(enabled('false'))
+    await reconcile(Domains, ctx, 'myapp', false)
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('enables a disabled app, then sets the list', async () => {
+    const ctx = makeCtx(enabled('false'))
+    await reconcile(Domains, ctx, 'myapp', ['a.example.com', 'b.example.com'])
+    expect(ctx.commands).toEqual([
+      ['domains:enable', 'myapp'],
+      ['domains:set', 'myapp', 'a.example.com', 'b.example.com'],
+    ])
+  })
+
+  it('throws, running nothing, when the enabled state is unreadable', async () => {
+    const ctx = makeCtx(enabled('weird'))
+    await expect(reconcile(Domains, ctx, 'myapp', false)).rejects.toThrow(/domains-app-enabled/)
     expect(ctx.commands).toEqual([])
   })
 })
@@ -106,13 +141,19 @@ describe('readAll (bulk)', () => {
   it('Domains.readAll returns per-app domain arrays', async () => {
     const ctx = makeCtx(
       '=====> app1 domains information\n' +
+      '       Domains app enabled:          true\n' +
       '       Domains app vhosts:           example.com\n' +
       '=====> app2 domains information\n' +
-      '       Domains app vhosts:           foo.com bar.com\n'
+      '       Domains app enabled:          true\n' +
+      '       Domains app vhosts:           foo.com bar.com\n' +
+      '=====> app3 domains information\n' +
+      '       Domains app enabled:          false\n' +
+      '       Domains app vhosts:\n'
     )
     const result = await Domains.readAll!(ctx)
     expect(result.get('app1')).toEqual(['example.com'])
     expect(result.get('app2')).toEqual(['foo.com', 'bar.com'])
+    expect(result.get('app3')).toBe(false)
   })
 
   it('Storage.readAll returns per-app mount arrays', async () => {
