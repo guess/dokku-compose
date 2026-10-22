@@ -29,6 +29,10 @@ function nothingSet(name: string): Record<string, string> {
   }
 }
 
+function inSyncList(): string[] {
+  return JSON.parse(inSyncServer().queries['docker-options:report myapp --format json'])['build-list']
+}
+
 function inSyncServer(): FakeServer {
   const app = 'myapp'
   const worker = 'myapp-worker'
@@ -229,6 +233,29 @@ describe('a server whose state equals the file', () => {
     expect(warned).toHaveLength(2)
     expect(warned[0]).toContain('myapp-db: version is 16.1 on the server but 17-3.5 in the file; image is postgres on the server but postgis/postgis in the file')
     warn.mockRestore()
+  })
+
+  it('several build args, one changed and one added: up runs remove-old + add-new + add-added, then nothing', async () => {
+    const server = inSyncServer()
+    const key = 'docker-options:report myapp --format json'
+    const list = JSON.parse(server.queries[key])
+    list['build-list'] = list['build-list'].map((o: string) => o === '--build-arg NODE_ENV=production' ? '--build-arg NODE_ENV=staging' : o)
+      .filter((o: string) => !o.includes('API_URL'))
+    server.queries[key] = JSON.stringify(list)
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual([
+      "docker-options:remove myapp build '--build-arg NODE_ENV=staging'",
+      "docker-options:add myapp build '--build-arg NODE_ENV=production'",
+      "docker-options:add myapp build '--build-arg '\\''API_URL=https://api.example.com/v1?debug=1'\\'''",
+    ])
+    // The state those commands leave behind: a second run runs nothing.
+    const after = JSON.parse(server.queries[key])
+    after['build-list'] = inSyncList()
+    server.queries[key] = JSON.stringify(after)
+    const second = fakeContext(server)
+    await runUp(second.ctx, loadConfig(FIXTURE), [])
+    expect(second.runner.dryRunLog).toEqual([])
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.

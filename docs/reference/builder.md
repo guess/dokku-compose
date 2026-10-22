@@ -71,8 +71,18 @@ apps:
 
 | Value | Dokku Command |
 |-------|---------------|
-| `{map}` | `docker-options:add <app> build --build-arg KEY=VALUE` (per entry) |
+| `{map}` | per entry that differs: `docker-options:add <app> build --build-arg KEY=VALUE` |
 | absent | no action |
+
+### How changes apply
+
+`up` compares `build.args` with the server key by key and runs only what differs:
+
+- an arg not on the server is added;
+- an arg whose value changed first runs `docker-options:remove <app> build "<stored option>"` for every stored option with that key (by its exact stored text, because Dokku's `add` appends without deduplicating and `remove` compares word by word), then adds the new one;
+- an unchanged arg runs no command.
+
+A second `up` therefore changes nothing, and `diff` shows an added or changed arg. The dockerfile, app.json and context settings are likewise only set when they differ.
 
 ## Removal
 

@@ -106,15 +106,29 @@ export const Builder: Resource<BuildConfig> = {
     )
   },
 
-  async onChange(ctx: Context, target: string, { after }: { after: BuildConfig }): Promise<void> {
-    if (after.dockerfile)
+  async onChange(ctx: Context, target: string, { before, after }: { before?: BuildConfig; after: BuildConfig }): Promise<void> {
+    if (after.dockerfile && after.dockerfile !== before?.dockerfile)
       { await ctx.run('builder-dockerfile:set', target, 'dockerfile-path', after.dockerfile); ctx.needsRebuild(target, 'build') }
-    if (after.app_json)
+    if (after.app_json && after.app_json !== before?.app_json)
       { await ctx.run('app-json:set', target, 'appjson-path', after.app_json); ctx.needsRebuild(target, 'build') }
-    if (after.context)
+    if (after.context && after.context !== before?.context)
       { await ctx.run('builder:set', target, 'build-dir', after.context); ctx.needsRebuild(target, 'build') }
     if (after.args) {
+      // Only what differs: an unchanged arg runs nothing, a changed one first
+      // removes every stored option for its key (by exact stored text; `add`
+      // appends without dedupe), then adds the new value.
+      const stored = parseBuildOptions(await readBuildList(ctx, target))
+      const current: Record<string, string> = {}
+      for (const o of stored) current[o.key] = o.value
+      const changedKeys = new Set(Object.keys(after.args).filter(k => k in current && current[k] !== after.args![k]))
+      if (changedKeys.size > 0) {
+        for (const o of stored.filter(o => changedKeys.has(o.key))) {
+          await ctx.run('docker-options:remove', target, 'build', o.raw)
+          ctx.needsRebuild(target, 'build args')
+        }
+      }
       for (const [key, value] of Object.entries(after.args)) {
+        if (key in current && !changedKeys.has(key)) continue
         await ctx.run('docker-options:add', target, 'build', `--build-arg ${quoteShellArg(`${key}=${value}`)}`)
         ctx.needsRebuild(target, 'build args')
       }
