@@ -141,6 +141,18 @@ All features are idempotent — running `up` twice produces no changes.
 | Redis | Redis service instances | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps | [plugins](docs/reference/plugins.md#linking-services-to-apps-appsapplinks) |
 
+## Variable interpolation
+
+`${VAR}` in a string value is replaced with the environment variable `VAR`. The file is parsed as YAML first and substituted afterwards, value by value, so a secret can contain any character (`"`, `'`, `#`, `\`, `:`, newlines) and arrives in the value unchanged; it can never change the file's structure. Keys and comments are never substituted. Every unset or empty variable is collected and reported together:
+
+```
+Unset environment variable(s) referenced in config: R2_HOST, GITHUB_TOKEN
+```
+
+To write a literal `${`, use `$${`: `"$${NOT_A_VAR}"` loads as `${NOT_A_VAR}`.
+
+Because substitution happens after parsing, a value that is a bare `${VAR}` is always a string, and a variable cannot inject YAML (extra keys, lists, quoting). Earlier versions substituted into the raw text, so anything that relied on that must now be written in the file.
+
 ## Execution Modes
 
 ```bash
