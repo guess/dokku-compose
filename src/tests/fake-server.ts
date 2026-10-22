@@ -22,6 +22,22 @@ export function report(app: string, title: string, rows: Record<string, string>)
 }
 
 /**
+ * `git:report <app>` as Dokku 0.38.31 prints it for an app with nothing set but the
+ * deploy branch: the unset `rev-env-var` prints its default and the archive limits
+ * print only their computed value.
+ */
+export function gitReport(app: string, rows: Record<string, string> = {}): string {
+  return report(app, 'git', {
+    'Git computed archive max files': '10000',
+    'Git computed archive max size': '1073741824',
+    'Git computed deploy branch': rows['Git deploy branch'] || 'master',
+    'Git computed keep git dir': 'false',
+    'Git rev env var': 'GIT_REV',
+    ...rows,
+  })
+}
+
+/**
  * A dry-run runner whose reads come from `server`. Mutations land in
  * `runner.dryRunLog` (and `ctx.commands`) and never reach a real Dokku.
  */

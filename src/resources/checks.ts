@@ -4,10 +4,13 @@ import type { Context } from '../core/context.js'
 import { parseReport } from './parsers.js'
 import { logWarn } from '../core/logger.js'
 
+/** The only `checks:set` key (Dokku 0.38.31 `plugins/checks/subcommands/set`); `disabled` and `skipped` come from `checks:disable`/`:skip`. */
+export const CHECKS_KEYS = ['wait-to-retire'] as const
+
 type ChecksConfig = false | {
   disabled?: string[]
   skipped?: string[]
-  [key: string]: string | number | boolean | string[] | undefined
+  'wait-to-retire'?: string | number | boolean
 }
 
 export const Checks: Resource<ChecksConfig> = {

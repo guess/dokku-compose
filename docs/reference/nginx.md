@@ -7,7 +7,7 @@ Configure Nginx proxy settings for apps and globally. All standard `nginx:set` p
 
 ## `apps.<app>.nginx`
 
-Sets per-app Nginx properties. Each key-value pair maps to a `nginx:set <app>` call. Any property supported by `dokku nginx:set` can be used.
+Sets per-app Nginx properties. Each key-value pair maps to a `nginx:set <app>` call. Only the 31 properties `nginx:set` accepts in Dokku 0.38.31 pass `validate`, including `nginx-conf-sigil-path` and `nginx-service-command`; any other key is rejected. The same keys are valid at the top level.
 
 ```yaml
 apps:

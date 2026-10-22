@@ -51,7 +51,6 @@ apps:
       - funqtion-redis
     checks:
       wait-to-retire: 60
-      attempts: 5
     storage:
       - "/var/lib/dokku/data/storage/funqtion/uploads:/app/uploads"
     registry:

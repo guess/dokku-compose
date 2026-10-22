@@ -1,4 +1,17 @@
 import { z } from 'zod'
+import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resources/properties.js'
+
+/** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
+function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V) {
+  return z.record(z.string(), value).superRefine((map, ctx) => {
+    for (const key of Object.keys(map)) {
+      if (!keys.includes(key)) {
+        ctx.addIssue({ code: 'custom', path: [key], message: `'${key}' is not a ${namespace}:set property (valid: ${keys.join(', ')})` })
+      }
+    }
+  })
+}
+const StringOrNumber = z.union([z.string(), z.number()])
 
 const PortSchema = z.string().regex(
   /^(http|https|tcp|udp):\d+:\d+$/,
@@ -15,12 +28,19 @@ const ChecksSchema = z.union([
   z.object({
     disabled: z.array(z.string()).optional(),
     skipped: z.array(z.string()).optional(),
-  }).catchall(z.union([z.string(), z.number(), z.boolean()]))
+    // The only `checks:set` key (Dokku 0.38.31); anything else is refused.
+    'wait-to-retire': z.union([z.string(), z.number(), z.boolean()]).optional(),
+  }).strict()
 ])
 
 const GitSchema = z.object({
   deploy_branch: z.string().optional(),
-})
+  keep_git_dir: z.union([z.string(), z.boolean()]).optional(),
+  rev_env_var: z.string().optional(),
+  source_image: z.string().optional(),
+  archive_max_files: StringOrNumber.optional(),
+  archive_max_size: StringOrNumber.optional(),
+}).strict()
 
 const LinkSchema = z.union([
   z.string(),
@@ -43,29 +63,42 @@ const AppSchema = z.object({
     z.object({ certfile: z.string(), keyfile: z.string() })
   ]).optional(),
   storage: z.array(z.string()).optional(),
-  proxy: z.object({ enabled: z.boolean() }).optional(),
+  proxy: z.object({
+    enabled: z.boolean().optional(),
+    type: z.string().optional(),
+    proxy_port: StringOrNumber.optional(),
+    proxy_ssl_port: StringOrNumber.optional(),
+  }).strict().optional(),
   networks: z.array(z.string()).optional(),
   network: z.object({
     attach_post_create: z.union([z.array(z.string()), z.literal(false)]).optional(),
     initial_network: z.union([z.string(), z.literal(false)]).optional(),
     bind_all_interfaces: z.boolean().optional(),
+    static_web_listener: z.union([z.string(), z.literal(false)]).optional(),
     tld: z.union([z.string(), z.literal(false)]).optional(),
   }).optional(),
-  nginx: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
-  logs: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
-  registry: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
-  scheduler: z.string().optional(),
+  nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber).optional(),
+  logs: propertyMap('logs', LOGS_KEYS, StringOrNumber).optional(),
+  // `auth-servers` is report-only: it is a registry login, not a `registry:set` key.
+  registry: propertyMap('registry', REGISTRY_KEYS, z.union([z.string(), z.boolean()])).optional(),
+  scheduler: z.union([z.string(), z.object({ selected: z.string().optional(), shell: z.string().optional() }).strict()]).optional(),
   scale: z.record(z.string(), z.preprocess(v => (typeof v === 'string' && /^\s*-?\d+\s*$/.test(v) ? Number(v) : v), z.number().int().min(0))).optional(),
   ps: z.object({
     'procfile-path': z.union([z.string(), z.number()]).optional(),
     'restart-policy': z.union([z.string(), z.number()]).optional(),
     'stop-timeout-seconds': z.union([z.string(), z.number()]).optional(),
+    'dockerfile-start-cmd': z.union([z.string(), z.number()]).optional(),
+    restore: z.union([z.string(), z.boolean()]).optional(),
+    'skip-deploy': z.union([z.string(), z.boolean()]).optional(),
+    'start-cmd': z.union([z.string(), z.number()]).optional(),
   }).strict().optional(),
   checks: ChecksSchema.optional(),
   build: z.object({
     dockerfile: z.string().optional(),
     app_json: z.string().optional(),
     context: z.string().optional(),
+    selected: z.string().optional(),
+    skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
     args: z.record(z.string(), z.string()).optional(),
   }).optional(),
   docker_options: z.object({
@@ -123,8 +156,9 @@ export const ConfigSchema = z.object({
   apps: z.record(z.string(), AppSchema),
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
   env: EnvMapSchema.optional(),
-  nginx: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
-  logs: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber).optional(),
+  // The top-level block is also applied with `--global`, which takes two more keys.
+  logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber).optional(),
   git: GitSchema.optional(),
 })
 

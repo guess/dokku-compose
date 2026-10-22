@@ -186,10 +186,10 @@ describe('real Dokku 0.38 reports', () => {
     expect(current).toEqual({ 'max-size': '10m' })
   })
 
-  it('logs and registry allowlists include the real vector-cron-sink, auth-servers and image-repo-template, not tag-version', () => {
+  it('logs and registry allowlists include the real vector-cron-sink and image-repo-template, not tag-version; auth-servers is report-only', () => {
     expect(Logs.removals!({ 'vector-cron-sink': 'x' } as any, undefined)).toEqual(['vector-cron-sink'])
     expect(Registry.removals!({ 'auth-servers': 'x', 'image-repo-template': 'y', 'tag-version': '1' } as any, undefined))
-      .toEqual(['auth-servers', 'image-repo-template'])
+      .toEqual(['image-repo-template'])
   })
 
   it('network: attach-post-create is the only setting in the real report; listeners and attach-post-deploy never', async () => {

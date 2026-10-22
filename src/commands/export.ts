@@ -72,7 +72,9 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
         // An installed cert exports as `true`: the file paths are not on the server.
         (appConfig as any).ssl = value !== false
       } else if (resource.key === 'proxy') {
-        (appConfig as any).proxy = { enabled: value as boolean }
+        (appConfig as any).proxy = { ...(appConfig as any).proxy, enabled: value as boolean }
+      } else if (resource.key === 'proxy_props') {
+        (appConfig as any).proxy = { ...(appConfig as any).proxy, ...(value as object) }
       } else {
         (appConfig as any)[resource.key] = value
       }

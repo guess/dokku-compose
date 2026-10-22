@@ -6,7 +6,16 @@ import type { Context } from '../core/context.js'
 // properties live in this file.
 
 /** ps properties dokku-compose can set (`ps:set`); the schema rejects any other key. */
-export const PS_KEYS = ['procfile-path', 'restart-policy', 'stop-timeout-seconds'] as const
+export const PS_KEYS = [
+  'dockerfile-start-cmd', 'procfile-path', 'restart-policy', 'restore', 'skip-deploy', 'start-cmd', 'stop-timeout-seconds',
+] as const
+
+/**
+ * `ps:report` prints `restore` as `true` when it was never set, so that value is the
+ * default, not a setting: it is read (a declared `restore: true` stays in sync) but
+ * never counted as a removal.
+ */
+const PS_DEFAULTS: Partial<Record<(typeof PS_KEYS)[number], string>> = { restore: 'true' }
 
 /**
  * Parse `dokku ps:scale --format json <app>`:
@@ -72,16 +81,16 @@ export const Scale: Resource<Record<string, string | number>> = {
  * settable key that is set on the server but absent from the file is not
  * reset by `up`; `diff` shows it as a removal.
  */
-export const Ps: Resource<Record<string, string | number>> = {
+export const Ps: Resource<Record<string, string | number | boolean>> = {
   key: 'ps',
   additive: true,
   removals: (current, desired) =>
-    PS_KEYS.filter(k => current?.[k] !== undefined && !(desired && k in desired)),
+    PS_KEYS.filter(k => current?.[k] !== undefined && String(current[k]) !== PS_DEFAULTS[k] && !(desired && k in desired)),
   prune: async (ctx, target, removed) => {
     for (const key of removed) await ctx.run('ps:set', target, key)
   },
 
-  async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
+  async read(ctx: Context, target: string): Promise<Record<string, string | number | boolean>> {
     return parsePsReport(await ctx.queryStrict('ps:report', target, '--format', 'json'))
   },
 

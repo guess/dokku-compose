@@ -6,7 +6,7 @@ import * as fs from 'fs'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, gitReport, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -16,6 +16,7 @@ const SINK = 'console://?encoding[codec]=json'
 function nothingSet(name: string): Record<string, string> {
   return {
     [`network:report ${name}`]: report(name, 'network', {}),
+    [`proxy:report ${name}`]: report(name, 'proxy', { 'Proxy enabled': 'true' }),
     [`nginx:report ${name}`]: report(name, 'nginx', {}),
     [`logs:report ${name} --format json`]: logsAppJson({ 'global-max-size': '50m', 'logs-global-max-size': '50m', 'computed-max-size': '50m' }),
     [`registry:report ${name}`]: report(name, 'registry', {}),
@@ -89,6 +90,7 @@ function inSyncServer(): FakeServer {
         'Network tld': 'internal',
       }),
       [`proxy:report ${app} --proxy-enabled`]: 'true',
+      [`proxy:report ${app}`]: report(app, 'proxy', { 'Proxy enabled': 'true' }),
       [`ports:report ${app} --ports-map`]: 'http:80:5000 https:443:5000',
       [`certs:report ${app} --ssl-enabled`]: 'true',
       [`certs:show ${app} crt`]: CRT,
@@ -142,7 +144,7 @@ function inSyncServer(): FakeServer {
         ],
         'deploy-list': ['--shm-size 256m'],
       }),
-      [`git:report ${app} --git-deploy-branch`]: 'main',
+      [`git:report ${app}`]: gitReport(app, { 'Git deploy branch': 'main' }),
 
       // myapp-worker: no cert, all checks disabled, its own deploy branch
       [`certs:report ${worker} --ssl-enabled`]: 'false',
@@ -151,7 +153,7 @@ function inSyncServer(): FakeServer {
         'Checks skipped list': 'none',
       }),
       [`domains:report ${worker} --domains-app-enabled`]: 'false',
-      [`git:report ${worker} --git-deploy-branch`]: 'release',
+            [`git:report ${worker}`]: gitReport(worker, { 'Git deploy branch': 'release' }),
       [`config:get ${worker} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
       ...nothingSet(worker),
 
@@ -159,7 +161,7 @@ function inSyncServer(): FakeServer {
       [`certs:report ${edge} --ssl-enabled`]: 'true',
       [`certs:show ${edge} crt`]: CRT,
       [`config:get ${edge} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
-      [`git:report ${edge} --git-deploy-branch`]: 'main',
+      [`git:report ${edge}`]: gitReport(edge, { 'Git deploy branch': 'main' }),
       [`checks:report ${edge}`]: report(edge, 'checks', { 'Checks disabled list': 'none', 'Checks skipped list': 'none' }),
       ...nothingSet(edge),
     },

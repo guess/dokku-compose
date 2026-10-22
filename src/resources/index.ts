@@ -2,7 +2,7 @@
 import { Apps } from './lifecycle.js'
 import { Domains, Ports, Storage } from './lists.js'
 import { Nginx, Logs, Registry, Scheduler } from './properties.js'
-import { Proxy } from './toggle.js'
+import { Proxy, ProxyProps } from './toggle.js'
 import { Config } from './config.js'
 import { Certs } from './certs.js'
 import { Builder } from './builder.js'
@@ -15,7 +15,7 @@ import type { Resource } from '../core/reconcile.js'
 
 // Per-app resources split into explicit phases.
 export const NETWORKING_RESOURCES: Resource[] = [
-  Domains, Networks, NetworkProps, Proxy, Ports,
+  Domains, Networks, NetworkProps, Proxy, ProxyProps, Ports,
 ]
 
 export const CONFIG_RESOURCES: Resource[] = [
@@ -32,6 +32,6 @@ export const ALL_APP_RESOURCES: Resource[] = [
 
 export {
   Apps, Domains, Ports, Storage, Nginx, Logs, Registry,
-  Scheduler, Proxy, Config, Certs, Builder, DockerOptions,
+  Scheduler, Proxy, ProxyProps, Config, Certs, Builder, DockerOptions,
   Git, Checks, Networks, NetworkProps, Scale, Ps,
 }

@@ -8,7 +8,7 @@ Module: `lib/checks.sh`
 
 ### Check Properties (`apps.<app>.checks.<property>`)
 
-Set zero-downtime check properties per app. `up` reads `checks:report <app>` first and runs only the calls whose state differs, so a box that already matches gets no `checks:*` command and `diff` shows any difference as drift. Dokku 0.38.31 has one settable property, `wait-to-retire`.
+Set zero-downtime check properties per app. `up` reads `checks:report <app>` first and runs only the calls whose state differs, so a box that already matches gets no `checks:*` command and `diff` shows any difference as drift. Dokku 0.38.31's `checks:set` accepts one property, `wait-to-retire`, so it is the only key besides `disabled` and `skipped` that `validate` accepts; any other key is rejected.
 
 ```yaml
 apps:

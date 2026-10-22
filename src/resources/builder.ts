@@ -5,10 +5,15 @@ import { computeAdditiveChange } from '../core/change.js'
 import { logWarn } from '../core/logger.js'
 import { shellSplit, quoteShellArg } from '../core/shellwords.js'
 
+/** Every `builder:set` key we set (Dokku 0.38.31 `plugins/builder/builder.go`; `detected` is read-only). */
+export const BUILDER_KEYS = ['build-dir', 'selected', 'skip-cleanup'] as const
+
 type BuildConfig = {
   dockerfile?: string
   app_json?: string
   context?: string
+  selected?: string
+  skip_cleanup?: string | boolean
   args?: Record<string, string>
 }
 
@@ -64,6 +69,10 @@ function buildConfigFromReports(
     config.app_json = appJsonReport['selected']
   if (builderReport['build-dir'])
     config.context = builderReport['build-dir']
+  if (builderReport['selected'])
+    config.selected = builderReport['selected']
+  if (builderReport['skip-cleanup'])
+    config.skip_cleanup = builderReport['skip-cleanup']
 
   const args = parseBuildArgs(buildList)
   if (Object.keys(args).length > 0) config.args = args
@@ -83,14 +92,18 @@ export const Builder: Resource<BuildConfig> = {
   inSync: (current, desired) =>
     !computeAdditiveChange(current, desired).changed &&
     !Object.keys(desired.args ?? {}).some(k => (current as any)?.duplicateArgs?.has(k)),
-  // Build args (`--build-arg KEY=...` build docker options) whose KEY is not in `build.args`.
-  removals: (current, desired) =>
-    Object.keys(current?.args ?? {})
+  // `builder:set` keys and build args (`--build-arg KEY=...` build docker options) not in the file.
+  removals: (current, desired) => [
+    ...(['selected', 'skip_cleanup'] as const).filter(k => current?.[k] !== undefined && desired?.[k] === undefined),
+    ...Object.keys(current?.args ?? {})
       .filter(k => !(desired?.args && k in desired.args))
       .map(k => `args.${k}`),
-  // Remove exactly the stale `--build-arg` options; other build options stay.
+  ],
+  // Reset the stale `builder:set` keys; remove exactly the stale `--build-arg` options, other build options stay.
   prune: async (ctx, target, removed) => {
-    const stale = new Set(removed.map(l => l.slice('args.'.length)))
+    for (const key of removed.filter(l => !l.startsWith('args.'))) await ctx.run('builder:set', target, key.replaceAll('_', '-'))
+    const stale = new Set(removed.filter(l => l.startsWith('args.')).map(l => l.slice('args.'.length)))
+    if (stale.size === 0) return
     // Same query `read` made, so this is the cached report. Remove every stale occurrence, by exact option text.
     const options = parseBuildOptions(await readBuildList(ctx, target)).filter(o => stale.has(o.key))
     for (const o of options) {
@@ -124,6 +137,10 @@ export const Builder: Resource<BuildConfig> = {
       { await ctx.run('app-json:set', target, 'appjson-path', after.app_json); ctx.needsRebuild(target, 'build') }
     if (after.context && after.context !== before?.context)
       { await ctx.run('builder:set', target, 'build-dir', after.context); ctx.needsRebuild(target, 'build') }
+    if (after.selected && after.selected !== before?.selected)
+      { await ctx.run('builder:set', target, 'selected', after.selected); ctx.needsRebuild(target, 'build') }
+    if (after.skip_cleanup !== undefined && String(after.skip_cleanup) !== String(before?.skip_cleanup))
+      await ctx.run('builder:set', target, 'skip-cleanup', String(after.skip_cleanup))
     if (after.args) {
       // Only what differs: an unchanged arg runs nothing, a changed one first
       // removes every stored option for its key (by exact stored text; `add`

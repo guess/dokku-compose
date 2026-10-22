@@ -5,7 +5,7 @@ import type { Resource } from '../core/reconcile.js'
 import { Apps } from '../resources/lifecycle.js'
 import { Domains, Ports, Storage } from '../resources/lists.js'
 import { Nginx, Logs, Registry, Scheduler } from '../resources/properties.js'
-import { Proxy } from '../resources/toggle.js'
+import { Proxy, ProxyProps, proxyProps } from '../resources/toggle.js'
 import { Config as ConfigResource } from '../resources/config.js'
 import { Certs } from '../resources/certs.js'
 import { Builder } from '../resources/builder.js'
@@ -104,6 +104,7 @@ async function processApp(
   await step(() => reconcile(Networks, ctx, app, appConfig.networks))
   await step(() => reconcile(NetworkProps, ctx, app, appConfig.network, count, prune))
   await step(() => reconcile(Proxy, ctx, app, appConfig.proxy?.enabled))
+  await step(() => reconcile(ProxyProps, ctx, app, proxyProps(appConfig.proxy), count, prune))
   await step(() => reconcile(Ports, ctx, app, appConfig.ports))
 
   // Links (between networking and config)

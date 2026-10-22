@@ -34,7 +34,7 @@ apps:
   api:
     proxy:
       enabled: true           # proxy:enable
-      type: caddy             # proxy:set api caddy
+      type: caddy             # proxy:set api type caddy
 
   worker:
     proxy:
@@ -47,9 +47,9 @@ apps:
 | `false` | `proxy:report <app> --proxy-enabled` (check)<br>`proxy:disable <app>` (if not already disabled) |
 | absent | no action |
 
-### Proxy Type (`apps.<app>.proxy.type`)
+### Proxy Properties (`apps.<app>.proxy.type`, `proxy_port`, `proxy_ssl_port`)
 
-Set the proxy implementation for an app. Dokku supports nginx (default), caddy, haproxy, and traefik. Idempotent — only calls `proxy:set` if the current type differs.
+Set the proxy implementation and the ports it listens on. Dokku 0.38.31's `proxy:set` takes `disabled` (`proxy.enabled`), `type`, `proxy-port` and `proxy-ssl-port`. Idempotent: `proxy:set` runs only when the value differs, read from `proxy:report <app>`.
 
 ```yaml
 apps:
@@ -60,9 +60,11 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `"nginx"` / `"caddy"` / `"haproxy"` / `"traefik"` | `proxy:report <app> --proxy-type` (check)<br>`proxy:set <app> <type>` (if changed) |
+| `type: "nginx"` / `"caddy"` / `"haproxy"` / `"traefik"` | `proxy:report <app>` (check)<br>`proxy:set <app> type <type>` (if changed) |
+| `proxy_port: <port>` | `proxy:set <app> proxy-port <port>` (if changed) |
+| `proxy_ssl_port: <port>` | `proxy:set <app> proxy-ssl-port <port>` (if changed) |
 | absent | no action |
 
 ## Removal
 
-`proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal.
+`proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal. A `type`, `proxy_port` or `proxy_ssl_port` set on the server but absent from the file is a removal; `up --prune` resets it with `proxy:set <app> <key>` and no value.

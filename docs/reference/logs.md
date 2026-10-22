@@ -47,6 +47,8 @@ apps:
 
 ### Supported Properties
 
+Audited against Dokku 0.38.31. Per-app `logs:` takes `app-label-alias`, `max-size`, `vector-cron-sink` and `vector-sink`; the top-level `logs:` also takes the global-only `vector-image` and `vector-networks`. `validate` rejects any other key, and a global-only key on an app.
+
 | Property | Scope | Description |
 |----------|-------|-------------|
 | `max-size` | global + per-app | Docker log retention size (default: `10m`) |
@@ -57,4 +59,4 @@ apps:
 
 ## Removal
 
-A property set on the server but absent from `apps.<app>.logs` (`app-label-alias`, `max-size`, `vector-cron-sink`, `vector-sink`) is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `logs:set <app> <key>` and no value (likewise `registry:set <app> <key>` and `scheduler:set <app> selected`), also for a removed block. A `registry` property (`auth-servers`, `image-repo`, `image-repo-template`, `push-extra-tags`, `push-on-release`, `server`; `tag-version` is read-only) or a `scheduler` selected on the server but absent from the file is treated the same way.
+A property set on the server but absent from `apps.<app>.logs` (`app-label-alias`, `max-size`, `vector-cron-sink`, `vector-sink`) is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `logs:set <app> <key>` and no value (likewise `registry:set <app> <key>` and `scheduler:set <app> selected`), also for a removed block. A `registry` property (`image-repo`, `image-repo-template`, `push-extra-tags`, `push-on-release`, `server`; `auth-servers` and `tag-version` are report-only, so they are never a removal and never passed to `registry:set`; `validate` rejects them) or a `scheduler` setting (`selected` or `shell`) on the server but absent from the file is treated the same way (`scheduler:set <app> shell` for `shell`).
