@@ -15,7 +15,9 @@ function fakeBox(dryRun = false) {
     scheduler: 'docker-local',
     ps: { 'restart-policy': 'always', 'stop-timeout-seconds': '30' } as Record<string, string>,
     network: { 'attach-post-create': 'net-a', 'initial-network': 'net-b', 'bind-all-interfaces': 'true', tld: 'internal' } as Record<string, string>,
-    checks: { 'disabled-list': 'web,worker', 'skipped-list': 'web', 'wait-to-retire': '30' } as Record<string, string>,
+    disabled: new Set(['web', 'worker']),
+    skipped: new Set(['api']),
+    wait: '30',
     build: ['--build-arg A=1', '--build-arg B=2', '--link x:y'],
   }
   const runner = createRunner({ dryRun })
@@ -30,7 +32,7 @@ function fakeBox(dryRun = false) {
     if (c.startsWith('registry:report')) return section('registry', 'Registry', st.registry)
     if (c.startsWith('scheduler:report')) return section('scheduler', 'Scheduler', { selected: st.scheduler })
     if (c.startsWith('network:report')) return section('network', 'Network', st.network)
-    if (c.startsWith('checks:report')) return section('checks', 'Checks', st.checks)
+    if (c.startsWith('checks:report')) return section('checks', 'Checks', { 'disabled list': [...st.disabled].join(',') || 'none', 'skipped list': [...st.skipped].join(',') || 'none', 'wait to retire': st.wait })
     if (c.startsWith('docker-options:report')) return `=====> myapp docker-options information\n       Docker options build: ${st.build.join(' ')}`
     if (c.startsWith('ps:report')) return JSON.stringify(st.ps)
     if (c === 'plugin:list' || c.startsWith('plugin:list')) return '[]'
@@ -45,8 +47,11 @@ function fakeBox(dryRun = false) {
     const tables: Record<string, Record<string, string>> = { 'nginx:set': st.nginx, 'logs:set': st.logs, 'registry:set': st.registry, 'ps:set': st.ps, 'network:set': st.network }
     if (tables[cmd]) { if (value === undefined) delete tables[cmd][key]; else tables[cmd][key] = value }
     if (cmd === 'scheduler:set') st.scheduler = ''
-    if (cmd === 'checks:set') delete st.checks[key]
-    if (cmd === 'checks:enable') { st.checks['disabled-list'] = 'none'; st.checks['skipped-list'] = 'none' }
+    if (cmd === 'checks:set') st.wait = ''
+    const types = a.slice(2)
+    if (cmd === 'checks:enable') for (const t of types) { st.disabled.delete(t); st.skipped.delete(t) }
+    if (cmd === 'checks:disable') types.forEach(t => st.disabled.add(t))
+    if (cmd === 'checks:skip') types.forEach(t => st.skipped.add(t))
     if (cmd === 'docker-options:remove') st.build = st.build.filter(o => o !== a[3])
   })
   // The context caches reads, so a later `diff` (a new process in real use) gets a fresh one.
@@ -76,7 +81,7 @@ describe('up --prune', () => {
   })
 
   it('resets exactly the stale settings, one command each', async () => {
-    const { ctx, log } = fakeBox()
+    const { ctx, log, st } = fakeBox()
     await runUp(ctx, declared(), [], { prune: true })
     expect(log).toEqual(expect.arrayContaining([
       'nginx:set myapp proxy-read-timeout',
@@ -86,12 +91,15 @@ describe('up --prune', () => {
       'network:set myapp attach-post-create',
       'network:set myapp initial-network',
       'network:set myapp bind-all-interfaces',
-      'checks:enable myapp web',
-      'checks:disable myapp web',
+      'checks:enable myapp api',
       'checks:set myapp wait-to-retire',
       'docker-options:remove myapp build --build-arg B=2',
     ]))
     expect(log).not.toContain('network:set myapp tld')
+    // Declared state survives: web and worker stay disabled, only the stale skip is cleared.
+    expect([...st.disabled].sort()).toEqual(['web', 'worker'])
+    expect([...st.skipped]).toEqual([])
+    expect(log.filter(l => /^checks:(disable|skip)/.test(l))).toEqual(['checks:disable myapp web'])
     expect(log.filter(l => l.startsWith('docker-options:remove'))).toEqual(['docker-options:remove myapp build --build-arg B=2'])
     expect(log.some(l => /apps:destroy|ps:scale|destroy/.test(l))).toBe(false)
   })
@@ -108,7 +116,8 @@ describe('up --prune', () => {
     expect(st.ps).toEqual({})
     expect(st.network).toEqual({})
     expect(st.build).toEqual(['--link x:y'])
-    expect(st.checks['wait-to-retire']).toBeUndefined()
+    expect(st.wait).toBe('')
+    expect(st.disabled.size + st.skipped.size).toBe(0)
     expect(removedKeys(await computeDiff(fresh(), config))).toEqual([])
   })
 
@@ -126,14 +135,34 @@ describe('up --prune', () => {
     expect(st.build).toHaveLength(3)
   })
 
-  it('does not print the leftover hint when pruning', async () => {
-    const { ctx } = fakeBox()
-    const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
-    const out = vi.spyOn(console, 'log').mockImplementation(() => {})
+  it('prints the leftover hint without --prune and not with it', async () => {
+    const run = async (prune: boolean) => {
+      const { ctx } = fakeBox()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      await runUp(ctx, declared(), [], { prune })
+      const text = warn.mock.calls.flat().join('\n')
+      warn.mockRestore()
+      return text
+    }
+    expect(await run(false)).toContain('left on the server')
+    expect(await run(true)).not.toContain('left on the server')
+  })
+})
+
+describe('checks type declared in the file and in an undeclared box list', () => {
+  it('is not pruned; warns with the manual command; diff keeps the "-" by design', async () => {
+    const { ctx, fresh, st, log } = fakeBox()
+    st.skipped = new Set(['web'])
+    st.wait = ''
+    const err = vi.spyOn(console, 'warn').mockImplementation(() => {})
     await runUp(ctx, declared(), [], { prune: true })
-    const text = [...warn.mock.calls, ...out.mock.calls].flat().join('\n')
-    warn.mockRestore(); out.mockRestore()
-    expect(text).not.toContain('left on the server')
+    const text = err.mock.calls.flat().join('\n')
+    err.mockRestore()
+    expect(log.some(l => l.startsWith('checks:enable'))).toBe(false)
+    expect([...st.disabled].sort()).toEqual(['web', 'worker'])
+    expect([...st.skipped]).toEqual(['web'])
+    expect(text).toContain("dokku checks:enable myapp web")
+    expect(removedKeys(await computeDiff(fresh(), declared()))).toEqual(['checks'])
   })
 })
 

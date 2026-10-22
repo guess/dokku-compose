@@ -109,3 +109,20 @@ describe('additive change with unreadable current state', () => {
     expect(computeAdditiveChange({ web: '1', release: '0' }, { web: 1 }).changed).toBe(false)
   })
 })
+
+describe('Ps --prune', () => {
+  const report = JSON.stringify({ 'restart-policy': 'always', 'stop-timeout-seconds': '30', deployed: 'true' })
+  it('resets stale settable keys with no value; never scale or read-only keys', async () => {
+    const ctx = makeCtx({ 'ps:report': report })
+    await reconcile(Ps, ctx, 'myapp', { 'restart-policy': 'always' }, undefined, true)
+    expect(ctx.commands).toEqual([['ps:set', 'myapp', 'stop-timeout-seconds']])
+  })
+  it('a block gone from the file resets both; without prune nothing', async () => {
+    const ctx = makeCtx({ 'ps:report': report })
+    await reconcile(Ps, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([['ps:set', 'myapp', 'restart-policy'], ['ps:set', 'myapp', 'stop-timeout-seconds']])
+    const none = makeCtx({ 'ps:report': report })
+    await reconcile(Ps, none, 'myapp', undefined)
+    expect(none.commands).toEqual([])
+  })
+})

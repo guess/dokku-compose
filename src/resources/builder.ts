@@ -1,6 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { Context } from '../core/context.js'
 import { parseReport, parseBulkReport } from './parsers.js'
+import { logWarn } from '../core/logger.js'
 
 type BuildConfig = {
   dockerfile?: string
@@ -9,11 +10,23 @@ type BuildConfig = {
   args?: Record<string, string>
 }
 
+/**
+ * The `--build-arg` options of the build docker options line, as Dokku prints
+ * them: options are space-joined and each starts with `--`, so a value may
+ * contain spaces. `raw` is the exact option text.
+ */
+function parseBuildOptions(dockerOptsBuild: string): { key: string; value: string; raw: string }[] {
+  const out: { key: string; value: string; raw: string }[] = []
+  for (const raw of dockerOptsBuild.trim().split(/\s+(?=--\S)/)) {
+    const m = raw.match(/^--build-arg\s+([^=\s]+)=?(.*)$/s)
+    if (m) out.push({ key: m[1], value: m[2], raw })
+  }
+  return out
+}
+
 function parseBuildArgs(dockerOptsBuild: string): Record<string, string> {
   const args: Record<string, string> = {}
-  // Options are space-separated on one line: --build-arg K=V --link ... --build-arg K2=V2
-  const matches = dockerOptsBuild.matchAll(/--build-arg\s+(\S+?)=(\S+)/g)
-  for (const m of matches) args[m[1]] = m[2]
+  for (const o of parseBuildOptions(dockerOptsBuild)) args[o.key] = o.value
   return args
 }
 
@@ -47,10 +60,14 @@ export const Builder: Resource<BuildConfig> = {
       .filter(k => !(desired?.args && k in desired.args))
       .map(k => `args.${k}`),
   // Remove exactly the stale `--build-arg` options; other build options stay.
-  prune: async (ctx, target, removed, current) => {
-    for (const label of removed) {
-      const key = label.slice('args.'.length)
-      await ctx.run('docker-options:remove', target, 'build', `--build-arg ${key}=${current.args![key]}`)
+  prune: async (ctx, target, removed) => {
+    const stale = new Set(removed.map(l => l.slice('args.'.length)))
+    // Same query `read` made, so this is the cached report. Remove every stale occurrence, by exact option text.
+    const report = parseReport(await ctx.query('docker-options:report', target), 'docker-options')
+    const options = parseBuildOptions(report['build'] ?? '').filter(o => stale.has(o.key))
+    for (const o of options) await ctx.run('docker-options:remove', target, 'build', o.raw)
+    for (const k of stale) {
+      if (!options.some(o => o.key === k)) logWarn(target, `build arg '${k}' not found as an exact docker option; left as is`)
     }
   },
 

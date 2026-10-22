@@ -275,3 +275,41 @@ describe('runUp — hint scope', () => {
     expect(reads).not.toContain('checks:report')
   })
 })
+
+describe('runUp --prune', () => {
+  const config = { apps: { myapp: { nginx: { 'client-max-body-size': '50m' } } } } as any
+  function box(dryRun: boolean) {
+    const runner = createRunner({ dryRun })
+    runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
+    const read = async (...a: string[]) =>
+      a[0] === 'nginx:report' ? '       Nginx client max body size: 50m\n       Nginx proxy read timeout: 60s\n'
+        : a[0] === 'plugin:list' ? '[]' : ''
+    runner.query = vi.fn(read)
+    runner.queryStrict = vi.fn(read)
+    runner.run = vi.fn()
+    return { runner, ctx: createContext(runner) }
+  }
+
+  it('resets what the file no longer declares only with prune', async () => {
+    const off = box(false)
+    await runUp(off.ctx, config, [])
+    expect(off.ctx.commands).not.toContainEqual(['nginx:set', 'myapp', 'proxy-read-timeout'])
+    const on = box(false)
+    await runUp(on.ctx, config, [], { prune: true })
+    expect(on.ctx.commands).toContainEqual(['nginx:set', 'myapp', 'proxy-read-timeout'])
+  })
+
+  it('with dry-run the reset is recorded by the runner, not executed', async () => {
+    const { runner, ctx } = box(true)
+    runner.run = vi.fn(async () => {})
+    await runUp(ctx, config, [], { prune: true })
+    expect(ctx.commands).toContainEqual(['nginx:set', 'myapp', 'proxy-read-timeout'])
+    expect(runner.query).not.toHaveBeenCalledWith('nginx:set', expect.anything(), expect.anything())
+  })
+
+  it('never destroys or rescales', async () => {
+    const { ctx } = box(false)
+    await runUp(ctx, config, [], { prune: true })
+    expect(ctx.commands.filter(c => /destroy|scale/.test(c[0]))).toEqual([])
+  })
+})

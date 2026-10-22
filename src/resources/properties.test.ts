@@ -198,3 +198,87 @@ describe('Registry resource', () => {
     expect(ctx.commands.length).toBeGreaterThan(0)
   })
 })
+
+// ---- --prune (reconcile's `prune` argument) ----
+function pruneCtx(reports: Record<string, string>, run?: (...a: string[]) => Promise<void>) {
+  const runner = createRunner({ dryRun: false })
+  runner.query = vi.fn(async (...a: string[]) => reports[a.join(' ')] ?? '')
+  runner.run = vi.fn(run ?? (async () => {}))
+  return { ctx: createContext(runner), runner }
+}
+const NGINX_BOX = '       Nginx client max body size: 50m\n       Nginx proxy read timeout: 60s\n'
+
+describe('Nginx --prune', () => {
+  it('resets each stale key with no value, then rebuilds the proxy config; nothing else', async () => {
+    const { ctx } = pruneCtx({ 'nginx:report myapp': NGINX_BOX })
+    await reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' }, undefined, true)
+    expect(ctx.commands).toEqual([['nginx:set', 'myapp', 'proxy-read-timeout'], ['proxy:build-config', 'myapp']])
+  })
+
+  it('a change and a prune in one run rebuild the proxy config once, after both', async () => {
+    const { ctx } = pruneCtx({ 'nginx:report myapp': NGINX_BOX })
+    await reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '10m' }, undefined, true)
+    expect(ctx.commands).toEqual([
+      ['nginx:set', 'myapp', 'client-max-body-size', '10m'],
+      ['nginx:set', 'myapp', 'proxy-read-timeout'],
+      ['proxy:build-config', 'myapp'],
+    ])
+  })
+
+  it('without prune nothing is reset', async () => {
+    const { ctx } = pruneCtx({ 'nginx:report myapp': NGINX_BOX })
+    await reconcile(Nginx, ctx, 'myapp', { 'client-max-body-size': '50m' })
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('a block gone from the file is read exactly once under prune and never without', async () => {
+    const a = pruneCtx({ 'nginx:report myapp': NGINX_BOX })
+    await reconcile(Nginx, a.ctx, 'myapp', undefined, undefined, true)
+    expect(a.runner.query).toHaveBeenCalledTimes(1)
+    expect(a.ctx.commands.map(c => c.slice(0, 3).join(' '))).toEqual([
+      'nginx:set myapp client-max-body-size', 'nginx:set myapp proxy-read-timeout', 'proxy:build-config myapp',
+    ])
+    const b = pruneCtx({ 'nginx:report myapp': NGINX_BOX })
+    await reconcile(Nginx, b.ctx, 'myapp', undefined)
+    expect(b.runner.query).not.toHaveBeenCalled()
+  })
+
+  it('an empty read resets nothing', async () => {
+    const { ctx } = pruneCtx({})
+    await reconcile(Nginx, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('a failing rebuild on an undeployed app warns and does not throw', async () => {
+    const { ctx } = pruneCtx(
+      { 'nginx:report myapp': NGINX_BOX, 'ps:report myapp --deployed': 'false' },
+      async (...a) => { if (a[0] === 'proxy:build-config') throw new Error('no config') }
+    )
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await reconcile(Nginx, ctx, 'myapp', {}, undefined, true)
+    expect(warn.mock.calls.flat().join('')).toContain('proxy:build-config failed on an undeployed app')
+    warn.mockRestore()
+  })
+})
+
+describe('Logs / Registry / Scheduler --prune', () => {
+  it('logs and registry: <plugin>:set <app> <key> with no value', async () => {
+    const { ctx } = pruneCtx({
+      'logs:report myapp': '       Logs max size: 10m\n       Logs vector sink: console://\n',
+      'registry:report myapp': '       Registry server: ghcr.io\n',
+    })
+    await reconcile(Logs, ctx, 'myapp', { 'max-size': '10m' }, undefined, true)
+    await reconcile(Registry, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([['logs:set', 'myapp', 'vector-sink'], ['registry:set', 'myapp', 'server']])
+  })
+
+  it('scheduler: clears selected only when the block is gone', async () => {
+    const { ctx } = pruneCtx({ 'scheduler:report myapp': '       Scheduler selected: docker-local\n' })
+    await reconcile(Scheduler, ctx, 'myapp', 'k3s', undefined, true)
+    expect(ctx.commands.map(c => c[0])).toEqual(['scheduler:set'])
+    expect(ctx.commands[0]).toEqual(['scheduler:set', 'myapp', 'selected', 'k3s'])
+    const g = pruneCtx({ 'scheduler:report myapp': '       Scheduler selected: docker-local\n' })
+    await reconcile(Scheduler, g.ctx, 'myapp', undefined, undefined, true)
+    expect(g.ctx.commands).toEqual([['scheduler:set', 'myapp', 'selected']])
+  })
+})

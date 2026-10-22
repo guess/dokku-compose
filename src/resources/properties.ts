@@ -77,11 +77,11 @@ function propertyResource(opts: {
       return parseBulkReport(raw, opts.namespace)
     },
 
-    async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {
+    async onChange(ctx: Context, target: string, change: MapChange, deferFollowUp = false): Promise<void> {
       for (const [key, value] of Object.entries({ ...change.added, ...change.modified })) {
         await ctx.run(opts.setCmd, target, key, String(value))
       }
-      if (opts.afterChange) {
+      if (opts.afterChange && !deferFollowUp) {
         for (const cmd of opts.afterChange) {
           try {
             await ctx.run(cmd, target)

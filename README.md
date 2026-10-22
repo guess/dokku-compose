@@ -122,10 +122,10 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | `nginx`, `logs`, `registry`, `ps` | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
 | `scheduler` | `scheduler:set <app> selected` |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
-| `checks` | `checks:enable <app> <types>` for a removed `disabled`/`skipped` list (what the file still declares is put back), `checks:set <app> wait-to-retire` |
-| `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key only; other build options stay |
+| `checks` | `checks:enable <app> <types>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
+| `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
-It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. After `up --prune`, `diff` shows no `-` for the resources above.
+It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above.
 
 ### Errors
 

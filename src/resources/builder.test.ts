@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
+import { reconcile } from '../core/reconcile.js'
 import { Builder } from './builder.js'
 
 describe('Builder resource', () => {
@@ -89,5 +90,35 @@ describe('Builder resource', () => {
     expect(config).toEqual({
       args: { NODE_ENV: 'production' },
     })
+  })
+})
+
+describe('Builder --prune', () => {
+  const OPTS = '--build-arg A=1 --build-arg MSG=hello big world --link x:y --build-arg B=2 --build-arg B=3'
+  function setup() {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...a: string[]) =>
+      a[0] === 'docker-options:report' ? `       Docker options build: ${OPTS}\n       Docker options deploy: --shm-size 1g\n` : '')
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+
+  it('removes exactly the stale --build-arg options (every occurrence, spaces kept); other build options stay', async () => {
+    const ctx = setup()
+    await reconcile(Builder, ctx, 'myapp', { args: { A: '1' } }, undefined, true)
+    expect(ctx.commands).toEqual([
+      ['docker-options:remove', 'myapp', 'build', '--build-arg MSG=hello big world'],
+      ['docker-options:remove', 'myapp', 'build', '--build-arg B=2'],
+      ['docker-options:remove', 'myapp', 'build', '--build-arg B=3'],
+    ])
+  })
+
+  it('without prune, or when every key is declared, nothing is removed', async () => {
+    const a = setup()
+    await reconcile(Builder, a, 'myapp', { args: { A: '1' } })
+    expect(a.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
+    const b = setup()
+    await reconcile(Builder, b, 'myapp', { args: { A: '1', MSG: 'x', B: '2' } }, undefined, true)
+    expect(b.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
   })
 })

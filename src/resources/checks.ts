@@ -2,6 +2,7 @@ import type { Resource } from '../core/reconcile.js'
 import type { Change } from '../core/change.js'
 import type { Context } from '../core/context.js'
 import { parseReport } from './parsers.js'
+import { logWarn } from '../core/logger.js'
 
 type ChecksConfig = false | {
   disabled?: string[]
@@ -29,18 +30,18 @@ export const Checks: Resource<ChecksConfig> = {
     Object.keys(current || {}).filter(k => !(desired && k in desired)),
   prune: async (ctx, target, removed, current, desired) => {
     const cur = current as Record<string, string>
-    const types = removed
-      .filter(k => k === 'disabled' || k === 'skipped')
-      .flatMap(k => cur[k].split(',').map(s => s.trim()).filter(Boolean))
-    if (types.length > 0) {
-      // `checks:enable` clears both the disabled and the skipped state of a type.
-      await ctx.run('checks:enable', target, ...(types.includes('_all_') ? [] : [...new Set(types)]))
-      // Put back what the file still declares for those types.
-      if (desired && desired !== false) {
-        if (desired.disabled?.length) await ctx.run('checks:disable', target, ...desired.disabled)
-        if (desired.skipped?.length) await ctx.run('checks:skip', target, ...desired.skipped)
+    const split = (v?: string) => (v ?? '').split(',').map(t => t.trim()).filter(Boolean)
+    const declared = new Set(desired && desired !== false ? [...(desired.disabled ?? []), ...(desired.skipped ?? [])] : [])
+    const stale = new Set(removed.filter(k => k === 'disabled' || k === 'skipped').flatMap(k => split(cur[k])))
+    // `checks:enable` clears a type's disabled AND skipped state, so a type the file
+    // declares in either list cannot be pruned without changing declared state.
+    const enable = [...stale].filter(t => !declared.has(t))
+    for (const t of stale) {
+      if (declared.has(t)) {
+        logWarn(target, `checks: '${t}' is declared in the file but also set in a list the file does not declare; left as is. Run 'dokku checks:enable ${target} ${t}' and then 'up' to clear it`)
       }
     }
+    if (enable.length > 0) await ctx.run('checks:enable', target, ...enable)
     if (removed.includes('wait-to-retire')) await ctx.run('checks:set', target, 'wait-to-retire')
   },
   onChange: async (ctx, target, { after }: Change<ChecksConfig>) => {

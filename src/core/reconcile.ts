@@ -8,7 +8,8 @@ export interface Resource<T = unknown> {
   read: (ctx: Context, target: string) => Promise<T>
   /** Bulk read for all apps in one SSH call. Used by export/diff. */
   readAll?: (ctx: Context) => Promise<Map<string, T>>
-  onChange: (ctx: Context, target: string, change: any) => void | Promise<void>
+  /** `deferFollowUp`: the caller will run `prune` next, which does the follow-up work (e.g. a proxy rebuild) once. */
+  onChange: (ctx: Context, target: string, change: any, deferFollowUp?: boolean) => void | Promise<void>
   /** Skip diff, always call onChange. For resources without parseable reports. */
   forceApply?: boolean
   /**
@@ -66,8 +67,9 @@ export async function reconcile<T>(
   if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
   if (canPrune) {
     const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
+    const pending = resource.removals!(before, desired).length > 0
     if (change.changed) {
-      await resource.onChange(ctx, target, change)
+      await resource.onChange(ctx, target, change, pending)
       logDone()
     } else {
       logSkip()
