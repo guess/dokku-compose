@@ -1,0 +1,37 @@
+# Synthetic fixture: every ${} placement used by real compose files.
+postgres:
+  app-db:
+    version: "17-3.5"
+    backup:
+      schedule: "0 * * * *"
+      bucket: "backups/app-db"
+      auth:
+        access_key_id: "${R2_ACCESS_KEY_ID}"
+        secret_access_key: "${R2_SECRET_ACCESS_KEY}"
+        region: "auto"
+        signature_version: "s3v4"
+        endpoint: "${R2_SCHEME}://${R2_HOST}"
+
+env:
+  APP_ENV: production
+  TOKEN: "${OP_SERVICE_ACCOUNT_TOKEN}"
+
+docker_auth:
+  ghcr.io:
+    username: "${GITHUB_USER}"
+    password: "${GITHUB_TOKEN}"
+
+apps:
+  web:
+    ports: ["http:5000:5000"]
+    env:
+      SECRET_KEY_BASE: "${SECRET_KEY_BASE}"
+      DATABASE_NOTE: "${DB_USER}:${DB_PASS}@example.com"
+      PUBLIC_URL: "https://${PUBLIC_HOST}/path"
+    build:
+      dockerfile: docker/Dockerfile
+      args:
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+        APP_NAME: web
+    storage:
+      - "/var/lib/dokku/data/storage/${STORAGE_NAME}/uploads:/app/uploads"
