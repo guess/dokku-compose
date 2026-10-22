@@ -3,6 +3,8 @@ import type { Runner } from './dokku.js'
 export interface Context {
   /** Cached read-only query — same args return cached result */
   query(...args: string[]): Promise<string>
+  /** Uncached read that throws on a non-zero exit instead of returning empty output */
+  queryStrict(...args: string[]): Promise<string>
   /** Boolean check — delegates to runner, not cached */
   check(...args: string[]): Promise<boolean>
   /** Mutation — records command, executes via runner */
@@ -29,6 +31,10 @@ export function createContext(runner: Runner): Context {
         cache.set(key, runner.query(...args))
       }
       return cache.get(key)!
+    },
+
+    queryStrict(...args: string[]): Promise<string> {
+      return runner.queryStrict(...args)
     },
 
     check(...args: string[]): Promise<boolean> {

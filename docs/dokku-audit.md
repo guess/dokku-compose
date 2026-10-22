@@ -144,26 +144,23 @@ apps:
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| config:set | declarative | yes | `ensure_app_config()` / `ensure_global_config()` with --no-restart |
-| config:unset | declarative | yes | Convergence: unsets orphaned vars matching `env_prefix` |
+| config:set | declarative | yes | App env via `src/resources/config.ts`, global via `ensureGlobalConfig()`; always `--no-restart` |
+| config:unset | declarative | yes | Convergence: unsets keys named in the `DOKKU_COMPOSE_MANAGED_KEYS` marker that are no longer in `env:`; removing the whole block unsets them all and the marker |
 | config:show | read-only | no | Not needed |
 | config:get | read-only | no | Not needed |
-| config:keys | read-only | yes | Used internally for prefix convergence |
-| config:export | read-only | no | Not needed |
-| config:clear | declarative | no | Not used — `env: false` converges via `config:unset` instead |
+| config:keys | read-only | yes | Not used |
+| config:export | read-only | yes | Read strictly to find the managed keys' current values; a failure is an error |
+| config:clear | declarative | no | Not used — removal converges via `config:unset` instead |
 
 ### YAML Keys
 
 ```yaml
-dokku:
-  env_prefix: "MYCO_"           # default prefix is "APP_"
-
 env:                             # top-level: global env vars
   APP_GLOBAL_KEY: value
 
 apps:
   myapp:
-    env:                         # per-app: map = set + converge; false = unset all prefixed; absent = no action
+    env:                         # per-app: map = set + converge; false or absent = unset every key dokku-compose manages
       APP_ENV: production
       APP_SECRET: "${SECRET_KEY}"
 ```
@@ -174,7 +171,7 @@ apps:
 
 ### Decision
 
-**Supported.** App and global `config:set` with --no-restart. Only vars matching the prefix (default `APP_`) are managed — non-matching vars are warned and skipped. Orphaned prefixed vars are automatically unset. `env: false` unsets all prefixed vars. `${VAR}` references resolved via `envsubst`.
+**Supported.** App and global `config:set` with --no-restart. App keys are tracked in the `DOKKU_COMPOSE_MANAGED_KEYS` marker; keys removed from `env:` (or the whole block) are unset. See [config](reference/config.md).
 
 ---
 

@@ -96,6 +96,44 @@ describe('runUp', () => {
     expect(runner.run).toHaveBeenCalledWith('apps:create', 'studio')
   })
 
+  it('keeps reconciling an app after one of its resources throws, then reports the failure', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
+    runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'domains:add' || args[0] === 'domains:set') throw new DokkuCommandError(args, 1, 'domain boom')
+    })
+    const ctx = createContext(runner)
+    const config = loadConfig(path.join(FIXTURES, 'full.yml'))
+    config.apps.funqtion.domains = ['a.example.com']
+    config.apps.funqtion.env = { MY_KEY: 'v' }
+
+    await expect(runUp(ctx, config, ['funqtion'])).rejects.toBeInstanceOf(UpFailedError)
+    const sets = (runner.run as any).mock.calls.filter((c: string[]) => c[0] === 'config:set')
+    expect(sets.some((c: string[]) => c.includes('MY_KEY=v'))).toBe(true)
+  })
+
+  it('stops an app at once when its create step fails', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockResolvedValue(false)
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      return ''
+    })
+    runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'apps:create') throw new DokkuCommandError(args, 1, 'nope')
+    })
+    const ctx = createContext(runner)
+    const config = loadConfig(path.join(FIXTURES, 'full.yml'))
+    config.apps.funqtion.env = { MY_KEY: 'v' }
+    await expect(runUp(ctx, config, ['funqtion'])).rejects.toBeInstanceOf(UpFailedError)
+    const calls = (runner.run as any).mock.calls.filter((c: string[]) => c[1] === 'funqtion' || c.includes('funqtion'))
+    expect(calls.map((c: string[]) => c[0])).toEqual(['apps:create'])
+  })
+
   it('--fail-fast stops at the first failing app instead of continuing', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
