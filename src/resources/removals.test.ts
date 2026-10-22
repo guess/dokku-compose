@@ -12,6 +12,7 @@ import { Proxy } from './toggle.js'
 import { Config } from './config.js'
 import { DockerOptions } from './docker-options.js'
 import { readFileSync } from 'node:fs'
+import { logsAppJson } from '../tests/fake-server.js'
 import { join } from 'node:path'
 
 // Real `<plugin>:report myapp` output from Dokku 0.38.31 (sanitized).
@@ -176,6 +177,13 @@ describe('real Dokku 0.38 reports', () => {
     expect(Scheduler.removals!(await Scheduler.read(makeCtx({ 'scheduler:report myapp': real('scheduler') }), 'myapp'), undefined)).toEqual([])
     const b = await Builder.read(makeCtx({ 'builder:report myapp': real('builder') }), 'myapp')
     expect(Builder.removals!(b, undefined)).toEqual([])
+  })
+
+  it('logs: the real json report keys only settable app keys, never logs-/computed-/global- ones', async () => {
+    const current = await Logs.read(makeCtx({ 'logs:report myapp --format json': logsAppJson({
+      'max-size': '10m', 'logs-max-size': '10m', 'computed-max-size': '10m', 'logs-computed-max-size': '10m', 'global-max-size': '50m',
+    }) }), 'myapp')
+    expect(current).toEqual({ 'max-size': '10m' })
   })
 
   it('logs and registry allowlists include the real vector-cron-sink, auth-servers and image-repo-template, not tag-version', () => {

@@ -75,7 +75,7 @@ function propertyResource(opts: {
     prune: propertyPrune(opts.setCmd, opts.afterChange),
 
     async read(ctx: Context, target: string): Promise<Record<string, string>> {
-      if (opts.json) return parseJsonReport(await ctx.queryStrict(`${opts.namespace}:report`, target, '--format', 'json'))
+      if (opts.json) return parseJsonReport(await ctx.queryStrict(`${opts.namespace}:report`, target, '--format', 'json'), opts.settable)
       const raw = await ctx.query(`${opts.namespace}:report`, target)
       return parseReport(raw, opts.namespace)
     },

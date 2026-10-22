@@ -76,12 +76,14 @@ export function parseBulkReport(raw: string, namespace: string, headerNamespace?
 /**
  * Parse a `<namespace>:report <app|--global> --format json` object. Dokku trims
  * the `--<namespace>-` prefix from each key, so an app's own settings are bare
- * (`max-size`) and the others start with `global-` or `computed-`. With
- * `scope: 'global'` only the `global-` keys are kept, prefix stripped; else
- * only the bare keys. Empty values are unset and dropped. Throws on output
- * that is not a JSON object, so a failed read is never an empty report.
+ * (`max-size`) and the others start with `global-` or `computed-`. Some
+ * plugins (logs, Dokku 0.38.31 `EmitLegacyPrefix: true`) also print every key
+ * again with the `<namespace>-` prefix. With `scope: 'global'` only the
+ * `global-` keys are kept, prefix stripped; with an array, only those bare
+ * app keys. Empty values are unset and dropped. Throws on output that is not
+ * a JSON object, so a failed read is never an empty report.
  */
-export function parseJsonReport(raw: string, scope: 'app' | 'global' = 'app'): Record<string, string> {
+export function parseJsonReport(raw: string, scope: 'global' | readonly string[]): Record<string, string> {
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
@@ -96,7 +98,7 @@ export function parseJsonReport(raw: string, scope: 'app' | 'global' = 'app'): R
     if (value === null || value === undefined || String(value) === '') continue
     if (scope === 'global') {
       if (key.startsWith('global-')) result[key.slice('global-'.length)] = String(value)
-    } else if (!key.startsWith('global-') && !key.startsWith('computed-') && key !== 'last-visited-at') {
+    } else if (scope.includes(key)) {
       result[key] = String(value)
     }
   }

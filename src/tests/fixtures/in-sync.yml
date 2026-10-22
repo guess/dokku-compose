@@ -103,3 +103,6 @@ apps:
     checks: false
     git:
       deploy_branch: release
+
+  myapp-edge:
+    ssl: true

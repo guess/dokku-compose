@@ -48,7 +48,49 @@ export function fakeContext(server: FakeServer): { ctx: Context; runner: Runner 
 export function emptyAnswer(...args: string[]): string | undefined {
   const key = args.join(' ')
   if (/^certs:report \S+ --ssl-enabled$/.test(key)) return 'false'
-  if (/^(logs|nginx):report \S+ --format json$/.test(key)) return '{}'
+  if (key === 'logs:report --global --format json') return logsGlobalJson()
+  if (key === 'nginx:report --global --format json') return nginxGlobalJson()
+  if (/^logs:report \S+ --format json$/.test(key)) return logsAppJson()
   if (/^checks:report \S+$/.test(key)) return '       Checks disabled list: none\n       Checks skipped list: none\n'
   return undefined
+}
+
+// Every key Dokku 0.38.31 prints for these JSON reports, values empty where
+// unset. logs prints each key twice (bare and `logs-` prefixed,
+// `EmitLegacyPrefix: true` in plugins/logs/report.go); nginx --global prints only `global-*`.
+const LOGS_PROPS = ['app-label-alias', 'max-size', 'vector-cron-sink', 'vector-image', 'vector-networks', 'vector-sink']
+const LOGS_APP_PROPS = ['app-label-alias', 'max-size', 'vector-cron-sink', 'vector-sink']
+const NGINX_PROPS = [
+  'access-log-format', 'access-log-path', 'bind-address-ipv4', 'bind-address-ipv6', 'client-body-timeout',
+  'client-header-timeout', 'client-max-body-size', 'disable-custom-config', 'error-log-path',
+  'hsts-include-subdomains', 'hsts-max-age', 'hsts-preload', 'hsts', 'keepalive-timeout', 'lingering-timeout',
+  'nginx-conf-sigil-path', 'nginx-service-command', 'proxy-buffer-size', 'proxy-buffering', 'proxy-buffers',
+  'proxy-busy-buffers-size', 'proxy-connect-timeout', 'proxy-keepalive', 'proxy-read-timeout',
+  'proxy-send-timeout', 'send-timeout', 'underscore-in-headers', 'x-forwarded-for-value',
+  'x-forwarded-port-value', 'x-forwarded-proto-value', 'x-forwarded-ssl',
+]
+
+function withLegacy(keys: string[], prefix: string): string[] {
+  return [...keys, ...keys.map(k => `${prefix}-${k}`)]
+}
+
+function fill(keys: string[], values: Record<string, string>): string {
+  for (const k of Object.keys(values)) if (!keys.includes(k)) throw new Error(`not a real report key: ${k}`)
+  return JSON.stringify(Object.fromEntries(keys.map(k => [k, values[k] ?? ''])))
+}
+
+/** `logs:report <app> --format json`, every real key. */
+export function logsAppJson(values: Record<string, string> = {}): string {
+  const keys = [...LOGS_APP_PROPS, ...LOGS_PROPS.map(p => `computed-${p}`), ...LOGS_PROPS.map(p => `global-${p}`)]
+  return fill(withLegacy(keys, 'logs'), values)
+}
+
+/** `logs:report --global --format json`, every real key. */
+export function logsGlobalJson(values: Record<string, string> = {}): string {
+  return fill(withLegacy([...LOGS_PROPS.map(p => `computed-${p}`), ...LOGS_PROPS.map(p => `global-${p}`)], 'logs'), values)
+}
+
+/** `nginx:report --global --format json`, every real key. */
+export function nginxGlobalJson(values: Record<string, string> = {}): string {
+  return fill(NGINX_PROPS.map(p => `global-${p}`), values)
 }

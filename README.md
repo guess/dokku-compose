@@ -58,7 +58,7 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
-When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `logs:` and `nginx:` (under `global`), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs.
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs.
 
 ### 3. Preview changes
 

@@ -32,7 +32,7 @@ apps:
 
 ### Global Domains (`domains`)
 
-Set the default global domains that Dokku applies to new apps. `up` reads `domains:report --global --domains-global-vhosts` first: the same domains (in any order) run nothing, different ones run `domains:set-global` with the declared list. When set to `false`, global domains are cleared, only if the server has any. A report that cannot be read stops `up` with an error before anything is set.
+Set the default global domains that Dokku applies to new apps. `up` reads `domains:report --global --domains-global-vhosts` first: the same domains (in any order) run nothing, different ones run `domains:set-global` with the declared list. When set to `false`, global domains are cleared, only if the server has any. A report that cannot be read stops `up` with an error before anything is set. `diff` shows a difference under its `global` section.
 
 ```yaml
 domains:                        # set global domains

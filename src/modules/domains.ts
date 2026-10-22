@@ -28,9 +28,11 @@ export async function readGlobalDomains(ctx: Context): Promise<string[]> {
   return raw.split(/\s+/).filter(Boolean)
 }
 
-function sameSet(a: string[], b: string[]): boolean {
-  const sa = new Set(a)
-  const sb = new Set(b)
+/** Whether the server's global vhosts already match the file's `domains:` (order ignored). */
+export function globalDomainsInSync(current: string[], desired: string[] | false): boolean {
+  if (desired === false) return current.length === 0
+  const sa = new Set(current)
+  const sb = new Set(desired)
   return sa.size === sb.size && [...sa].every(x => sb.has(x))
 }
 
@@ -40,13 +42,9 @@ export async function ensureGlobalDomains(
 ): Promise<void> {
   logAction('global', 'Configuring domains')
   const current = await readGlobalDomains(ctx)
-  if (domains === false) {
-    if (current.length === 0) { logSkip(); return }
-    await ctx.run('domains:clear-global')
-  } else {
-    if (sameSet(current, domains)) { logSkip(); return }
-    await ctx.run('domains:set-global', ...domains)
-  }
+  if (globalDomainsInSync(current, domains)) { logSkip(); return }
+  if (domains === false) await ctx.run('domains:clear-global')
+  else await ctx.run('domains:set-global', ...domains)
   logDone()
 }
 

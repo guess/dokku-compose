@@ -6,19 +6,40 @@ import * as fs from 'fs'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatVerbose } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, logsAppJson, logsGlobalJson, nginxGlobalJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
 const SINK = 'console://?encoding[codec]=json'
 
+/** The reads that look for removed settings on an app whose file declares none of these blocks. */
+function nothingSet(name: string): Record<string, string> {
+  return {
+    [`network:report ${name}`]: report(name, 'network', {}),
+    [`nginx:report ${name}`]: report(name, 'nginx', {}),
+    [`logs:report ${name} --format json`]: logsAppJson({ 'global-max-size': '50m', 'logs-global-max-size': '50m', 'computed-max-size': '50m' }),
+    [`registry:report ${name}`]: report(name, 'registry', {}),
+    [`scheduler:report ${name}`]: report(name, 'scheduler', {}),
+    [`ps:report ${name} --format json`]: JSON.stringify({ 'restart-policy': '' }),
+    [`builder:report ${name}`]: report(name, 'builder', {}),
+    [`builder-dockerfile:report ${name}`]: report(name, 'builder-dockerfile', {}),
+    [`app-json:report ${name}`]: report(name, 'app-json', {}),
+    [`docker-options:report ${name}`]: report(name, 'docker-options', {}),
+    [`docker-options:report ${name} --format json`]: JSON.stringify({ 'build-list': [] }),
+  }
+}
+
 function inSyncServer(): FakeServer {
   const app = 'myapp'
   const worker = 'myapp-worker'
+  const edge = 'myapp-edge'
   return {
     checks: {
       'apps:exists myapp': true,
       'apps:exists myapp-worker': true,
+      'apps:exists myapp-edge': true,
+      'postgres:linked myapp-db myapp-edge': false,
+      'redis:linked myapp-redis myapp-edge': false,
       'network:exists backend-net': true,
       'postgres:exists myapp-db': true,
       'redis:exists myapp-redis': true,
@@ -35,13 +56,11 @@ function inSyncServer(): FakeServer {
       ]),
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
-      'logs:report --global --format json': JSON.stringify({
-        'global-max-size': '50m', 'global-vector-sink': SINK, 'global-app-label-alias': '',
-        'computed-max-size': '50m',
+      'logs:report --global --format json': logsGlobalJson({
+        'global-max-size': '50m', 'logs-global-max-size': '50m', 'computed-max-size': '50m', 'logs-computed-max-size': '50m',
+        'global-vector-sink': SINK, 'logs-global-vector-sink': SINK, 'computed-vector-sink': SINK, 'logs-computed-vector-sink': SINK,
       }),
-      'nginx:report --global --format json': JSON.stringify({
-        'global-client-max-body-size': '20m', 'global-hsts': '',
-      }),
+      'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
 
       // myapp
       [`domains:report ${app} --domains-app-vhosts`]: 'myapp.example.com www.myapp.example.com',
@@ -69,9 +88,10 @@ function inSyncServer(): FakeServer {
         'Checks wait to retire': '60',
         'Checks computed wait to retire': '60',
       }),
-      [`logs:report ${app} --format json`]: JSON.stringify({
-        'max-size': '10m', 'vector-sink': SINK, 'vector-cron-sink': '', 'app-label-alias': '',
-        'global-max-size': '50m', 'computed-max-size': '10m',
+      [`logs:report ${app} --format json`]: logsAppJson({
+        'max-size': '10m', 'logs-max-size': '10m', 'vector-sink': SINK, 'logs-vector-sink': SINK,
+        'computed-max-size': '10m', 'logs-computed-max-size': '10m', 'global-max-size': '50m', 'logs-global-max-size': '50m',
+        'computed-app-label-alias': 'com.dokku.app-name', 'logs-computed-app-label-alias': 'com.dokku.app-name',
       }),
       [`registry:report ${app}`]: report(app, 'registry', { 'Registry server': 'registry.example.com' }),
       [`scheduler:report ${app}`]: report(app, 'scheduler', { 'Scheduler selected': 'docker-local' }),
@@ -115,18 +135,15 @@ function inSyncServer(): FakeServer {
       }),
       [`git:report ${worker} --git-deploy-branch`]: 'release',
       [`config:get ${worker} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
-      // Blocks the file leaves out are read once to look for removed settings.
-      [`network:report ${worker}`]: report(worker, 'network', {}),
-      [`nginx:report ${worker}`]: report(worker, 'nginx', {}),
-      [`logs:report ${worker} --format json`]: JSON.stringify({ 'max-size': '', 'global-max-size': '50m' }),
-      [`registry:report ${worker}`]: report(worker, 'registry', {}),
-      [`scheduler:report ${worker}`]: report(worker, 'scheduler', {}),
-      [`ps:report ${worker} --format json`]: JSON.stringify({ 'restart-policy': '' }),
-      [`builder:report ${worker}`]: report(worker, 'builder', {}),
-      [`builder-dockerfile:report ${worker}`]: report(worker, 'builder-dockerfile', {}),
-      [`app-json:report ${worker}`]: report(worker, 'app-json', {}),
-      [`docker-options:report ${worker}`]: report(worker, 'docker-options', {}),
-      [`docker-options:report ${worker} --format json`]: JSON.stringify({ 'build-list': [] }),
+      ...nothingSet(worker),
+
+      // myapp-edge: `ssl: true` (any cert) and an installed one
+      [`certs:report ${edge} --ssl-enabled`]: 'true',
+      [`certs:show ${edge} crt`]: CRT,
+      [`config:get ${edge} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
+      [`git:report ${edge} --git-deploy-branch`]: 'main',
+      [`checks:report ${edge}`]: report(edge, 'checks', { 'Checks disabled list': 'none', 'Checks skipped list': 'none' }),
+      ...nothingSet(edge),
     },
   }
 }
@@ -157,6 +174,17 @@ describe('a server whose state equals the file', () => {
     const { ctx, runner } = fakeContext(inSyncServer())
     await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
     expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('a global domain that differs shows in diff, and up sets exactly that', async () => {
+    const server = inSyncServer()
+    server.queries['domains:report --global --domains-global-vhosts'] = 'old.example.com'
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.global.domains).toMatchObject({ status: 'changed', current: ['old.example.com'] })
+    expect(diff.inSync).toBe(false)
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual(['domains:set-global example.com'])
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.

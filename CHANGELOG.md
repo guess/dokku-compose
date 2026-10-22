@@ -17,7 +17,7 @@
 
 ### Added
 
-- **`diff` shows global `logs:` and `nginx:` drift** under a `global` section, and a declared network missing on the server under `networks:`.
+- **`diff` shows global `domains:`, `logs:` and `nginx:` drift** under a `global` section (log sinks masked), and a declared network missing on the server under `networks:`.
 - **`diff --verbose` prints `Everything in sync.`** when nothing differs.
 
 ## [0.13.1] - 2026-10-22

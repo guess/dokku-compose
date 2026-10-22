@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { computeDiff, formatSummary, formatVerbose } from './diff.js'
+import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from './diff.js'
 import type { Config } from '../core/schema.js'
 import type { Context } from '../core/context.js'
-import { emptyAnswer } from '../tests/fake-server.js'
+import { emptyAnswer, logsGlobalJson } from '../tests/fake-server.js'
 import { readFileSync } from 'node:fs'
 
 function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, boolean> = {}): Context {
@@ -506,5 +506,38 @@ describe('computeDiff — global settings, networks and the in-sync line', () =>
     const diff = await computeDiff(ctx, { apps: { api: { checks: { 'wait-to-retire': 60 } } } })
     expect(diff.apps.api.checks?.status).toBe('changed')
     expect(diff.inSync).toBe(false)
+  })
+})
+
+describe('computeDiff — review round 1', () => {
+  it('global domains: equal (any order) is in sync, different is drift, unreadable is unknown', async () => {
+    const same = await computeDiff(makeCtx({ 'domains:report --global --domains-global-vhosts': 'b.example.com a.example.com' }), { domains: ['a.example.com', 'b.example.com'], apps: {} })
+    expect(same.global).toEqual({})
+    expect(same.inSync).toBe(true)
+    const off = await computeDiff(makeCtx({ 'domains:report --global --domains-global-vhosts': 'a.example.com' }), { domains: false, apps: {} })
+    expect(off.global.domains?.status).toBe('changed')
+    expect(formatSummary(off)).toContain('1 resource(s) out of sync')
+    const ctx = makeCtx({})
+    ctx.queryStrict = vi.fn(async () => { throw new Error('boom') })
+    const unread = await computeDiff(ctx, { domains: ['a.example.com'], apps: {} })
+    expect(unread.global.domains?.status).toBe('unknown')
+    expect(unread.readWarnings.join('\n')).toContain("global 'domains'")
+  })
+
+  it('an unreadable certfile is unknown with a warning naming it, and the diff continues', async () => {
+    const ctx = makeCtx({ 'certs:report api --ssl-enabled': 'true', 'certs:show api crt': 'x', 'ports:report api --ports-map': 'http:80:3000' })
+    const diff = await computeDiff(ctx, { apps: { api: { ssl: { certfile: 'no/such/file.crt', keyfile: 'k' }, ports: ['http:80:3000'] } } })
+    expect(diff.apps.api.ssl?.status).toBe('unknown')
+    expect(diff.apps.api.ports?.status).toBe('in-sync')
+    expect(diff.readWarnings.join('\n')).toContain('no/such/file.crt')
+  })
+
+  it('log sinks are masked in diff output', async () => {
+    const dsn = 'http://user:hunter2@logs.example.com/ingest'
+    const ctx = makeCtx({ 'logs:report --global --format json': logsGlobalJson({ 'global-vector-sink': 'http://old' }) })
+    const diff = maskDiffResult(await computeDiff(ctx, { logs: { 'vector-sink': dsn }, apps: {} }))
+    const out = formatVerbose(diff) + formatSummary(diff)
+    expect(out).not.toContain('hunter2')
+    expect(out).not.toContain('http://old')
   })
 })

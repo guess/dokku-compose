@@ -7,6 +7,8 @@ import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
+import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
+import type { Resource } from '../core/reconcile.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra' | 'unknown'
@@ -43,6 +45,19 @@ interface DiffResult {
 function displayCurrent(resourceKey: string, current: unknown): unknown {
   if (resourceKey === 'ssl' && current && typeof current === 'object') return '(certificate installed)'
   return current
+}
+
+/**
+ * `inSync`, or undefined when it cannot compare (certs read the declared
+ * certfile locally): unknown with a warning, never a failed diff.
+ */
+function safeInSync(resource: Resource, current: unknown, desired: unknown, app: string, warnings: string[]): boolean | undefined {
+  try {
+    return resource.inSync!(current, desired)
+  } catch (err) {
+    warnings.push(`could not compare '${resource.key}' for app '${app}': ${err instanceof Error ? err.message : String(err)}`)
+    return undefined
+  }
 }
 
 /** Whether a change holds anything besides entries only on the server. */
@@ -168,10 +183,11 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         if (current === undefined) {
           status = 'unknown'
           result.readWarnings.push(`could not read '${resource.key}' for app '${app}'`)
-        } else if (resource.inSync(current as any, desired as any)) {
-          status = removedHere.length > 0 ? 'extra' : 'in-sync'
         } else {
-          status = current === false || isEmptyValue(current) ? 'missing' : 'changed'
+          const same = safeInSync(resource, current, desired, app, result.readWarnings)
+          if (same === undefined) status = 'unknown'
+          else if (same) status = removedHere.length > 0 ? 'extra' : 'in-sync'
+          else status = current === false || isEmptyValue(current) ? 'missing' : 'changed'
         }
         appDiff[resource.key] = {
           status, desired, current: displayCurrent(resource.key, current),
@@ -259,6 +275,21 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       result.plugins[plan.name] = { status, desired: plan.desired, current: plan.installed, note }
       // An uncomparable pin is shown but is not drift: up leaves it, so it must not fail a check.
       if (plan.action !== 'unknown') result.inSync = false
+    }
+  }
+
+  // Top-level domains: against the server's global vhosts
+  if (config.domains !== undefined) {
+    try {
+      const current = await readGlobalDomains(ctx)
+      if (!globalDomainsInSync(current, config.domains)) {
+        result.global.domains = { status: current.length === 0 ? 'missing' : 'changed', desired: config.domains, current }
+        result.inSync = false
+      }
+    } catch (err) {
+      result.global.domains = { status: 'unknown', desired: config.domains }
+      result.readWarnings.push(`could not read global 'domains': ${err instanceof Error ? err.message : String(err)}`)
+      result.inSync = false
     }
   }
 
