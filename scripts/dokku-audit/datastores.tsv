@@ -1,5 +1,5 @@
 # datastore subcommand	postgres status	postgres note	redis status	redis note
-# status as in commands.tsv; '-' when the plugin has no such subcommand; a redis note starting 'Same' reuses the postgres note
+# status as in commands.tsv; '-' when that plugin has no such subcommand; a redis note starting 'Same' reuses the postgres note
 create	P	`postgres.<name>` / `redis.<name>` with `image`, `version`; create only, later changes ignored (F2); other create flags missing (F8)	P	Same as postgres (F2, F8)
 destroy	Y	`down`	Y	`down`
 info	R	`export` (version, image)	R	`export` (version, image)
@@ -37,7 +37,7 @@ backup-set-encryption	N	F3	N	F7
 backup-set-public-key-encryption	N	F3	N	F7
 backup-unset-encryption	N	F3	N	F7
 backup-unset-public-key-encryption	N	F3	N	F7
-backup-schedule	Y	`postgres.<name>.backup.schedule`, `bucket`	N	F7
+backup-schedule	P	`postgres.<name>.backup.schedule`, `bucket`; server-side changes unseen (F3)	N	F7
 backup-schedule-cat	R	Verifies the schedule landed; `export`	N	F7
 backup-unschedule	N	F3: when `backup:` leaves the file	N	F7
 backup-logs	X	Read-only	X	Read-only

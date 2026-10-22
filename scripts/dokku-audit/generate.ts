@@ -6,7 +6,7 @@
 // Each argument is a git checkout of that repository at the release being audited.
 // Fails, writing nothing, when Dokku has a command without a status or a status
 // names a command Dokku no longer has.
-import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const [dokkuDir, postgresDir, redisDir] = process.argv.slice(2)
@@ -39,13 +39,19 @@ function walk(dir: string, out: string[] = []): string[] {
 // Help lines look like "    <name> <args>, <Description>".
 const HELP_LINE = /^\s+([a-z0-9-]+(?::[a-z0-9-]+)+)(?: [^,]*)?, ([A-Z[].*)$/
 const helpDesc = new Map<string, string>()
+const flaggedDesc = new Set<string>()
 for (const file of walk(join(dokkuDir, 'plugins'))) {
   if (file.endsWith('_test.go')) continue
   for (const line of readFileSync(file, 'utf8').split('\n')) {
     const m = line.match(HELP_LINE)
-    // The first line wins, except over a variant whose args start with a flag (`ps:scale --clear`).
-    if (m && (!helpDesc.has(m[1]) || !/^\s+\S+ --/.test(line))) {
+    if (!m) continue
+    // The first line wins, except that a variant whose args start with a flag
+    // (`ps:scale --clear`) gives way to the first line without one.
+    const flagged = /^\s+\S+ --/.test(line)
+    if (!helpDesc.has(m[1]) || (flaggedDesc.has(m[1]) && !flagged)) {
       helpDesc.set(m[1], m[2].replace(/`$/, '').replace(/\s*\*\*\*WARNING.*$/, ''))
+      if (flagged) flaggedDesc.add(m[1])
+      else flaggedDesc.delete(m[1])
     }
   }
 }
@@ -79,7 +85,9 @@ const RULED = /^(caddy|haproxy|openresty|traefik|scheduler-k3s):/
 function ruled(name: string): Status {
   const sub = name.slice(name.indexOf(':') + 1)
   if (name.startsWith('scheduler-k3s:')) {
-    if (/(^|:)(set|clear|add|remove)$/.test(sub)) return { s: 'N', note: 'A12 (not planned)' }
+    if (/(^|:)(set|clear|add|remove)$/.test(sub) && !sub.startsWith('cluster:')) {
+      return { s: 'N', note: 'A12 (not planned)' }
+    }
     if (/report|list|preview|show-kubeconfig/.test(sub)) return { s: 'X', note: 'Read-only' }
     return { s: 'X', note: 'Cluster lifecycle action' }
   }
@@ -92,8 +100,17 @@ const errors: string[] = []
 for (const name of [...helpDesc.keys()].sort()) {
   if (!status.has(name) && !RULED.test(name)) errors.push(`no status in commands.tsv for Dokku command ${name}`)
 }
-for (const name of status.keys()) {
-  if (name.includes(':') && !helpDesc.has(name) && !(name in extraDesc)) {
+/** A subcommand with no help line: a script in `subcommands/`, or a case in the plugin's Go dispatcher. */
+function hasHiddenSubcommand(name: string): boolean {
+  const [ns, sub] = [name.slice(0, name.indexOf(':')), name.slice(name.indexOf(':') + 1)]
+  const plugin = join(dokkuDir, 'plugins', ns)
+  const dispatcher = join(plugin, 'src/subcommands/subcommands.go')
+  return existsSync(join(plugin, 'subcommands', sub)) ||
+    (existsSync(dispatcher) && readFileSync(dispatcher, 'utf8').includes(`case "${sub}":`))
+}
+for (const [name, { s }] of status) {
+  if (!(s in ICON)) errors.push(`commands.tsv: ${name} has status '${s}', not one of ${Object.keys(ICON).join(' ')}`)
+  if (name.includes(':') && !helpDesc.has(name) && !(name in extraDesc && hasHiddenSubcommand(name))) {
     errors.push(`commands.tsv lists ${name}, which this Dokku checkout does not have`)
   }
 }
@@ -157,15 +174,22 @@ function usageSubcommands(dir: string, plugin: string): Set<string> {
 const plugins = { postgres: usageSubcommands(postgresDir, 'postgres'), redis: usageSubcommands(redisDir, 'redis') }
 const svcRows = ['| Subcommand | postgres | redis | dokku-compose |', '|---|:-:|:-:|---|']
 const svcListed = new Set<string>()
-for (const [sub, ps, pn, rs, rn] of tsv('datastores.tsv')) {
+for (const [sub, ...cols] of tsv('datastores.tsv')) {
   svcListed.add(sub)
-  if (!plugins.postgres.has(sub)) errors.push(`datastores.tsv lists ${sub}, which dokku-postgres does not have`)
-  if (rs !== '-' && !plugins.redis.has(sub)) errors.push(`datastores.tsv lists ${sub}, which dokku-redis does not have`)
-  if (rs === '-' && plugins.redis.has(sub)) errors.push(`datastores.tsv has no redis status for ${sub}`)
-  count('postgres', ps)
-  if (rs !== '-') count('redis', rs)
-  const note = pn === rn || rs === '-' || rn.startsWith('Same') ? pn : `postgres: ${pn}; redis: ${rn}`
-  svcRows.push(`| \`:${sub}\` | ${ICON[ps]} | ${rs === '-' ? 'n/a' : ICON[rs]} | ${note} |`)
+  const byPlugin = { postgres: { s: cols[0], note: cols[1] }, redis: { s: cols[2], note: cols[3] } }
+  for (const [plugin, { s }] of Object.entries(byPlugin)) {
+    const has = plugins[plugin as keyof typeof plugins].has(sub)
+    if (s === '-' ? has : !(s in ICON)) errors.push(`datastores.tsv: ${sub} has ${plugin} status '${s}'`)
+    if (s !== '-' && !has) errors.push(`datastores.tsv lists ${sub}, which dokku-${plugin} does not have`)
+    if (s !== '-') count(plugin, s)
+  }
+  const { postgres: p, redis: r } = byPlugin
+  // A redis note starting "Same" reuses the postgres note.
+  const note = p.s === '-' ? r.note
+    : r.s === '-' || r.note === p.note || r.note.startsWith('Same') ? p.note
+    : `postgres: ${p.note}; redis: ${r.note}`
+  const mark = (s: string) => (s === '-' ? 'n/a' : ICON[s])
+  svcRows.push(`| \`:${sub}\` | ${mark(p.s)} | ${mark(r.s)} | ${note} |`)
 }
 for (const [plugin, subs] of Object.entries(plugins)) {
   for (const sub of subs) if (!svcListed.has(sub)) errors.push(`no status in datastores.tsv for ${plugin}:${sub}`)

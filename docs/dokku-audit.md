@@ -30,7 +30,8 @@ and redis services with links and postgres backups.
 
 The gaps fall into two groups:
 
-1. **Gaps in features it already has.** A cert file is re-applied on every `up`; a changed
+1. **Gaps in features it already has.** A cert file and `checks:` are re-applied on every
+   `up`, and `diff` cannot see a replaced cert file; a changed
    datastore version or image is ignored without a word; postgres backup state lives in a
    global env var; global `env:` and `docker_auth:` never remove anything; several property
    lists trail Dokku 0.38.31. These come first in [Priorities](#priorities).
@@ -71,7 +72,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `openresty` |  |  | 3 | 5 |
 | `plugin` | 3 |  | 3 | 3 |
 | `ports` | 2 |  |  | 4 |
-| `postgres` | 8 | 3 | 12 | 19 |
+| `postgres` | 7 | 4 | 12 | 19 |
 | `proxy` | 4 |  | 1 | 1 |
 | `ps` | 2 | 1 |  | 6 |
 | `redis` | 6 | 2 | 15 | 17 |
@@ -81,12 +82,12 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `run` |  |  |  | 5 |
 | `scheduler` | 1 | 1 |  |  |
 | `scheduler-docker-local` |  |  | 1 | 1 |
-| `scheduler-k3s` |  |  | 13 | 13 |
+| `scheduler-k3s` |  |  | 11 | 15 |
 | `ssh-keys` |  |  | 3 |  |
 | `storage` | 3 |  | 4 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **67** | **19** | **95** | **174** |
+| **Total** | **66** | **20** | **93** | **176** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -98,7 +99,7 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 
 | # | Item | Why | Size |
 |---|---|---|:-:|
-| F1 | **Cert files re-applied on every `up`** | `certs:report --ssl-enabled` reads back `true`, which never equals `{certfile, keyfile}`, so every `up` runs `certs:add` and every `diff` shows `ssl` as changed (confirmed: `computeChange(true, {…}).changed` is `true`). Compare the file's certificate with `certs:show <app> crt` and use `certs:update` for a changed one. qultr-prod declares cert files on three apps. | 2 |
+| F1 | **Settings re-applied on every `up`; a replaced cert file is invisible** | `certs:report --ssl-enabled` reads back `true`, which never equals `{certfile, keyfile}` in `reconcile`, so every `up` runs `certs:add`. `diff` goes the other way: it counts `true` as in sync, so a replaced cert file never shows as drift. Compare the file's certificate with `certs:show <app> crt` in both, and use `certs:update` for a changed one. qultr-prod declares cert files on three apps. `checks:` is `forceApply`, so `up` also runs its `checks:disable`/`skip`/`set` calls every time. | 2 |
 | F2 | **Datastore `version` and `image` changes ignored** | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is not applied, not warned about and not shown by `diff`. Show it as drift; apply it with `:upgrade` only behind an explicit opt-in. | 3 |
 | F3 | **Postgres backup state kept outside Dokku** | The backup config is tracked as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`, which Dokku merges into every app's environment. A change made on the server is never seen, and removing `backup:` leaves the schedule and credentials in place. Read the real state (`:backup-schedule-cat`, the 2.x `backup-*` properties), run `:backup-unschedule`/`:backup-deauth` when the block goes, add encryption, drop the env var. | 5 |
 | F4 | **Global `env:` and `docker_auth:` only ever add** | Top-level `env:` runs `config:set --global` on every `up` and never unsets a key removed from the file. `docker_auth:` runs `registry:login` on every `up` and never logs out. Track global keys with a managed-keys marker as app `env:` does; use `registry:auth-status` (new in 0.38) to skip a login that already matches, and `registry:logout` for a removed server. | 3 |
@@ -533,9 +534,9 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `scheduler-k3s:autoscaling-auth:set` | Set or clear a scheduler-k3s autoscaling keda trigger authenticatio… | ❌ | A12 (not planned) |
 | `scheduler-k3s:charts:report` | Displays a scheduler-k3s chart override report | ⛔ | Read-only |
 | `scheduler-k3s:charts:set` | Set or clear a chart-specific helm value | ❌ | A12 (not planned) |
-| `scheduler-k3s:cluster:add` | Adds a server node to a Dokku-managed cluster | ❌ | A12 (not planned) |
+| `scheduler-k3s:cluster:add` | Adds a server node to a Dokku-managed cluster | ⛔ | Cluster lifecycle action |
 | `scheduler-k3s:cluster:list` | Lists all nodes in a Dokku-managed cluster | ⛔ | Read-only |
-| `scheduler-k3s:cluster:remove` | Removes client node to a Dokku-managed cluster | ❌ | A12 (not planned) |
+| `scheduler-k3s:cluster:remove` | Removes client node to a Dokku-managed cluster | ⛔ | Cluster lifecycle action |
 | `scheduler-k3s:ensure-charts` | Ensures the k3s charts are installed | ⛔ | Cluster lifecycle action |
 | `scheduler-k3s:initialize` | Initializes a cluster | ⛔ | Cluster lifecycle action |
 | `scheduler-k3s:labels:clear` | Clear all labels for an app or a single process-type/resource-type… | ❌ | A12 (not planned) |
@@ -594,7 +595,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `:backup-set-public-key-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
 | `:backup-unset-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
 | `:backup-unset-public-key-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
-| `:backup-schedule` | ✅ | ❌ | postgres: `postgres.<name>.backup.schedule`, `bucket`; redis: F7 |
+| `:backup-schedule` | 🟡 | ❌ | postgres: `postgres.<name>.backup.schedule`, `bucket`; server-side changes unseen (F3); redis: F7 |
 | `:backup-schedule-cat` | ✅ | ❌ | postgres: Verifies the schedule landed; `export`; redis: F7 |
 | `:backup-unschedule` | ❌ | ❌ | postgres: F3: when `backup:` leaves the file; redis: F7 |
 | `:backup-logs` | ⛔ | ⛔ | Read-only |
@@ -612,15 +613,17 @@ by rule in the script. Everything else on this page is written by hand.
 
    ```bash
    git clone -q --depth 1 --branch <tag> https://github.com/dokku/dokku.git /tmp/dokku
-   git clone -q --depth 1 https://github.com/dokku/dokku-postgres.git /tmp/dokku-postgres
-   git clone -q --depth 1 https://github.com/dokku/dokku-redis.git /tmp/dokku-redis
+   git clone -q --depth 1 --branch <tag> https://github.com/dokku/dokku-postgres.git /tmp/dokku-postgres
+   git clone -q --depth 1 --branch <tag> https://github.com/dokku/dokku-redis.git /tmp/dokku-redis
    bun scripts/dokku-audit/generate.ts /tmp/dokku /tmp/dokku-postgres /tmp/dokku-redis
    ```
 
    It writes nothing and names each problem when Dokku has a command with no status, or a
    status names a command Dokku no longer has. Add, change or remove those rows in the `.tsv`
    files and run it again. When a command's help text is hidden (`proxy:build-config`,
-   `git:status`, `git:unlock`, `plugin:installed`), give it a description in the script.
+   `git:status`, `git:unlock`, `plugin:installed`), give it a description in the script; it
+   checks the plugin still has that subcommand. The base commands (`cleanup`, `run`, `logs`
+   and the rest) are not checked: confirm them with `dokku help` on the new release.
 
 2. Compare the properties by hand:
 
