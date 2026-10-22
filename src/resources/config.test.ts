@@ -25,7 +25,7 @@ describe('Config resource', () => {
     runner.query = vi.fn()
       .mockResolvedValueOnce('OLD_KEY,KEEP_KEY')  // managed keys
     runner.queryStrict = vi.fn()
-      .mockResolvedValueOnce("export OLD_KEY='x'\nexport KEEP_KEY='y'\nexport DOKKU_COMPOSE_MANAGED_KEYS='OLD_KEY,KEEP_KEY'\n")
+      .mockResolvedValueOnce('{"OLD_KEY":"x","KEEP_KEY":"y","DOKKU_COMPOSE_MANAGED_KEYS":"OLD_KEY,KEEP_KEY"}')
     runner.run = vi.fn()
     const ctx = createContext(runner)
 
@@ -42,7 +42,7 @@ describe('Config resource', () => {
     runner.run = vi.fn()
     return { runner, ctx: createContext(runner) }
   }
-  const EXPORT = "export A='1'\nexport B='2'\nexport OTHER='keep'\nexport DOKKU_COMPOSE_MANAGED_KEYS='A,B'\n"
+  const EXPORT = '{"A":"1","B":"2","OTHER":"keep","DOKKU_COMPOSE_MANAGED_KEYS":"A,B"}'
 
   it('removing the whole env block unsets every managed key and the marker, leaving others', async () => {
     const { runner, ctx } = managed(EXPORT)
@@ -71,15 +71,30 @@ describe('Config resource', () => {
   })
 
   it('errors when config:export fails instead of treating env as empty', async () => {
-    const { runner, ctx } = managed('')
+    const { runner, ctx } = managed('{}')
     runner.queryStrict = vi.fn().mockRejectedValue(new DokkuCommandError(['config:export', 'myapp'], 1, 'no'))
     await expect(reconcile(Config, ctx, 'myapp', { A: '1' })).rejects.toThrow(/config:export/)
     expect(runner.run).not.toHaveBeenCalled()
   })
 
   it('removes a stale marker when every marked key is already gone', async () => {
-    const { runner, ctx } = managed("export OTHER='keep'\n")
+    const { runner, ctx } = managed('{"OTHER":"keep"}')
     await reconcile(Config, ctx, 'myapp', {})
     expect(runner.run).toHaveBeenCalledWith('config:unset', '--no-restart', 'myapp', 'DOKKU_COMPOSE_MANAGED_KEYS')
+  })
+
+  it.each([
+    ["it's"], ['say "hi"'], ['$HOME and ${X}'], ['back\\slash'], ['with spaces'], ['a=b=c'], ['line1\nline2'],
+  ])('computes no change when the app value round-trips: %j', async (value) => {
+    const { runner, ctx } = managed(JSON.stringify({ A: value, DOKKU_COMPOSE_MANAGED_KEYS: 'A' }))
+    runner.query = vi.fn().mockResolvedValueOnce('A')
+    await reconcile(Config, ctx, 'myapp', { A: value })
+    expect(runner.run).not.toHaveBeenCalled()
+  })
+
+  it('errors on the real one-line shell format instead of reading an empty env', async () => {
+    const { runner, ctx } = managed("A='1' B='2'")
+    await expect(reconcile(Config, ctx, 'myapp', { A: '1' })).rejects.toThrow(/did not return JSON/)
+    expect(runner.run).not.toHaveBeenCalled()
   })
 })

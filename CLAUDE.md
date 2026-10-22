@@ -71,7 +71,7 @@ bun run build
 
 **Idempotency pattern:** Every `ensure*` function queries current Dokku state before acting. If state already matches, it logs "already configured" and skips. `runner.check()` is for boolean state queries; `runner.query()` for output-capturing queries; `runner.run()` for mutations.
 
-**Env var convergence:** `DOKKU_COMPOSE_MANAGED_KEYS` is stored as an app env var tracking which keys dokku-compose owns. On each run: read the marker and the managed keys' current values (`config:export` is read strictly, so a failure is an error, never an empty env), unset keys no longer in `env:`, then set the desired keys and rewrite the marker. A missing `env:` block counts as `{}`: every managed key is unset and the marker is unset (never written empty). If `config:unset` fails, the error is surfaced and the marker still names the keys, so the next run retries. Keys outside the marker (`DATABASE_URL`, etc.) are never touched.
+**Env var convergence:** `DOKKU_COMPOSE_MANAGED_KEYS` is stored as an app env var tracking which keys dokku-compose owns. On each run: read the marker and the managed keys' current values (`config:export --format json` is read strictly, so a failure is an error, never an empty env), unset keys no longer in `env:`, then set the desired keys and rewrite the marker. A missing `env:` block counts as `{}`: every managed key is unset and the marker is unset (never written empty). If `config:unset` fails, the error is surfaced and the marker still names the keys, so the next run retries. Keys outside the marker (`DATABASE_URL`, etc.) are never touched.
 
 ## Testing
 

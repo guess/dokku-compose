@@ -1,4 +1,5 @@
 import type { Resource } from '../core/reconcile.js'
+import { parseConfigJson } from '../core/config-json.js'
 import type { MapChange } from '../core/change.js'
 
 const MANAGED_KEYS_VAR = 'DOKKU_COMPOSE_MANAGED_KEYS'
@@ -15,12 +16,10 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
     // and a drifted key is set again.
     for (const k of managedKeys) result[k] = MISSING
     if (managedKeys.length > 0) {
-      const raw = await ctx.queryStrict('config:export', target, '--format', 'shell')
-      for (const line of raw.split('\n')) {
-        const match = line.match(/^export\s+(\w+)=['"]?(.*?)['"]?$/)
-        if (match && managedKeys.includes(match[1])) {
-          result[match[1]] = match[2]
-        }
+      const raw = await ctx.queryStrict('config:export', '--format', 'json', target)
+      const current = parseConfigJson(raw, target)
+      for (const k of managedKeys) {
+        if (k in current) result[k] = current[k]
       }
     }
     return result

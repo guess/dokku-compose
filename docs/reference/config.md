@@ -10,7 +10,7 @@ dokku-compose records the keys it sets in a marker app variable, `DOKKU_COMPOSE_
 
 On each `up`, for an app:
 
-1. **Read** the marker, then `config:export` the app and keep the current values of the marked keys.
+1. **Read** the marker, then read the app with `config:export --format json` and keep the current values of the marked keys. JSON is used because the shell format is a single space-separated line that cannot be parsed reliably; any value (quotes, `$`, backslashes, spaces, `=`, newlines) round-trips, so an unchanged env produces no change.
 2. **Unset** marked keys that are no longer in `env:`.
 3. **Set** the keys in `env:` and rewrite the marker to exactly those keys.
 
@@ -38,7 +38,7 @@ Removing a key from `env:` and re-running `up` unsets it and drops it from the m
 
 - **A failed `config:unset`** is reported with the app and the masked command. The marker is not rewritten, so it still names the key and the next `up` retries.
 - A failed unset also blocks new keys in that run: the `config:set` is not attempted until the unset succeeds on a later run.
-- **A failed `config:export`** is an error. It is never read as "no variables", which would mark every key as new and rewrite the marker without unsetting anything.
+- **A failed `config:export` (or output that is not a JSON object)** is an error. It is never read as "no variables", which would mark every key as new and rewrite the marker without unsetting anything.
 - A failure in any other resource does not stop env from reconciling; `up` keeps going through the app's resources and exits non-zero with a summary at the end.
 
 ## Global Environment (`env`)
