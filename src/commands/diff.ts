@@ -1,6 +1,6 @@
 import { normalizeLink, linkEnvVar, readLinkOptions, readEnv, resolveServicePlugin, type EnvCache } from '../modules/links.js'
 import type { Context } from '../core/context.js'
-import type { Config, AppConfig } from '../core/schema.js'
+import type { Config, AppConfig, PostgresConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { proxyProps } from '../resources/toggle.js'
@@ -10,9 +10,10 @@ import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
-import { readServiceMismatches, type ServiceMismatch } from '../modules/service-drift.js'
+import { readServiceInfo, versionMismatches, backupMismatches, hasBackup, describeServerBackup, type ServiceMismatch } from '../modules/service-drift.js'
 import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
 import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
+import { staleBackupHashKeys } from '../modules/postgres.js'
 import { readDockerAuthDrift } from '../modules/docker-auth.js'
 import type { Resource } from '../core/reconcile.js'
 import chalk from 'chalk'
@@ -34,7 +35,7 @@ interface AppDiff {
 
 interface DiffResult {
   apps: Record<string, AppDiff>
-  services: Record<string, { status: DiffStatus; mismatches?: ServiceMismatch[] }>
+  services: Record<string, { status: DiffStatus; mismatches?: ServiceMismatch[]; note?: string }>
   plugins: Record<string, FeatureDiff>
   /** Set when the server's Dokku version differs from the file's `dokku.version`. */
   dokku?: { file: string; server: string }
@@ -383,6 +384,17 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     result.inSync = false
   }
 
+  // Backup hash keys left by versions before backups were read from Dokku; up unsets them.
+  try {
+    const stale = staleBackupHashKeys(await readGlobalEnv(ctx))
+    if (stale.length > 0) {
+      result.global.backup_hash = { status: 'extra', removed: stale, note: 'old backup hash keys; up unsets them' }
+      result.inSync = false
+    }
+  } catch (err) {
+    if (config.env === false) result.readWarnings.push(`could not read global env: ${err instanceof Error ? err.message : String(err)}`)
+  }
+
   // Top-level docker_auth: servers whose login is missing or differs (never a password)
   if (config.docker_auth) {
     try {
@@ -441,13 +453,28 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.inSync = false
         continue
       }
+      const backup = plugin === 'postgres' ? (declared as PostgresConfig).backup : undefined
+      // Nothing declared to compare: redis needs no read; postgres reads only to note an undeclared backup.
+      const compares = declared?.version !== undefined || declared?.image !== undefined || backup !== undefined
+      if (!compares && plugin === 'redis') {
+        result.services[svc] = { status: 'in-sync', mismatches: [] }
+        continue
+      }
       try {
-        const mismatches = await readServiceMismatches(ctx, plugin, svc, declared)
-        result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches }
+        // One info read covers version, image and backup.
+        const info = await readServiceInfo(ctx, plugin, svc)
+        const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(info, backup) : [])]
+        // An undeclared backup is never removed (only `backup: false` does), so it is a note, not drift.
+        const note = plugin === 'postgres' && backup === undefined && hasBackup(info)
+          ? `backup on the server is not in the file (${describeServerBackup(info)}); up leaves it, backup: false removes it`
+          : undefined
+        result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches, note }
         if (mismatches.length) result.inSync = false
       } catch (err) {
-        result.services[svc] = { status: 'unknown' }
         result.readWarnings.push(`could not read ${plugin} service '${svc}': ${err instanceof Error ? err.message : String(err)}`)
+        // Only a read the file depends on makes the service unknown; the undeclared-backup note is best effort.
+        if (!compares) { result.services[svc] = { status: 'in-sync', mismatches: [] }; continue }
+        result.services[svc] = { status: 'unknown' }
         result.inSync = false
       }
     }
@@ -542,10 +569,11 @@ export function formatSummary(diff: DiffResult): string {
       lines.push(`  services:`)
       lines.push(`    ${chalk.green('+')} ${svc}: not provisioned`)
     }
-    if (d.mismatches?.length) lines.push(`  services: ${svc}`)
+    if (d.mismatches?.length || d.note) lines.push(`  services: ${svc}`)
     for (const m of d.mismatches ?? []) {
       lines.push(`    ${chalk.yellow('~')} ${m.field}: ${m.current || '(unknown)'} → ${m.desired}`)
     }
+    if (d.note) lines.push(`    note: ${d.note}`)
   }
 
   const total = driftCount(diff)
@@ -666,6 +694,7 @@ export function formatVerbose(diff: DiffResult): string {
       lines.push(chalk.red(`- ${m.current}`))
       lines.push(chalk.green(`+ ${m.desired}`))
     }
+    if (d.note) lines.push(`@@ services: ${svc} @@\n  (${d.note})`)
   }
 
   if (diff.readWarnings.length > 0) {

@@ -28,7 +28,7 @@ Service creation is idempotent — if the service already exists, it is skipped.
 
 ### Automated Backups (`postgres.<name>.backup`)
 
-Configure S3-compatible automated backups for a Postgres service. Backup configuration is applied idempotently using a content hash — it only re-runs when the config changes.
+Configure S3-compatible automated backups for a Postgres service. `up` and `diff` read the server's backup settings from `postgres:info <name> --format json` (the same read as the version check, one per service) and run only what differs.
 
 ```yaml
 postgres:
@@ -48,9 +48,23 @@ postgres:
 | Key | Dokku Command |
 |-----|---------------|
 | `backup.auth.*` | `postgres:backup-auth <name> <key> <secret> <region> <sig_version> <endpoint>` |
-| `backup.schedule` + `backup.bucket` | `postgres:backup-schedule <name> <schedule> <bucket>` |
+| `backup.schedule` (with `backup.bucket`) | `postgres:backup-schedule <name> <schedule> <bucket>` |
+| `backup.bucket` alone | `postgres:set <name> backup-bucket <bucket>` |
+| `backup: false` | `postgres:backup-unschedule <name>`, then `postgres:backup-deauth <name>` |
 
 All `backup.auth` fields are required when backup is configured.
+
+How each setting is compared:
+
+- **Credentials**: the server reports `backup-auth-fingerprint`, the sha256 of the stored access key id and secret joined by one newline (`printf '%s\n%s' "$id" "$secret" | sha256sum`). dokku-compose computes the same from the file and runs `:backup-auth` only when it, `backup-default-region`, `backup-signature-version` or `backup-endpoint-url` differs, so a rotated key is picked up on the next `up`. Credentials are never printed: `diff` says only which of them differ, and the dry-run listing masks them.
+- **Schedule**: `backup-schedule` against `backup.schedule`. A change runs `:backup-schedule` (which also writes the bucket), and `up` then checks with `:backup-schedule-cat` that the cron entry landed.
+- **Bucket**: `backup-bucket` (the full `bucket/prefix`) against `backup.bucket`. A change alone runs `postgres:set <name> backup-bucket`, with no re-auth.
+- **Removal**: only `backup: false` removes a backup. With `backup:` absent, `diff` shows a backup found on the server as a note (not drift), `up` leaves it, and `up --prune` only warns. `up` never runs `:backup-deauth` before `:backup-auth`: deauth deletes the service's whole backup directory.
+- **Encryption** (`:backup-set-encryption`, `:backup-set-public-key-encryption`) is out of scope: dokku-compose neither sets nor compares it.
+
+Needs dokku-postgres 2.3.1 or later (the `backup-*` keys in `postgres:info --format json`).
+
+Earlier versions tracked backups as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`. `up` unsets every such key once (`config:unset --global --no-restart`, which restarts no app), and `diff` lists them under `global / backup_hash` until it has.
 
 ### Export
 

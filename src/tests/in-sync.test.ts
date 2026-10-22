@@ -64,6 +64,7 @@ function inSyncServer(): FakeServer {
       ]),
       'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5'),
       'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine'),
+      'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17'),
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
       'logs:report --global --format json': logsGlobalJson({
@@ -71,10 +72,9 @@ function inSyncServer(): FakeServer {
         'global-vector-sink': SINK, 'logs-global-vector-sink': SINK, 'computed-vector-sink': SINK, 'logs-computed-vector-sink': SINK,
       }),
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
-      // Global env as config:export --global prints it: a hand-set key and an old backup hash beside the managed ones.
+      // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
-        TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X',
-        HAND_SET: 'x', DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB: 'abc123',
+        TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
       }),
       'registry:report --global --registry-global-auth-servers': 'registry.example.com',
 
@@ -387,5 +387,73 @@ describe('a server whose state equals the file', () => {
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.
-  it.todo('LAB-757: postgres backup: is read from the server (no hash env var), and an unchanged schedule runs no write')
+  it('postgres backup is read from postgres:info: in sync runs no write, a changed bucket and an old hash key show in diff and up fixes exactly those', async () => {
+    const backup = {
+      schedule: '0 * * * *', bucket: 'backups/myapp-db',
+      auth: { access_key_id: 'KEY', secret_access_key: 'SECRET', region: 'auto', signature_version: 's3v4', endpoint: 'https://s3.example.com' },
+    }
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-db'].backup = backup
+    const onServer = {
+      'backup-schedule': '0 * * * *', 'backup-bucket': 'backups/myapp-db', 'backup-authenticated': 'true',
+      // printf 'KEY\nSECRET' | shasum -a 256
+      'backup-auth-fingerprint': '367b0dd6299da53d84c87a01b0519aed571f65b54ed7d95687fbbaf6760462b3',
+      'backup-default-region': 'auto', 'backup-signature-version': 's3v4', 'backup-endpoint-url': 'https://s3.example.com',
+    }
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', onServer)
+    const same = fakeContext(server)
+    expect((await computeDiff(same.ctx, config)).inSync).toBe(true)
+    const quiet = fakeContext(server)
+    await runUp(quiet.ctx, config, [])
+    expect(quiet.runner.dryRunLog).toEqual([])
+    expect((quiet.runner.queryStrict as any).mock.calls.filter((c: string[]) => c[0] === 'postgres:info')).toHaveLength(1)
+
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...onServer, 'backup-bucket': 'old/myapp-db' })
+    server.queries['config:export --global --format json'] = JSON.stringify({
+      ...JSON.parse(server.queries['config:export --global --format json']), DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB: 'abc123',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db']).toMatchObject({ status: 'changed', mismatches: [{ field: 'backup.bucket', current: 'old/myapp-db', desired: 'backups/myapp-db' }] })
+    expect(diff.global.backup_hash).toMatchObject({ removed: ['DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB'] })
+    expect(formatVerbose(diff)).not.toContain('SECRET')
+    const fix = fakeContext(server)
+    await runUp(fix.ctx, config, [])
+    expect(fix.runner.dryRunLog).toEqual([
+      'postgres:set myapp-db backup-bucket backups/myapp-db',
+      'config:unset --global --no-restart DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB',
+    ])
+  })
+
+  it('a dokku-postgres too old to report backup state is unknown in diff', async () => {
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-db'].backup = {
+      schedule: '0 * * * *', bucket: 'backups/myapp-db',
+      auth: { access_key_id: 'KEY', secret_access_key: 'SECRET', region: 'auto', signature_version: 's3v4', endpoint: 'https://s3.example.com' },
+    }
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = JSON.stringify({ image: 'postgis/postgis', 'image-version': '17-3.5' })
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db']).toMatchObject({ status: 'unknown' })
+    expect(diff.readWarnings.join('\n')).toContain('needs 2.3.1+')
+  })
+
+  it('a backup on the server that the file omits is a diff note; up --prune only warns', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {
+      'backup-schedule': '0 3 * * *', 'backup-bucket': 'backups/myapp-db', 'backup-authenticated': 'true',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.inSync).toBe(true)
+    expect(formatSummary(diff)).toContain('note: backup on the server is not in the file (scheduled 0 3 * * * to backups/myapp-db, credentials stored)')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { ctx, runner } = fakeContext(server)
+      await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
+      expect(runner.dryRunLog).toEqual([])
+      expect(warn.mock.calls.map(c => String(c[0])).some(l => l.includes('set backup: false to remove it'))).toBe(true)
+    } finally {
+      warn.mockRestore()
+    }
+  })
 })

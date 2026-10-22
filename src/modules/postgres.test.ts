@@ -1,7 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { ensurePostgres, ensurePostgresBackups, destroyPostgres, exportPostgres } from './postgres.js'
+import { ensurePostgres, ensurePostgresBackups, destroyPostgres, exportPostgres, removeBackupHashKeys } from './postgres.js'
+import { maskSensitiveArgs } from '../core/mask.js'
+import { fakeContext, serviceInfoJson } from '../tests/fake-server.js'
 
 describe('ensurePostgres', () => {
   it('creates service that does not exist', async () => {
@@ -46,59 +48,152 @@ describe('ensurePostgresBackups', () => {
       endpoint: 'https://r2.example.com',
     },
   }
+  // printf 'KEY\nSECRET' | shasum -a 256
+  const FP = '367b0dd6299da53d84c87a01b0519aed571f65b54ed7d95687fbbaf6760462b3'
+  const configured = {
+    'backup-schedule': '0 * * * *', 'backup-bucket': 'db-backups/api-db', 'backup-authenticated': 'true',
+    'backup-auth-fingerprint': FP, 'backup-default-region': 'auto', 'backup-signature-version': 's3v4',
+    'backup-endpoint-url': 'https://r2.example.com',
+  }
+  const CRON = '0 * * * * dokku /usr/bin/dokku postgres:backup api-db db-backups/api-db'
 
-  it('configures backup when hash differs', async () => {
-    const runner = createRunner({ dryRun: false })
-    runner.run = vi.fn()
-    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'postgres:backup-schedule-cat') {
-        return '0 * * * * dokku /usr/bin/dokku postgres:backup api-db db-backups/api-db'
-      }
-      return ''
+  function server(info: Record<string, string>, extra: Record<string, string> = {}) {
+    return fakeContext({
+      checks: {},
+      queries: {
+        'postgres:info api-db --format json': serviceInfoJson('api-db', 'postgres', '17', info),
+        'postgres:backup-schedule-cat api-db': CRON,
+        ...extra,
+      },
     })
-    const ctx = createContext(runner)
+  }
+
+  it('runs no command when the server matches the file', async () => {
+    const { ctx, runner } = server(configured)
     await ensurePostgresBackups(ctx, { 'api-db': { backup } })
-    expect(runner.run).not.toHaveBeenCalledWith('postgres:backup-deauth', 'api-db')
-    expect(runner.run).toHaveBeenCalledWith(
-      'postgres:backup-auth', 'api-db', 'KEY', 'SECRET', 'auto', 's3v4', 'https://r2.example.com'
-    )
-    expect(runner.run).toHaveBeenCalledWith('postgres:backup-schedule', 'api-db', '0 * * * *', 'db-backups/api-db')
-    const { createHash } = await import('crypto')
-    const hash = createHash('sha256').update(JSON.stringify(backup)).digest('hex')
-    expect(runner.run).toHaveBeenCalledWith('config:set', '--global', expect.stringContaining(hash))
+    expect(runner.dryRunLog).toEqual([])
   })
 
-  it('throws and does not persist hash when schedule verification fails', async () => {
-    const runner = createRunner({ dryRun: false })
-    runner.run = vi.fn()
-    // Empty cron output = backup-schedule silently failed to install anything
-    runner.query = vi.fn().mockResolvedValue('')
-    const ctx = createContext(runner)
-    await expect(
-      ensurePostgresBackups(ctx, { 'api-db': { backup } })
-    ).rejects.toThrow(/was not installed/)
-    expect(runner.run).not.toHaveBeenCalledWith(
-      'config:set', '--global', expect.stringContaining('DOKKU_COMPOSE_BACKUP_HASH')
-    )
-  })
-
-  it('skips when hash matches', async () => {
-    const runner = createRunner({ dryRun: false })
-    runner.run = vi.fn()
-    const { createHash } = await import('crypto')
-    const hash = createHash('sha256').update(JSON.stringify(backup)).digest('hex')
-    runner.query = vi.fn().mockResolvedValue(hash)
-    const ctx = createContext(runner)
+  it('authenticates and schedules a service with no backup, never deauthing first', async () => {
+    const { ctx, runner } = server({})
     await ensurePostgresBackups(ctx, { 'api-db': { backup } })
-    expect(runner.run).not.toHaveBeenCalled()
+    expect(runner.dryRunLog).toEqual([
+      'postgres:backup-auth api-db KEY SECRET auto s3v4 https://r2.example.com',
+      "postgres:backup-schedule api-db '0 * * * *' db-backups/api-db",
+    ])
   })
 
-  it('skips entries without backup config', async () => {
-    const runner = createRunner({ dryRun: false })
-    runner.run = vi.fn()
-    const ctx = createContext(runner)
-    await ensurePostgresBackups(ctx, { 'api-db': {} })
-    expect(runner.run).not.toHaveBeenCalled()
+  it('re-authenticates only when the key pair fingerprint differs (rotated key)', async () => {
+    const { ctx, runner } = server(configured)
+    const rotated = { ...backup, auth: { ...backup.auth, access_key_id: 'KEY2' } }
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: rotated } })
+    expect(runner.dryRunLog).toEqual(['postgres:backup-auth api-db KEY2 SECRET auto s3v4 https://r2.example.com'])
+  })
+
+  it('re-authenticates when the endpoint differs', async () => {
+    const { ctx, runner } = server({ ...configured, 'backup-endpoint-url': 'https://old.example.com' })
+    await ensurePostgresBackups(ctx, { 'api-db': { backup } })
+    expect(runner.dryRunLog).toHaveLength(1)
+    expect(runner.dryRunLog[0]).toStartWith('postgres:backup-auth api-db')
+  })
+
+  it('a changed schedule runs backup-schedule only', async () => {
+    const { ctx, runner } = server({ ...configured, 'backup-schedule': '0 3 * * *' })
+    await ensurePostgresBackups(ctx, { 'api-db': { backup } })
+    expect(runner.dryRunLog).toEqual(["postgres:backup-schedule api-db '0 * * * *' db-backups/api-db"])
+  })
+
+  it('a changed bucket runs postgres:set backup-bucket, with no re-auth', async () => {
+    const { ctx, runner } = server({ ...configured, 'backup-bucket': 'old-bucket/api-db' })
+    await ensurePostgresBackups(ctx, { 'api-db': { backup } })
+    expect(runner.dryRunLog).toEqual(['postgres:set api-db backup-bucket db-backups/api-db'])
+  })
+
+  it('throws when the schedule did not land', async () => {
+    const { ctx } = server({}, { 'postgres:backup-schedule-cat api-db': '' })
+    await expect(ensurePostgresBackups(ctx, { 'api-db': { backup } })).rejects.toThrow('was not installed')
+  })
+
+  it('backup: false unschedules, then deauths', async () => {
+    const { ctx, runner } = server(configured)
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: false } })
+    expect(runner.dryRunLog).toEqual(['postgres:backup-unschedule api-db', 'postgres:backup-deauth api-db'])
+  })
+
+  it('backup: false runs nothing when the server has no backup', async () => {
+    const { ctx, runner } = server({})
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: false } })
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('an absent backup: never removes one, and --prune only warns', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { ctx, runner } = server(configured)
+    await ensurePostgresBackups(ctx, { 'api-db': {} }, { prune: true })
+    expect(runner.dryRunLog).toEqual([])
+    expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('backup: false')
+    warn.mockRestore()
+  })
+
+  it('throws on a plugin too old to report backup state, instead of re-applying every run', async () => {
+    const { ctx, runner } = fakeContext({ checks: {}, queries: {
+      'postgres:info api-db --format json': JSON.stringify({ image: 'postgres', 'image-version': '17' }),
+    } })
+    await expect(ensurePostgresBackups(ctx, { 'api-db': { backup } })).rejects.toThrow('needs 2.3.1+')
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('compares the trimmed first line of each credential, as Dokku stores it', async () => {
+    const { ctx, runner } = server(configured)
+    const padded = { ...backup, auth: { ...backup.auth, access_key_id: ' KEY\n', secret_access_key: 'SECRET \n' } }
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: padded } })
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('--prune with an absent backup warns and carries on when the info read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { ctx, runner } = fakeContext({ checks: {}, queries: {} })
+      await ensurePostgresBackups(ctx, { 'api-db': {} }, { prune: true })
+      expect(runner.dryRunLog).toEqual([])
+      expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('could not read backup state for api-db')
+    } finally { warn.mockRestore() }
+  })
+
+  it('never prints the credentials: logs carry none and the dry-run listing masks them', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    const { ctx, runner } = server({})
+    const secret = { ...backup, auth: { ...backup.auth, access_key_id: 'AKIAEXAMPLE1234', secret_access_key: 'verysecretvalue99' } }
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: secret } })
+    const out = [...runner.dryRunLog.map(maskSensitiveArgs), ...log.mock.calls.map(c => c.join(' '))].join('\n')
+    expect(out).not.toContain('AKIAEXAMPLE1234')
+    expect(out).not.toContain('verysecretvalue99')
+    log.mockRestore()
+  })
+})
+
+describe('removeBackupHashKeys', () => {
+  it('warns and carries on when the global env cannot be read', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { ctx, runner } = fakeContext({ checks: {}, queries: {} })
+      await removeBackupHashKeys(ctx)
+      expect(runner.dryRunLog).toEqual([])
+      expect(warn.mock.calls.length).toBe(1)
+    } finally { warn.mockRestore() }
+  })
+
+  it('unsets every old DOKKU_COMPOSE_BACKUP_HASH_* global, and a second run unsets none', async () => {
+    const { ctx, runner } = fakeContext({ checks: {}, queries: {
+      'config:export --global --format json': JSON.stringify({ APP_ENV: 'x', DOKKU_COMPOSE_BACKUP_HASH_WEB_DB: 'h', DOKKU_COMPOSE_BACKUP_HASH_API_DB: 'h' }),
+    } })
+    await removeBackupHashKeys(ctx)
+    expect(runner.dryRunLog).toEqual([
+      'config:unset --global --no-restart DOKKU_COMPOSE_BACKUP_HASH_API_DB DOKKU_COMPOSE_BACKUP_HASH_WEB_DB',
+    ])
+    const second = fakeContext({ checks: {}, queries: { 'config:export --global --format json': '{"APP_ENV":"x"}' } })
+    await removeBackupHashKeys(second.ctx)
+    expect(second.runner.dryRunLog).toEqual([])
   })
 })
 

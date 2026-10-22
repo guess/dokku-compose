@@ -17,7 +17,7 @@ import { Networks, NetworkProps } from '../resources/network.js'
 import { ensurePlugins } from '../modules/plugins.js'
 import { ensureDockerAuth, pruneDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
-import { ensurePostgres, ensurePostgresBackups } from '../modules/postgres.js'
+import { ensurePostgres, ensurePostgresBackups, removeBackupHashKeys } from '../modules/postgres.js'
 import { ensureRedis } from '../modules/redis.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
@@ -189,7 +189,8 @@ async function runUpPhases(
   // Phase 4: Services
   if (config.postgres) await ensurePostgres(ctx, config.postgres)
   if (config.redis) await ensureRedis(ctx, config.redis)
-  if (config.postgres) await ensurePostgresBackups(ctx, config.postgres)
+  if (config.postgres) await ensurePostgresBackups(ctx, config.postgres, { prune: opts.prune })
+  await removeBackupHashKeys(ctx)
 
   // Phase 5: Per-app. Default (documented) behaviour is to continue to the
   // next app on failure and report a summary at the end, exiting non-zero.

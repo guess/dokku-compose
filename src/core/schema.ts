@@ -130,7 +130,8 @@ const ServiceBackupSchema = z.object({
 const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
-  backup: ServiceBackupSchema.optional(),
+  // false removes the service's backup schedule and credentials; absent leaves them alone
+  backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
 })
 
 const RedisSchema = z.object({
