@@ -160,7 +160,7 @@ env:                             # top-level: global env vars
 
 apps:
   myapp:
-    env:                         # per-app: map = set + converge; false = unset all prefixed; absent = no action
+    env:                         # per-app: map = set + converge; false or absent = unset every key dokku-compose manages
       APP_ENV: production
       APP_SECRET: "${SECRET_KEY}"
 ```
