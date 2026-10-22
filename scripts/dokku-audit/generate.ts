@@ -109,7 +109,7 @@ function hasHiddenSubcommand(name: string): boolean {
     (existsSync(dispatcher) && readFileSync(dispatcher, 'utf8').includes(`case "${sub}":`))
 }
 for (const [name, { s }] of status) {
-  if (!(s in ICON)) errors.push(`commands.tsv: ${name} has status '${s}', not one of ${Object.keys(ICON).join(' ')}`)
+  if (!Object.hasOwn(ICON, s)) errors.push(`commands.tsv: ${name} has status '${s}', not one of ${Object.keys(ICON).join(' ')}`)
   if (name.includes(':') && !helpDesc.has(name) && !(name in extraDesc && hasHiddenSubcommand(name))) {
     errors.push(`commands.tsv lists ${name}, which this Dokku checkout does not have`)
   }
@@ -179,7 +179,7 @@ for (const [sub, ...cols] of tsv('datastores.tsv')) {
   const byPlugin = { postgres: { s: cols[0], note: cols[1] }, redis: { s: cols[2], note: cols[3] } }
   for (const [plugin, { s }] of Object.entries(byPlugin)) {
     const has = plugins[plugin as keyof typeof plugins].has(sub)
-    if (s === '-' ? has : !(s in ICON)) errors.push(`datastores.tsv: ${sub} has ${plugin} status '${s}'`)
+    if (s === '-' ? has : !Object.hasOwn(ICON, s)) errors.push(`datastores.tsv: ${sub} has ${plugin} status '${s}'`)
     if (s !== '-' && !has) errors.push(`datastores.tsv lists ${sub}, which dokku-${plugin} does not have`)
     if (s !== '-') count(plugin, s)
   }
