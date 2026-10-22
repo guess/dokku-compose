@@ -153,6 +153,39 @@ export async function readLinkOptions(
   return { state: 'differs', current: show(name, current), desired: show(name, desired) }
 }
 
+/** One declared postgres/redis service, against one app's `links:` and the box. */
+export interface ServiceLinkState {
+  service: string
+  plugin: string
+  /** The app's `links:` entry for it, if any. */
+  link: LinkSpec | undefined
+  isLinked: boolean
+}
+
+/**
+ * Every service the file declares, with the app's entry for it and whether
+ * the box links it. `up` (ensureAppLinks) acts on this and `diff` reads it,
+ * so both see the same links to add and to remove.
+ */
+export async function readServiceLinks(
+  ctx: Context,
+  app: string,
+  desiredLinks: LinkEntry[],
+  config: Config
+): Promise<ServiceLinkState[]> {
+  const desired = new Map(desiredLinks.map(normalizeLink).map(l => [l.service, l]))
+  const states: ServiceLinkState[] = []
+  for (const [service, plugin] of allServices(config)) {
+    states.push({ service, plugin, link: desired.get(service), isLinked: await ctx.check(`${plugin}:linked`, service, app) })
+  }
+  return states
+}
+
+/** The services `up` unlinks: linked on the box, absent from the app's `links:`. */
+export function servicesToUnlink(states: ServiceLinkState[]): ServiceLinkState[] {
+  return states.filter(s => !s.link && s.isLinked)
+}
+
 /** Every link, relink and unlink passes `--no-restart` and marks the app for the restart list. */
 export async function ensureAppLinks(
   ctx: Context,
@@ -160,10 +193,10 @@ export async function ensureAppLinks(
   desiredLinks: LinkEntry[],
   config: Config
 ): Promise<void> {
-  const desired = new Map(desiredLinks.map(normalizeLink).map(l => [l.service, l]))
-  for (const [serviceName, plugin] of allServices(config)) {
-    const isLinked = await ctx.check(`${plugin}:linked`, serviceName, app)
-    const link = desired.get(serviceName)
+  const states = await readServiceLinks(ctx, app, desiredLinks, config)
+  const unlink = new Set(servicesToUnlink(states))
+  for (const state of states) {
+    const { service: serviceName, plugin, link, isLinked } = state
     if (link && !isLinked) {
       logAction(app, `Linking ${serviceName}`)
       await ctx.run(`${plugin}:link`, serviceName, app, '--no-restart', ...linkFlags(link))
@@ -184,7 +217,7 @@ export async function ensureAppLinks(
         ctx.needsRestart(app, 'links')
         logDone()
       }
-    } else if (!link && isLinked) {
+    } else if (unlink.has(state)) {
       logAction(app, `Unlinking ${serviceName}`)
       await ctx.run(`${plugin}:unlink`, serviceName, app, '--no-restart')
       ctx.needsRestart(app, 'links')

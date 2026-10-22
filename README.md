@@ -88,7 +88,7 @@ Running `up` again produces no changes — every step checks current state befor
 `up` applies env, storage, links and Docker options without restarting anything, so the changes wait for a restart. It ends by listing each app it changed that way, with the exact command (`dokku ps:rebuild <app>` for settings only a rebuild applies, which replaces the restart line for an app needing both) (`would need` on `--dry-run`, also after a partial failure). It never runs the restart and has no `--restart` flag.
 
 ```
-# Apps that need a restart:
+# Apps that need a restart or rebuild:
 dokku ps:restart worker  # env, storage
 ```
 
