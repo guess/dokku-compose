@@ -135,7 +135,9 @@ export function nginxGlobalJson(values: Record<string, string> = {}): string {
  */
 export function serviceInfoJson(svc: string, image: string, imageVersion: string, values: Record<string, string> = {}): string {
   return JSON.stringify({
-    'backup-schedule': '', 'backup-bucket': '', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
+    'backup-schedule': '', 'backup-bucket': '', 'backup-authenticated': 'false', 'backup-auth-fingerprint': '',
+    'backup-access-key-id-fingerprint': '', 'backup-secret-access-key-fingerprint': '', 'backup-default-region': '',
+    'backup-signature-version': '', 'backup-endpoint-url': '', 'backup-encrypted': 'false', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
     'data-dir': `/var/lib/dokku/services/x/${svc}/data`, status: 'running',
     service: svc, image, 'image-version': imageVersion, version: `${image}:${imageVersion}`, links: 'myapp',
     ...values,

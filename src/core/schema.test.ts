@@ -23,10 +23,10 @@ describe('PostgresSchema backup', () => {
     const result = parseConfig({
       apps: {},
       postgres: {
-        'funqtion-db': {
+        'myapp-db': {
           backup: {
             schedule: '0 * * * *',
-            bucket: 'db-backups/funqtion-db',
+            bucket: 'db-backups/myapp-db',
             auth: {
               access_key_id: 'KEY',
               secret_access_key: 'SECRET',
@@ -38,15 +38,24 @@ describe('PostgresSchema backup', () => {
         },
       },
     })
-    expect(result.postgres?.['funqtion-db']?.backup?.schedule).toBe('0 * * * *')
+    expect(result.postgres?.['myapp-db']?.backup?.schedule).toBe('0 * * * *')
   })
 
   it('accepts a postgres service without backup config', () => {
     const result = parseConfig({
       apps: {},
-      postgres: { 'funqtion-db': {} },
+      postgres: { 'myapp-db': {} },
     })
-    expect(result.postgres?.['funqtion-db']?.backup).toBeUndefined()
+    expect(result.postgres?.['myapp-db']?.backup).toBeUndefined()
+  })
+
+  it('accepts backup: false, which removes the backup', () => {
+    const result = parseConfig({ apps: {}, postgres: { 'myapp-db': { backup: false } } })
+    expect(result.postgres?.['myapp-db']?.backup).toBe(false)
+  })
+
+  it('rejects backup: true', () => {
+    expect(() => parseConfig({ apps: {}, postgres: { 'myapp-db': { backup: true } } })).toThrow()
   })
 })
 

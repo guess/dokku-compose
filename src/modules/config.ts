@@ -10,7 +10,7 @@ export const GLOBAL_MANAGED_KEYS_VAR = 'DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS'
 
 /** Names dokku-compose keeps for itself: never set or unset as user keys. */
 function isReserved(key: string): boolean {
-  return key === GLOBAL_MANAGED_KEYS_VAR || key === MANAGED_KEYS_VAR || key.startsWith('DOKKU_COMPOSE_BACKUP_HASH_')
+  return key === GLOBAL_MANAGED_KEYS_VAR || key === MANAGED_KEYS_VAR || key.startsWith(BACKUP_HASH_PREFIX)
 }
 
 interface GlobalEnvPlan {
@@ -23,10 +23,26 @@ interface GlobalEnvPlan {
   markerOutdated: boolean
 }
 
-/** `config:export --global`: one read, so `diff` can share it. */
-export async function readGlobalEnv(ctx: Context): Promise<Record<string, string>> {
-  return parseConfigJson(await ctx.queryStrict('config:export', '--global', '--format', 'json'), '--global')
+const globalEnvReads = new WeakMap<Context, Promise<Record<string, string>>>()
+
+/**
+ * The global env as the run found it, read once per context: `up` and `diff`
+ * share one `config:export --global` between the env and backup-hash checks.
+ * Writes this run makes are not reflected, so read it before writing.
+ */
+export function readGlobalEnv(ctx: Context): Promise<Record<string, string>> {
+  let read = globalEnvReads.get(ctx)
+  if (!read) {
+    read = ctx.queryStrict('config:export', '--global', '--format', 'json').then(raw => parseConfigJson(raw, '--global'))
+    // A failed read is not cached, so a later caller sees the error itself.
+    read.catch(() => globalEnvReads.delete(ctx))
+    globalEnvReads.set(ctx, read)
+  }
+  return read
 }
+
+/** Global keys left by dokku-compose before LAB-757, which tracked backups as a hash. */
+export const BACKUP_HASH_PREFIX = 'DOKKU_COMPOSE_BACKUP_HASH_'
 
 async function planGlobalEnv(
   ctx: Context,

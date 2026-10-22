@@ -1,16 +1,8 @@
-import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
-import type { PostgresConfig, ServiceBackupConfig } from '../core/schema.js'
+import type { PostgresConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
-import { readServiceMismatches } from './service-drift.js'
-
-function backupHashKey(serviceName: string): string {
-  return 'DOKKU_COMPOSE_BACKUP_HASH_' + serviceName.toUpperCase().replace(/-/g, '_')
-}
-
-function computeBackupHash(backup: ServiceBackupConfig): string {
-  return createHash('sha256').update(JSON.stringify(backup)).digest('hex')
-}
+import { readServiceMismatches, readServiceInfo, backupMismatches, hasBackup, describeServerBackup } from './service-drift.js'
+import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
 
 export async function ensurePostgres(
   ctx: Context,
@@ -42,41 +34,81 @@ export async function ensurePostgres(
   }
 }
 
+/**
+ * Converge each service's backup with what `postgres:info --format json`
+ * reports. Credentials are compared by fingerprint, so a rotated key is
+ * picked up, and are only ever passed to `:backup-auth` (masked in logs).
+ * Only `backup: false` removes a backup; an absent block leaves it alone.
+ */
 export async function ensurePostgresBackups(
   ctx: Context,
-  services: Record<string, PostgresConfig>
+  services: Record<string, PostgresConfig>,
+  opts: { prune?: boolean } = {}
 ): Promise<void> {
   for (const [name, config] of Object.entries(services)) {
-    if (!config.backup) continue
+    const backup = config.backup
+    if (backup === undefined && !opts.prune) continue
+    const info = await readServiceInfo(ctx, 'postgres', name)
+
+    if (backup === undefined) {
+      if (hasBackup(info)) {
+        logWarn('services', `${name}: has a backup the file does not declare (${describeServerBackup(info)}); --prune leaves it, set backup: false to remove it`)
+      }
+      continue
+    }
+
     logAction('services', `Configuring backup for ${name}`)
-    const hashKey = backupHashKey(name)
-    const desiredHash = computeBackupHash(config.backup)
-    const storedHash = await ctx.query('config:get', '--global', hashKey)
-    if (storedHash === desiredHash) { logSkip(); continue }
-    const { schedule, bucket, auth } = config.backup
-    // NOTE: do NOT call `postgres:backup-deauth` before `backup-auth`. The
-    // deauth command wipes the per-service backup/ directory and cron file,
-    // so if the subsequent auth/schedule calls fail the service is left with
-    // no backups at all. `backup-auth` overwrites existing credentials in
-    // place, which is what we want.
-    await ctx.run(
-      'postgres:backup-auth', name,
-      auth.access_key_id, auth.secret_access_key,
-      auth.region, auth.signature_version, auth.endpoint
-    )
-    await ctx.run('postgres:backup-schedule', name, schedule, bucket)
-    // Verify the schedule actually landed before persisting the hash —
-    // otherwise a silent failure would masquerade as "already configured" on
-    // the next run and mask a broken backup.
-    const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
-    if (!parseBackupSchedule(cronOutput)) {
-      throw new Error(
-        `Backup schedule for ${name} was not installed after backup-schedule ran`
+    const fields = new Set(backupMismatches(info, backup).map(m => m.field))
+    if (fields.size === 0) { logSkip(); continue }
+
+    if (backup === false) {
+      if (String(info['backup-schedule'] ?? '') !== '') await ctx.run('postgres:backup-unschedule', name)
+      // deauth removes the whole backup folder, credentials included
+      await ctx.run('postgres:backup-deauth', name)
+      logDone()
+      continue
+    }
+
+    const { schedule, bucket, auth } = backup
+    // NOTE: never call `postgres:backup-deauth` before `backup-auth`: deauth
+    // wipes the per-service backup directory and cron file, so a failed auth
+    // would leave no backups at all. `backup-auth` replaces the stored
+    // credentials in place.
+    if (fields.has('backup.auth')) {
+      await ctx.run(
+        'postgres:backup-auth', name,
+        auth.access_key_id, auth.secret_access_key,
+        auth.region, auth.signature_version, auth.endpoint
       )
     }
-    await ctx.run('config:set', '--global', `${hashKey}=${desiredHash}`)
+    if (fields.has('backup.schedule')) {
+      await ctx.run('postgres:backup-schedule', name, schedule, bucket)
+      // Check the schedule landed: a silent failure would otherwise leave no backups.
+      const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
+      if (!parseBackupSchedule(cronOutput)) {
+        throw new Error(`Backup schedule for ${name} was not installed after backup-schedule ran`)
+      }
+    } else if (fields.has('backup.bucket')) {
+      await ctx.run('postgres:set', name, 'backup-bucket', bucket)
+    }
     logDone()
   }
+}
+
+/**
+ * Unset the global `DOKKU_COMPOSE_BACKUP_HASH_*` keys earlier versions kept
+ * (Dokku merges global env into every app). Global unset never restarts apps.
+ */
+export async function removeBackupHashKeys(ctx: Context): Promise<void> {
+  const stale = staleBackupHashKeys(await readGlobalEnv(ctx))
+  if (stale.length === 0) return
+  logAction('global', `Removing ${stale.length} old backup hash key(s)`)
+  await ctx.run('config:unset', '--global', '--no-restart', ...stale)
+  logDone()
+}
+
+export function staleBackupHashKeys(env: Record<string, string>): string[] {
+  return Object.keys(env).filter(k => k.startsWith(BACKUP_HASH_PREFIX)).sort()
 }
 
 export async function destroyPostgres(
@@ -95,6 +127,7 @@ export async function destroyPostgres(
 function parseBackupSchedule(
   cronLine: string
 ): { schedule: string; bucket: string } | null {
+  // Used to check a schedule landed and for export only; drift reads postgres:info.
   // Format: "0 * * * * dokku /usr/bin/dokku postgres:backup <name> <bucket>"
   const parts = cronLine.trim().split(/\s+/)
   if (parts.length < 8) return null
