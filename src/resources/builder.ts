@@ -32,7 +32,9 @@ function parseBuildOptions(buildList: string[]): BuildOption[] {
 
 function parseBuildArgs(buildList: string[]): Record<string, string> {
   const args: Record<string, string> = {}
-  for (const o of parseBuildOptions(buildList)) args[o.key] = o.value
+  // A key stored more than once (older versions appended duplicates) reads as its values joined by a newline,
+  // which never equals a declared value, so it is drift until one option is left.
+  for (const o of parseBuildOptions(buildList)) args[o.key] = o.key in args ? `${args[o.key]}\n${o.value}` : o.value
   return args
 }
 
@@ -118,8 +120,7 @@ export const Builder: Resource<BuildConfig> = {
       // removes every stored option for its key (by exact stored text; `add`
       // appends without dedupe), then adds the new value.
       const stored = parseBuildOptions(await readBuildList(ctx, target))
-      const current: Record<string, string> = {}
-      for (const o of stored) current[o.key] = o.value
+      const current = parseBuildArgs(stored.map(o => o.raw))
       const changedKeys = new Set(Object.keys(after.args).filter(k => k in current && current[k] !== after.args![k]))
       if (changedKeys.size > 0) {
         for (const o of stored.filter(o => changedKeys.has(o.key))) {

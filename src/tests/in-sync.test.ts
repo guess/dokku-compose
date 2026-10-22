@@ -29,10 +29,6 @@ function nothingSet(name: string): Record<string, string> {
   }
 }
 
-function inSyncList(): string[] {
-  return JSON.parse(inSyncServer().queries['docker-options:report myapp --format json'])['build-list']
-}
-
 function inSyncServer(): FakeServer {
   const app = 'myapp'
   const worker = 'myapp-worker'
@@ -249,13 +245,23 @@ describe('a server whose state equals the file', () => {
       "docker-options:add myapp build '--build-arg NODE_ENV=production'",
       "docker-options:add myapp build '--build-arg '\\''API_URL=https://api.example.com/v1?debug=1'\\'''",
     ])
-    // The state those commands leave behind: a second run runs nothing.
-    const after = JSON.parse(server.queries[key])
-    after['build-list'] = inSyncList()
-    server.queries[key] = JSON.stringify(after)
+    // Apply the logged commands to the fake build-list: add appends, remove drops the matching entry.
+    const canon = (t: string) => t.replace(/^'(.*)'$/s, '$1').replace(/'\\''/g, "'")
+    const stored: string[] = JSON.parse(server.queries[key])['build-list']
+    for (const cmd of runner.dryRunLog) {
+      const m = cmd.match(/^docker-options:(add|remove) myapp build (.*)$/s)
+      if (!m) continue
+      const opt = canon(m[2])
+      const norm = (o: string) => o.replace(/'/g, '')
+      if (m[1] === 'add') stored.push(opt)
+      else stored.splice(stored.findIndex(o => norm(o) === norm(opt)), 1)
+    }
+    server.queries[key] = JSON.stringify({ ...JSON.parse(server.queries[key]), 'build-list': stored })
     const second = fakeContext(server)
     await runUp(second.ctx, loadConfig(FIXTURE), [])
     expect(second.runner.dryRunLog).toEqual([])
+    const keys = stored.filter(o => o.startsWith('--build-arg ')).map(o => o.replace(/^--build-arg '?([^=]+)=.*$/s, '$1'))
+    expect(keys.sort()).toEqual([...new Set(keys)].sort())
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.

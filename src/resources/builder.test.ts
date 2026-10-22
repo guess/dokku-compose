@@ -112,7 +112,7 @@ describe('Builder --prune', () => {
     const a = setup()
     await reconcile(Builder, a, 'myapp', { args: { A: '1' } })
     expect(a.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
-    const b = setup()
+    const b = setup(BUILD_LIST.filter(o => o !== '--build-arg B=2'))
     await reconcile(Builder, b, 'myapp', { args: { A: '1', MSG: 'hello big world', B: '3' } }, undefined, true)
     expect(b.commands.some(c => c[0] === 'docker-options:remove')).toBe(false)
   })
@@ -194,5 +194,33 @@ describe('Builder applies only what differs', () => {
     const ctx = setup(['--build-arg A=1', '--build-arg X=9'])
     await reconcile(Builder, ctx, 'myapp', { args: { A: '1' } })
     expect(ctx.commands).toEqual([])
+  })
+})
+
+describe('Builder with a key stored more than once', () => {
+  function setup() {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...a: string[]) =>
+      a.join(' ') === 'docker-options:report myapp --format json' ? JSON.stringify({ 'build-list': ['--build-arg B=2', '--build-arg B=3'] }) : '')
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+  const removeBoth = [
+    ['docker-options:remove', 'myapp', 'build', '--build-arg B=2'],
+    ['docker-options:remove', 'myapp', 'build', '--build-arg B=3'],
+  ]
+
+  for (const value of ['3', '2']) {
+    it(`declared equal to ${value === '3' ? 'the last' : 'the first'}: removes both, adds it once`, async () => {
+      const ctx = setup()
+      await reconcile(Builder, ctx, 'myapp', { args: { B: value } })
+      expect(ctx.commands).toEqual([...removeBoth, ['docker-options:add', 'myapp', 'build', `--build-arg B=${value}`]])
+    })
+  }
+
+  it('a new value under --prune: removes both, adds the new one once', async () => {
+    const ctx = setup()
+    await reconcile(Builder, ctx, 'myapp', { args: { B: '4' } }, undefined, true)
+    expect(ctx.commands).toEqual([...removeBoth, ['docker-options:add', 'myapp', 'build', '--build-arg B=4']])
   })
 })
