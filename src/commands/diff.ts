@@ -365,7 +365,12 @@ function formatChange(d: FeatureDiff): string {
   if (Array.isArray(d.desired) && Array.isArray(d.current)) {
     return `${(d.current as unknown[]).length} → ${(d.desired as unknown[]).length} items`
   }
-  return `${JSON.stringify(d.current)} → ${JSON.stringify(d.desired)}`
+  return `${JSON.stringify(d.current, showUnset)} → ${JSON.stringify(d.desired, showUnset)}`
+}
+
+// The env resource reads a marked key that is gone from the app as this sentinel.
+function showUnset(_key: string, value: unknown): unknown {
+  return value === '\u0000missing' ? '(unset)' : value
 }
 
 export function formatVerbose(diff: DiffResult): string {
@@ -389,9 +394,9 @@ export function formatVerbose(diff: DiffResult): string {
         continue
       }
       const currentLines = d.current !== undefined
-        ? JSON.stringify(d.current, null, 2).split('\n')
+        ? JSON.stringify(d.current, showUnset, 2).split('\n')
         : []
-      const desiredLines = JSON.stringify(d.desired, null, 2).split('\n')
+      const desiredLines = JSON.stringify(d.desired, showUnset, 2).split('\n')
       for (const line of currentLines) lines.push(chalk.red(`- ${line}`))
       for (const line of desiredLines) lines.push(chalk.green(`+ ${line}`))
       for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r} (not in the file)`))

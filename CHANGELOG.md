@@ -2,6 +2,27 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-22
+
+### Added
+
+- **`up --prune`** resets settings the file no longer declares (nginx, logs, registry, scheduler, ps, network, checks, build and env leftovers). `diff` is the preview; there is no prompt. It never destroys an app, service or network, never uninstalls a plugin and never changes `scale`.
+- **New `diff` `-` lines** for settings on the server that the file does not declare (shown by `diff --verbose` too).
+- **`ps:` and `scale:`** per-app keys (`ps:set` properties and `ps:scale`), applied with `--skip-deploy`. A `scale` count may be a `${VAR}` reference: numeric strings are coerced to integers.
+- Plugin version pins and `env` keys that are removed from the file are now really unset.
+
+### Changed (behaviour)
+
+- **A `${VAR}` value is always a string.** Keys and comments are not substituted.
+- **Env keys are really unset.** `env` is read as JSON, so Dokku with `config:export --format json` is required. Plugins are read with `plugin:list --format json`; output that is not a JSON array now fails the run instead of planning installs over installed plugins.
+- **Each step keeps going after a failure**; the run ends non-zero with a summary.
+- **Leftovers on the box no longer trigger nginx `proxy:build-config`.**
+- `diff --verbose` shows an env key that is marked but gone from the app as `(unset)`.
+
+### Known limit
+
+- Only keys named in `DOKKU_COMPOSE_MANAGED_KEYS` are unset. dokku-compose 0.12 and earlier rewrote that marker on every run, so keys removed from the file under those versions are orphaned (set on the app, absent from the marker). Unset them by hand once. See `docs/reference/config.md`.
+
 ## [0.12.0] - 2026-09-18
 
 ### Fixed

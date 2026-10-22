@@ -77,6 +77,18 @@ describe('docker_auth in schema', () => {
   })
 })
 
+describe('scale in schema', () => {
+  it('coerces numeric strings to integers', () => {
+    const r = parseConfig({ apps: { myapp: { scale: { web: '2', worker: 1 } } } })
+    expect(r.apps['myapp'].scale).toEqual({ web: 2, worker: 1 })
+  })
+  it('rejects non-numeric strings, negatives and empty strings', () => {
+    for (const v of ['x', '-1', '', '1.5', -1]) {
+      expect(() => parseConfig({ apps: { myapp: { scale: { web: v } } } })).toThrow()
+    }
+  })
+})
+
 describe('parseConfig', () => {
   it('parses minimal config', () => {
     const result = parseConfig({

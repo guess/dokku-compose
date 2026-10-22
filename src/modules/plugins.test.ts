@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { ensurePlugins, planPlugins } from './plugins.js'
+import { ensurePlugins, parsePluginList, planPlugins } from './plugins.js'
 
 describe('ensurePlugins', () => {
   it('installs plugin not yet installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.queryStrict = vi.fn().mockResolvedValue('')
+    runner.queryStrict = vi.fn().mockResolvedValue('[]')
     runner.run = vi.fn()
     const ctx = createContext(runner)
     await ensurePlugins(ctx, {
@@ -43,7 +43,7 @@ describe('ensurePlugins version pins', () => {
   }
 
   it('installs a missing plugin at its version with --committish', async () => {
-    const { ctx, runner } = setup('')
+    const { ctx, runner } = setup('[]')
     await ensurePlugins(ctx, { postgres: { url, version: '1.41.0' } })
     expect(runner.run).toHaveBeenCalledWith('plugin:install', url, '--committish', '1.41.0', '--name', 'postgres')
   })
@@ -119,5 +119,18 @@ describe('planPlugins', () => {
   it('never equates 1.2 with 1.2.0', () => {
     const out = JSON.stringify([{ name: 'a', version: '1.2.0' }])
     expect(planPlugins(out, { a: { url, version: '1.2' } })[0].action).toBe('unknown')
+  })
+})
+
+describe('parsePluginList strictness', () => {
+  it('throws on non-JSON output and plans nothing', () => {
+    expect(() => parsePluginList('  postgres  1.0.0 enabled')).toThrow(/plugin:list/)
+    expect(() => planPlugins('not json', { a: { url: 'https://example.com/p.git' } })).toThrow()
+  })
+  it('throws on JSON that is not an array', () => {
+    expect(() => parsePluginList('{"a":1}')).toThrow(/array/)
+  })
+  it('accepts an empty array', () => {
+    expect(parsePluginList('[]').size).toBe(0)
   })
 })
