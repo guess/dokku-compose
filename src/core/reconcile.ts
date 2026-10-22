@@ -16,13 +16,22 @@ export interface Resource<T = unknown> {
    * server but not in the desired map are left alone (never reported or removed).
    */
   additive?: boolean
+  /**
+   * Settings on the server that the file no longer declares (`desired` is
+   * undefined when the whole block is gone), as display labels. Computed only
+   * over the resource's settable keys, so read-only report lines never appear.
+   * `diff` shows them as `-`; nothing here removes them.
+   */
+  removals?(current: T, desired: T | undefined): string[]
 }
 
 export async function reconcile<T>(
   resource: Resource<T>,
   ctx: Context,
   target: string,
-  desired: T | undefined
+  desired: T | undefined,
+  /** Called with the removals found in the state this reconcile already read. */
+  onRemovals?: (removed: string[]) => void
 ): Promise<void> {
   if (desired === undefined) return
   logAction(target, `${resource.key}`)
@@ -34,6 +43,7 @@ export async function reconcile<T>(
   }
 
   const before = await resource.read(ctx, target)
+  if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
   const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
   if (!change.changed) {
     logSkip()

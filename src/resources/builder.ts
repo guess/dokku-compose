@@ -40,6 +40,12 @@ function buildConfigFromReports(
 
 export const Builder: Resource<BuildConfig> = {
   key: 'build',
+  additive: true,
+  // Build args (`--build-arg KEY=...` build docker options) whose KEY is not in `build.args`.
+  removals: (current, desired) =>
+    Object.keys(current?.args ?? {})
+      .filter(k => !(desired?.args && k in desired.args))
+      .map(k => `args.${k}`),
 
   async read(ctx: Context, target: string): Promise<BuildConfig> {
     const [builderRaw, dockerfileRaw, appJsonRaw, dockerOptsRaw] = await Promise.all([

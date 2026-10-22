@@ -62,3 +62,7 @@ apps:
 |-------|----------------|
 | `"nginx"` / `"caddy"` / `"haproxy"` / `"traefik"` | `proxy:report <app> --proxy-type` (check)<br>`proxy:set <app> <type>` (if changed) |
 | absent | no action |
+
+## Removal
+
+`proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal.

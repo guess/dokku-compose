@@ -1,0 +1,18 @@
+=====> myapp network information
+       Network attach post create:           app-net
+       Network attach post deploy:           
+       Network bind all interfaces:          
+       Network computed attach post create:  app-net
+       Network computed attach post deploy:  
+       Network computed bind all interfaces: false
+       Network computed initial network:     
+       Network computed tld:                 
+       Network global attach post create:    
+       Network global attach post deploy:    
+       Network global bind all interfaces:   
+       Network global initial network:       
+       Network global tld:                   
+       Network initial network:              
+       Network static web listener:          
+       Network tld:                          
+       Network web listeners:                172.17.0.2:5000

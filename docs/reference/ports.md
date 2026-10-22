@@ -35,3 +35,7 @@ On `down --force`, port mappings are cleared before the app is destroyed:
 | Phase | Dokku Command |
 |-------|---------------|
 | down | `ports:clear <app>` |
+
+## Removal
+
+`up` already removes a port mapping on the server that is missing from a declared `ports` list, and `diff` shows it with a red `-`. A `ports` key gone from the file is left alone.

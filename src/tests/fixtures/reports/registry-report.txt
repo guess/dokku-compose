@@ -1,0 +1,19 @@
+=====> myapp registry information
+       Registry auth servers:                 
+       Registry computed auth servers:        
+       Registry computed image repo:          dokku/myapp
+       Registry computed image repo template: 
+       Registry computed push extra tags:     
+       Registry computed push on release:     false
+       Registry computed server:              
+       Registry global auth servers:          
+       Registry global image repo template:   
+       Registry global push extra tags:       
+       Registry global push on release:       
+       Registry global server:                
+       Registry image repo:                   
+       Registry image repo template:          
+       Registry push extra tags:              
+       Registry push on release:              
+       Registry server:                       
+       Registry tag version:                  

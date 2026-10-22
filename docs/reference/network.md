@@ -98,3 +98,11 @@ Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when mu
 
 - Per-app: clears `attach-post-deploy` (if `networks:` was declared) and all `network:` map properties that were set.
 - Global: runs `network:destroy` for each network in the top-level `networks:` list.
+
+## Removal
+
+A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `--prune` (coming next) will remove it.
+
+`attach-post-deploy` belongs to `apps.<app>.networks`, so its removals are shown under `networks`, not under network properties. `web-listeners` and `static-web-listener` are read-only report lines and are never shown.
+
+Networks in `apps.<app>.networks` are replaced as a whole by `up`, so an attached network the file lacks is shown with `-` and removed by `up` when the key is present.

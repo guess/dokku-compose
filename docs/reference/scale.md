@@ -45,4 +45,8 @@ apps:
 | A property on the server is not listed | none (not shown or reset yet) |
 | `ps` absent | none |
 
-Only `procfile-path`, `restart-policy` and `stop-timeout-seconds` are accepted; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. A property set on the server but missing from the file is neither shown nor reset yet; that comes with diff removals and `--prune` in a later release.
+Only `procfile-path`, `restart-policy` and `stop-timeout-seconds` are accepted; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values.
+
+## Removal
+
+A `ps` property (`procfile-path`, `restart-policy`, `stop-timeout-seconds`) set on the server but absent from `apps.<app>.ps` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `--prune` (coming next) will remove it. `ps` read-only report fields (deployed, running, status, `computed-*`, `global-*`) are never shown. A process type only on the server is never shown or touched.

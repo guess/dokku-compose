@@ -30,6 +30,12 @@ function dockerOptsFromReport(report: Record<string, string>): DockerOpts {
 
 export const DockerOptions: Resource<DockerOpts> = {
   key: 'docker_options',
+  // Pruned by `up` within a declared block only, so a missing block is not shown.
+  removals: (current, desired) => !desired ? [] :
+    PHASES.flatMap(phase => {
+      const wanted = new Set(desired?.[phase] ?? [])
+      return (current?.[phase] ?? []).filter(o => !wanted.has(o)).map(o => `${phase}: ${o}`)
+    }),
 
   async read(ctx: Context, target: string): Promise<DockerOpts> {
     const raw = await ctx.query('docker-options:report', target)

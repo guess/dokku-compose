@@ -32,6 +32,10 @@ type NetworkPropsConfig = {
 
 export const NetworkProps: Resource<NetworkPropsConfig> = {
   key: 'network',
+  additive: true,
+  removals: (current, desired) =>
+    (Object.keys(current ?? {}) as (keyof NetworkPropsConfig)[])
+      .filter(k => !(desired && k in desired)),
   read: async (ctx, target) => {
     const raw = await ctx.query('network:report', target)
     const report = parseReport(raw, 'network')

@@ -312,3 +312,134 @@ describe('formatVerbose', () => {
     expect(diff.inSync).toBe(true)
   })
 })
+
+describe('computeDiff — settings removed from the file', () => {
+  const nginxBulk = '=====> api nginx information\n       Nginx client max body size:   50m\n       Nginx proxy read timeout:   60s\n'
+
+  it('nginx: a key only on the box is "-" and drift; the declared one is in sync', async () => {
+    const ctx = makeCtx({ 'nginx:report': nginxBulk })
+    const diff = await computeDiff(ctx, { apps: { api: { nginx: { 'client-max-body-size': '50m' } } } })
+    expect(diff.apps.api.nginx).toMatchObject({ status: 'extra', removed: ['proxy-read-timeout'] })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('- nginx: not in the file: proxy-read-timeout')
+  })
+
+  it('nginx: whole block gone from the file', async () => {
+    const ctx = makeCtx({ 'nginx:report': nginxBulk })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.nginx).toMatchObject({ status: 'extra', removed: ['client-max-body-size', 'proxy-read-timeout'] })
+    expect(diff.inSync).toBe(false)
+  })
+
+  it('nginx: nothing set on the box and no block is in sync', async () => {
+    const diff = await computeDiff(makeCtx({}), { apps: { api: {} } })
+    expect(diff.apps.api.nginx).toBeUndefined()
+    expect(diff.inSync).toBe(true)
+  })
+
+  it('nginx: a changed value plus a removal stays "changed" and lists the removal', async () => {
+    const ctx = makeCtx({ 'nginx:report': nginxBulk })
+    const diff = await computeDiff(ctx, { apps: { api: { nginx: { 'client-max-body-size': '1m' } } } })
+    expect(diff.apps.api.nginx).toMatchObject({ status: 'changed', removed: ['proxy-read-timeout'] })
+  })
+
+  it('logs and registry', async () => {
+    const ctx = makeCtx({
+      'logs:report': '=====> api logs information\n       Logs max size:  10m\n',
+      'registry:report': '=====> api registry information\n       Registry server:  ghcr.io\n',
+    })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.logs).toMatchObject({ status: 'extra', removed: ['max-size'] })
+    expect(diff.apps.api.registry).toMatchObject({ status: 'extra', removed: ['server'] })
+  })
+
+  it('scheduler', async () => {
+    const ctx = makeCtx({ 'scheduler:report': '=====> api scheduler information\n       Scheduler selected:  docker-local\n' })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.scheduler).toMatchObject({ status: 'extra', removed: ['scheduler'] })
+  })
+
+  it('proxy: "Proxy enabled" on the box is never "-"', async () => {
+    const ctx = makeCtx({ 'proxy:report': '=====> api proxy information\n       Proxy enabled:  true\n' })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.proxy).toBeUndefined()
+    expect(diff.inSync).toBe(true)
+  })
+
+  it('checks (applied without diffing): leftover settings are "-"', async () => {
+    const ctx = makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n       Checks computed wait to retire: 5\n' })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.checks).toMatchObject({ status: 'extra', removed: ['wait-to-retire'] })
+    const declared = await computeDiff(makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n' }), { apps: { api: { checks: { 'wait-to-retire': 10 } } } })
+    expect(declared.apps.api.checks).toBeUndefined()
+    expect(declared.inSync).toBe(true)
+  })
+
+  it('ps: allowlisted keys are "-", read-only report fields never', async () => {
+    const report = JSON.stringify({ 'restart-policy': 'always', deployed: 'true', running: 'true', 'computed-restart-policy': 'always' })
+    const diff = await computeDiff(makeCtx({ 'ps:report api --format json': report }), { apps: { api: {} } })
+    expect(diff.apps.api.ps).toMatchObject({ status: 'extra', removed: ['restart-policy'] })
+    const readOnly = JSON.stringify({ deployed: 'true', running: 'true', 'status-web-1': 'running' })
+    const clean = await computeDiff(makeCtx({ 'ps:report api --format json': readOnly }), { apps: { api: {} } })
+    expect(clean.apps.api.ps).toBeUndefined()
+    expect(clean.inSync).toBe(true)
+  })
+
+  it('ps: an unreadable report while the block is gone is a warning, not a failed diff', async () => {
+    const ctx = makeCtx({})
+    ctx.queryStrict = vi.fn(async () => { throw new Error('boom') })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.readWarnings.join('\n')).toContain("'ps' for app 'api'")
+  })
+
+  it('network properties', async () => {
+    const ctx = makeCtx({ 'network:report': '=====> api network information\n       Network tld:  internal\n       Network web listeners:  1.2.3.4:5000\n' })
+    const diff = await computeDiff(ctx, { apps: { api: {} } })
+    expect(diff.apps.api.network).toMatchObject({ status: 'extra', removed: ['tld'] })
+  })
+
+  it('build args: a --build-arg not in build.args is "-"', async () => {
+    const ctx = makeCtx({
+      'builder:report': '=====> api builder information\n       Builder build dir:  apps/x\n',
+      'docker-options:report': '=====> api docker-options information\n       Docker options build:  --build-arg A=1 --build-arg B=2\n',
+    })
+    const diff = await computeDiff(ctx, { apps: { api: { build: { args: { A: '1' } } } } })
+    expect(diff.apps.api.build).toMatchObject({ status: 'extra', removed: ['args.B'] })
+    const gone = await computeDiff(ctx, { apps: { api: {} } })
+    expect(gone.apps.api.build).toMatchObject({ status: 'extra', removed: ['args.A', 'args.B'] })
+  })
+
+  it('env: managed keys gone from the file are "-"', async () => {
+    const ctx = makeCtx({
+      'config:get api DOKKU_COMPOSE_MANAGED_KEYS': 'A,B',
+      'config:export --format json api': JSON.stringify({ A: '1', B: '2' }),
+    })
+    const diff = await computeDiff(ctx, { apps: { api: { env: { A: '1' } } } })
+    expect(diff.apps.api.env).toMatchObject({ status: 'extra', removed: ['B'] })
+    const gone = await computeDiff(ctx, { apps: { api: {} } })
+    expect(gone.apps.api.env).toMatchObject({ status: 'extra', removed: ['A', 'B'] })
+  })
+
+  it('lists: a domain only on the box is "-"', async () => {
+    const ctx = makeCtx({ 'domains:report': domainsReport('api', 'a.example.com b.example.com') })
+    const diff = await computeDiff(ctx, { apps: { api: { domains: ['a.example.com'] } } })
+    expect(diff.apps.api.domains).toMatchObject({ status: 'extra', removed: ['b.example.com'] })
+  })
+
+  it('links: warns when the file has no links: but the box has links', async () => {
+    const ctx = makeCtx({}, { 'postgres:linked db api': true })
+    const diff = await computeDiff(ctx, { postgres: { db: {} }, apps: { api: {} } })
+    expect(diff.apps.api.links).toMatchObject({ status: 'extra', removed: ['db'] })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('up will unlink')
+    const declared = await computeDiff(makeCtx({}, { 'postgres:linked db api': true }), { postgres: { db: {} }, apps: { api: { links: ['db'] } } })
+    expect(declared.apps.api.links).toBeUndefined()
+  })
+
+  it('verbose prints "-" lines for removals', async () => {
+    const ctx = makeCtx({ 'nginx:report': nginxBulk })
+    const out = formatVerbose(await computeDiff(ctx, { apps: { api: {} } }))
+    expect(out).toContain('@@ app: api / nginx @@')
+    expect(out).toContain('- proxy-read-timeout')
+  })
+})

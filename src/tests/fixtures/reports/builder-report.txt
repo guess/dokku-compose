@@ -1,0 +1,11 @@
+=====> myapp builder information
+       Builder build dir:             
+       Builder computed build dir:    
+       Builder computed selected:     
+       Builder computed skip cleanup: false
+       Builder detected:              dockerfile
+       Builder global build dir:      
+       Builder global selected:       
+       Builder global skip cleanup:   
+       Builder selected:              
+       Builder skip cleanup:          

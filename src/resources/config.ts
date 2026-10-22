@@ -7,6 +7,8 @@ const MISSING = '\u0000missing'
 
 export const Config: Resource<Record<string, string | number | boolean>> = {
   key: 'env',
+  removals: (current, desired) =>
+    Object.keys(current ?? {}).filter(k => !(desired && typeof desired === 'object' && k in desired)),
   read: async (ctx, target) => {
     const managedRaw = await ctx.query('config:get', target, MANAGED_KEYS_VAR)
     const managedKeys = managedRaw.trim() ? managedRaw.trim().split(',').filter(Boolean) : []

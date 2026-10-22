@@ -1,6 +1,7 @@
 import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { reconcile } from '../core/reconcile.js'
+import type { Resource } from '../core/reconcile.js'
 import { Apps } from '../resources/lifecycle.js'
 import { Domains, Ports, Storage } from '../resources/lists.js'
 import { Nginx, Logs, Registry, Scheduler } from '../resources/properties.js'
@@ -24,7 +25,7 @@ import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
 import { ensureGlobalLogs } from '../modules/logs.js'
 import { ensureGlobalNginx } from '../modules/nginx.js'
-import { logError } from '../core/logger.js'
+import { logError, logWarn } from '../core/logger.js'
 import type { AppConfig } from '../core/schema.js'
 
 export interface RunUpOptions {
@@ -56,6 +57,10 @@ async function processApp(
   // A resource that throws is recorded and the rest of the app still runs,
   // so one broken resource cannot hide another (e.g. env never being reached).
   const errors: unknown[] = []
+  // Settings that left a declared block stay on the box (env keys are always
+  // unset; lists are pruned). Counted from reads reconcile already made.
+  let leftOnServer = 0
+  const count = (removed: string[]) => { leftOnServer += removed.length }
   const step = async (fn: () => Promise<void>): Promise<void> => {
     try {
       await fn()
@@ -74,7 +79,7 @@ async function processApp(
   // Networking
   await step(() => reconcile(Domains, ctx, app, appConfig.domains))
   await step(() => reconcile(Networks, ctx, app, appConfig.networks))
-  await step(() => reconcile(NetworkProps, ctx, app, appConfig.network))
+  await step(() => reconcile(NetworkProps, ctx, app, appConfig.network, count))
   await step(() => reconcile(Proxy, ctx, app, appConfig.proxy?.enabled))
   await step(() => reconcile(Ports, ctx, app, appConfig.ports))
 
@@ -86,19 +91,23 @@ async function processApp(
   // Configuration
   await step(() => reconcile(Certs, ctx, app, appConfig.ssl))
   await step(() => reconcile(Storage, ctx, app, appConfig.storage))
-  await step(() => reconcile(Nginx, ctx, app, appConfig.nginx))
+  await step(() => reconcile(Nginx, ctx, app, appConfig.nginx, count))
   await step(() => reconcile(Checks, ctx, app, appConfig.checks))
-  await step(() => reconcile(Logs, ctx, app, appConfig.logs))
-  await step(() => reconcile(Registry, ctx, app, appConfig.registry))
-  await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler))
-  await step(() => reconcile(Ps, ctx, app, appConfig.ps))
+  await step(() => reconcile(Logs, ctx, app, appConfig.logs, count))
+  await step(() => reconcile(Registry, ctx, app, appConfig.registry, count))
+  await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler, count))
+  await step(() => reconcile(Ps, ctx, app, appConfig.ps, count))
   await step(() => reconcile(Scale, ctx, app, appConfig.scale))
   await step(() => reconcile(ConfigResource, ctx, app, appConfig.env || {}))
 
   // Build
-  await step(() => reconcile(Builder, ctx, app, appConfig.build))
+  await step(() => reconcile(Builder, ctx, app, appConfig.build, count))
   await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
+
+  if (leftOnServer > 0) {
+    logWarn(app, `${leftOnServer} setting(s) no longer in the compose file were left on the server; run 'dokku-compose diff' to see them`)
+  }
 
   if (errors.length > 0) throw new AppStepsError(errors)
 }

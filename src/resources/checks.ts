@@ -1,5 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { Change } from '../core/change.js'
+import type { Context } from '../core/context.js'
+import { parseReport } from './parsers.js'
 
 type ChecksConfig = false | {
   disabled?: string[]
@@ -10,7 +12,21 @@ type ChecksConfig = false | {
 export const Checks: Resource<ChecksConfig> = {
   key: 'checks',
   forceApply: true,
-  read: async () => ({} as ChecksConfig),
+  // Applying never reads (forceApply); the read only finds settings to report as removed.
+  // Settable state: the per-process lists and `wait-to-retire`. A list of "none" is empty.
+  read: async (ctx: Context, target: string) => {
+    const report = parseReport(await ctx.query('checks:report', target), 'checks')
+    const current: Record<string, string> = {}
+    for (const [reportKey, key] of [['disabled-list', 'disabled'], ['skipped-list', 'skipped']]) {
+      const v = report[reportKey]
+      if (v && v !== 'none' && v !== '_all_') current[key] = v
+    }
+    if (report['wait-to-retire']) current['wait-to-retire'] = report['wait-to-retire']
+    return current as ChecksConfig
+  },
+  removals: (current, desired) =>
+    desired === false ? [] :
+    Object.keys(current || {}).filter(k => !(desired && k in desired)),
   onChange: async (ctx, target, { after }: Change<ChecksConfig>) => {
     if (after === false) {
       await ctx.run('checks:disable', target)

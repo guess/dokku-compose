@@ -1,0 +1,6 @@
+=====> myapp checks information
+       Checks computed wait to retire: 60
+       Checks disabled list:           none
+       Checks global wait to retire:   
+       Checks skipped list:            none
+       Checks wait to retire:          

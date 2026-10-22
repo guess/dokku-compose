@@ -49,3 +49,7 @@ env:
 ```
 
 `config:set --global KEY=VAL...`. Global variables are only set, never unset by removal, and are inherited by every app (app values take precedence). `env: false` is a no-op.
+
+## Removal
+
+A managed key removed from `env:` is unset by `up` (also when `env:` is gone), and `diff` shows it with a red `-` and counts it as drift. Keys outside `DOKKU_COMPOSE_MANAGED_KEYS` are never shown or touched.

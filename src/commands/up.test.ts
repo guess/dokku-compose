@@ -197,3 +197,81 @@ describe('runUp', () => {
     expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'funqtion')
   })
 })
+
+describe('runUp — settings removed from the file', () => {
+  it('leaves non-env removals in place and prints one line per app with the count', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
+    runner.run = vi.fn()
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      if (args[0] === 'nginx:report') return '       Nginx proxy read timeout: 60s\n       Nginx client max body size: 1m\n'
+      if (args[0] === 'logs:report') return '       Logs max size: 10m\n'
+      return ''
+    })
+    stubStrict(runner)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await runUp(createContext(runner), { apps: { web: { nginx: { 'client-max-body-size': '1m' }, logs: {} } } }, [])
+      const lines = warn.mock.calls.map(c => String(c[0]))
+      expect(lines).toHaveLength(1)
+      const reads = (runner.query as any).mock.calls.map((c: string[]) => c.join(' '))
+      expect(reads.filter((r: string) => r === 'nginx:report web')).toHaveLength(1)
+      expect(lines[0]).toContain('2 setting(s)')
+      expect(lines[0]).toContain('dokku-compose diff')
+      const cmds = (runner.run as any).mock.calls.map((c: string[]) => c[0])
+      expect(cmds.filter((c: string) => /:set$|:unset$/.test(c))).toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('prints nothing when the box has no leftovers', async () => {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
+    runner.run = vi.fn()
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.35.12' : '')
+    stubStrict(runner)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await runUp(createContext(runner), { apps: { web: {} } }, [])
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      warn.mockRestore()
+    }
+  })
+})
+
+describe('runUp — hint scope', () => {
+  async function upWithLeftovers(apps: any) {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
+    runner.run = vi.fn()
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.35.12'
+      if (args[0] === 'nginx:report') return '       Nginx proxy read timeout: 60s\n'
+      if (args[0] === 'checks:report') return '       Checks wait to retire: 30\n'
+      return ''
+    })
+    stubStrict(runner)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      await runUp(createContext(runner), { apps }, [])
+      return { warns: warn.mock.calls.map(c => String(c[0])), reads: (runner.query as any).mock.calls.map((c: string[]) => c[0]) }
+    } finally {
+      warn.mockRestore()
+    }
+  }
+
+  it('a removed whole block gets no hint and no extra report read (diff is the full view)', async () => {
+    const { warns, reads } = await upWithLeftovers({ web: {} })
+    expect(warns).toEqual([])
+    expect(reads).not.toContain('nginx:report')
+  })
+
+  it('checks is applied without being read, so up never reads or counts its leftovers', async () => {
+    const { warns, reads } = await upWithLeftovers({ web: { checks: { 'wait-to-retire': 10 } } })
+    expect(warns).toEqual([])
+    expect(reads).not.toContain('checks:report')
+  })
+})

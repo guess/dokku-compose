@@ -27,3 +27,7 @@ apps:
 |-------|----------------|
 | `[list]` | `docker-options:clear <app> <phase>`<br>`docker-options:add <app> <phase> <option>` (per entry) |
 | absent | no action |
+
+## Removal
+
+`up` already removes an option on the server that is missing from a declared `docker_options` block, and `diff` shows it with a red `-`. A `docker_options` block gone from the file is left alone.
