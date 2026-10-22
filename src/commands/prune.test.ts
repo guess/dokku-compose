@@ -34,7 +34,7 @@ function fakeBox(dryRun = false) {
     if (c.startsWith('scheduler:report')) return section('scheduler', 'Scheduler', { selected: st.scheduler })
     if (c.startsWith('network:report')) return section('network', 'Network', st.network)
     if (c.startsWith('checks:report')) return section('checks', 'Checks', { 'disabled list': [...st.disabled].join(',') || 'none', 'skipped list': [...st.skipped].join(',') || 'none', 'wait to retire': st.wait })
-    if (c.startsWith('docker-options:report')) return `=====> myapp docker-options information\n       Docker options build: ${st.build.join(' ')}`
+    if (c.startsWith('docker-options:report')) return JSON.stringify({ 'build-list': st.build })
     if (c.startsWith('ps:report')) return JSON.stringify(st.ps)
     if (c === 'plugin:list' || c.startsWith('plugin:list')) return '[]'
     return ''

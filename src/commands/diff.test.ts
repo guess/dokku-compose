@@ -402,7 +402,7 @@ describe('computeDiff — settings removed from the file', () => {
   it('build args: a --build-arg not in build.args is "-"', async () => {
     const ctx = makeCtx({
       'builder:report': '=====> api builder information\n       Builder build dir:  apps/x\n',
-      'docker-options:report': '=====> api docker-options information\n       Docker options build:  --build-arg A=1 --build-arg B=2\n',
+      'docker-options:report api --format json': JSON.stringify({ 'build-list': ['--build-arg A=1', '--build-arg B=2'] }),
     })
     const diff = await computeDiff(ctx, { apps: { api: { build: { args: { A: '1' } } } } })
     expect(diff.apps.api.build).toMatchObject({ status: 'extra', removed: ['args.B'] })

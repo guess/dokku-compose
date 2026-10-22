@@ -76,4 +76,6 @@ apps:
 
 ## Removal
 
+Build args are read from the `build-list` of `docker-options:report <app> --format json` (Dokku 0.38+), which holds each stored option's exact text. A value with spaces, one containing ` --x`, or a short flag such as `-t x` stored beside a build arg is therefore read as written: it is not re-added on `up`, and `--prune` removes it by its exact text.
+
 A build arg (a `--build-arg KEY=...` build docker option) whose KEY is not in `build.args` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` removes it with `docker-options:remove <app> build "--build-arg KEY=VALUE"`, for exactly the stale keys; other build options are untouched.

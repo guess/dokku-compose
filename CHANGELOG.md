@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option's exact text) instead of splitting the text report. A value containing ` --x`, a short flag stored after a build arg, and a value with spaces are no longer re-added on every `up`, and `up --prune` removes them exactly. `diff` now reads each app's report separately for build args.
+
 ## [0.13.1] - 2026-10-22
 
 ### Changed (behaviour)

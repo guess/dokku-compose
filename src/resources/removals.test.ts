@@ -118,7 +118,7 @@ describe('network properties removals', () => {
 describe('build args removals', () => {
   const reports = {
     'builder:report myapp': '       Builder build dir: apps/x\n       Builder detected: dockerfile\n',
-    'docker-options:report myapp': '       Docker options build: --build-arg A=1 --build-arg B=2 --link x:y\n       Docker options deploy: --shm-size 1g\n',
+    'docker-options:report myapp --format json': JSON.stringify({ 'build-list': ['--build-arg A=1', '--build-arg B=2', '--link x:y'], 'deploy-list': ['--shm-size 1g'] }),
   }
 
   it('a --build-arg whose KEY is not in build.args is removed; other build options never', async () => {
