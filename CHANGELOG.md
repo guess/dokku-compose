@@ -8,6 +8,7 @@
 
 ### Fixed
 
+- **`domains: false` on an app no longer crashes `up`.** `up` reads `domains:report <app> --domains-app-enabled` and runs `domains:disable` only when the app's domains are enabled, nothing when they are already disabled. Going from `false` to a list runs `domains:enable` then `domains:set`. `diff` shows the enabled state and `export` writes `domains: false` for a disabled app.
 - **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option as Dokku stored it) instead of splitting the text report, and are added with the `KEY=VALUE` word shell-quoted so Dokku stores it as one word. A value containing ` --x`, `-t x` stored beside a build arg, spaces, `?`, `$` or a quote is no longer re-added on every `up`, and `up --prune` removes a stale one by its stored text. `diff` and `export` read build settings per app.
 
 ### Changed (behaviour)

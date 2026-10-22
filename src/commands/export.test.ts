@@ -108,4 +108,31 @@ describe('runExport', () => {
     const result = await runExport(runner, {})
     expect(result.apps.myapp.logs).toEqual({ 'max-size': '10m' })
   })
+
+  const exportRunner = (domainsReport: string) => {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'apps:list') return 'myapp'
+      if (args.join(' ') === 'domains:report') return domainsReport
+      return emptyAnswer(...args) ?? ''
+    })
+    runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
+    return runner
+  }
+
+  it('writes domains: false for an app whose domains are disabled', async () => {
+    const result = await runExport(exportRunner(
+      '=====> myapp domains information\n       Domains app enabled:          false\n       Domains app vhosts:\n'), {})
+    expect(result.apps.myapp.domains).toBe(false)
+  })
+
+  it('leaves out an app\'s domains, without failing, when its enabled value is garbled', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await runExport(exportRunner(
+      '=====> myapp domains information\n       Domains app enabled:          ???\n       Domains app vhosts:          a.example.com\n'), {})
+    warn.mockRestore()
+    expect(Object.keys(result.apps)).toContain('myapp')
+  })
 })

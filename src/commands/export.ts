@@ -6,6 +6,7 @@ import { exportPostgres } from '../modules/postgres.js'
 import { exportRedis } from '../modules/redis.js'
 import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
+import { logWarn } from '../core/logger.js'
 import { assertDokkuSupported } from '../modules/version.js'
 
 export interface ExportOptions {
@@ -36,7 +37,8 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
     ALL_APP_RESOURCES
       .filter(r => !r.forceApply && !r.key.startsWith('_') && r.readAll)
       .map(async r => {
-        prefetched.set(r.key, await r.readAll!(ctx))
+        // A bulk read that fails falls back to the per-app read below.
+        try { prefetched.set(r.key, await r.readAll!(ctx)) } catch { /* per-app fallback */ }
       })
   )
 
@@ -52,7 +54,13 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
       if (resource.key === 'checks') continue
 
       const bulk = prefetched.get(resource.key)
-      const value = bulk ? bulk.get(app) : await resource.read(ctx, app)
+      let value: unknown
+      try {
+        value = bulk ? bulk.get(app) : await resource.read(ctx, app)
+      } catch (err) {
+        logWarn(app, `could not read '${resource.key}', left out of the export: ${err instanceof Error ? err.message : String(err)}`)
+        continue
+      }
 
       // Skip empty values
       if (value === undefined || value === null || value === '') continue

@@ -48,6 +48,7 @@ export function fakeContext(server: FakeServer): { ctx: Context; runner: Runner 
 export function emptyAnswer(...args: string[]): string | undefined {
   const key = args.join(' ')
   if (/^certs:report \S+ --ssl-enabled$/.test(key)) return 'false'
+  if (/^domains:report \S+ --domains-app-enabled$/.test(key)) return 'true'
   if (key === 'logs:report --global --format json') return logsGlobalJson()
   if (key === 'nginx:report --global --format json') return nginxGlobalJson()
   if (/^logs:report \S+ --format json$/.test(key)) return logsAppJson()

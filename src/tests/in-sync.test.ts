@@ -65,6 +65,7 @@ function inSyncServer(): FakeServer {
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
 
       // myapp
+      [`domains:report ${app} --domains-app-enabled`]: 'true',
       [`domains:report ${app} --domains-app-vhosts`]: 'myapp.example.com www.myapp.example.com',
       [`network:report ${app} --network-attach-post-deploy`]: 'backend-net',
       [`network:report ${app}`]: report(app, 'network', {
@@ -135,6 +136,7 @@ function inSyncServer(): FakeServer {
         'Checks disabled list': '_all_',
         'Checks skipped list': 'none',
       }),
+      [`domains:report ${worker} --domains-app-enabled`]: 'false',
       [`git:report ${worker} --git-deploy-branch`]: 'release',
       [`config:get ${worker} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
       ...nothingSet(worker),
@@ -175,6 +177,19 @@ describe('a server whose state equals the file', () => {
   it('up --dry-run --prune runs no command', async () => {
     const { ctx, runner } = fakeContext(inSyncServer())
     await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('an app whose domains are enabled but declared false shows in diff, and up disables exactly it', async () => {
+    const server = inSyncServer()
+    server.queries['domains:report myapp-worker --domains-app-enabled'] = 'true'
+    server.queries['domains:report myapp-worker --domains-app-vhosts'] = 'w.example.com'
+    const { ctx, runner } = fakeContext(server)
+    const diff = await computeDiff(ctx, loadConfig(FIXTURE))
+    expect(diff.apps['myapp-worker'].domains).toMatchObject({ status: 'changed', desired: false, current: ['w.example.com'] })
+    const second = fakeContext(server)
+    await runUp(second.ctx, loadConfig(FIXTURE), [])
+    expect(second.runner.dryRunLog).toEqual(['domains:disable myapp-worker'])
     expect(runner.dryRunLog).toEqual([])
   })
 
