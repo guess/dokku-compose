@@ -1,4 +1,4 @@
-import { normalizeLink, linkEnvVar, readLinkOptions, readEnv, resolveServicePlugin, type EnvCache } from '../modules/links.js'
+import { normalizeLink, linkEnvVar, readLinkOptions, readEnv, resolveServicePlugin, readServiceLinks, servicesToUnlink, type EnvCache } from '../modules/links.js'
 import type { Context } from '../core/context.js'
 import type { Config, AppConfig, PostgresConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
@@ -273,17 +273,20 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
     }
 
-    // `up` unlinks every service an app does not list under `links:`.
-    if (appConfig.links === undefined && appExists.get(app)) {
-      const linked: string[] = []
-      for (const [plugin, services] of [['postgres', config.postgres], ['redis', config.redis]] as const) {
-        for (const svc of Object.keys(services ?? {})) {
-          if (await ctx.check(`${plugin}:linked`, svc, app)) linked.push(svc)
+    // Services `up` unlinks: linked on the box, absent from the app's `links:`
+    // (every one of them when the app has no `links:` at all).
+    if (appExists.get(app) && (config.postgres || config.redis)) {
+      const unlink = servicesToUnlink(await readServiceLinks(ctx, app, appConfig.links ?? [], config)).map(s => s.service)
+      if (appConfig.links === undefined) {
+        if (unlink.length > 0) {
+          appDiff['links'] = { status: 'extra', current: unlink, removed: unlink, note: 'no links: in the file; up will unlink these' }
+          result.inSync = false
         }
-      }
-      if (linked.length > 0) {
-        appDiff['links'] = { status: 'extra', current: linked, removed: linked, note: 'no links: in the file; up will unlink these' }
-        result.inSync = false
+      } else {
+        for (const service of unlink) {
+          appDiff[`links:${service}`] = { status: 'extra', current: service, removed: [service], note: 'up unlinks' }
+          result.inSync = false
+        }
       }
     }
 

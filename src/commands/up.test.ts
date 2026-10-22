@@ -3,6 +3,7 @@ import { createRunner, DokkuCommandError } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { runUp, UpFailedError } from './up.js'
 import { loadConfig } from '../core/config.js'
+import { ConfigSchema } from '../core/schema.js'
 import path from 'path'
 import { emptyAnswer } from '../tests/fake-server.js'
 
@@ -67,6 +68,40 @@ describe('runUp', () => {
     const runCalls = runner.run.mock.calls.map((c: string[]) => c.join(' '))
     expect(runCalls).not.toContainEqual(expect.stringContaining('apps:create'))
     expect(runCalls).not.toContainEqual(expect.stringContaining('network:create'))
+  })
+
+  it('dry-run plans the backup of a postgres service it would create, without reading it', async () => {
+    const runner = createRunner({ dryRun: true })
+    runner.check = vi.fn(async () => false)
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args.join(' ') === 'version') return 'dokku version 0.38.31'
+      return emptyAnswer(...args) ?? ''
+    })
+    runner.run = vi.fn()
+    stubStrict(runner)
+    const lenient = runner.queryStrict
+    runner.queryStrict = vi.fn(async (...args: string[]) => {
+      // Dokku errors on the info of a service that does not exist.
+      if (args[0] === 'postgres:info') throw new Error('Postgres service new-db does not exist')
+      return lenient(...args)
+    })
+    const config = ConfigSchema.parse({
+      apps: {},
+      postgres: {
+        'new-db': {
+          backup: {
+            schedule: '0 * * * *',
+            bucket: 'backups/new-db',
+            auth: { access_key_id: 'K', secret_access_key: 'S', region: 'auto', signature_version: 's3v4', endpoint: 'https://r2.example.com' },
+          },
+        },
+      },
+    })
+    await runUp(createContext(runner), config, [], { dryRun: true })
+    const runCalls = runner.run.mock.calls.map((c: string[]) => c.join(' '))
+    expect(runCalls).toContain('postgres:create new-db')
+    expect(runCalls).toContain('postgres:backup-auth new-db K S auto s3v4 https://r2.example.com')
+    expect(runCalls).toContain('postgres:backup-schedule new-db 0 * * * * backups/new-db')
   })
 
   it('filters to specific apps when appFilter provided', async () => {

@@ -435,6 +435,14 @@ describe('computeDiff — settings removed from the file', () => {
     expect(declared.apps.api.links).toBeUndefined()
   })
 
+  it('links: shows a declared service linked on the box but missing from the app links: as extra', async () => {
+    const ctx = makeCtx({}, { 'postgres:linked db api': true, 'redis:linked cache api': true })
+    const diff = await computeDiff(ctx, { postgres: { db: {} }, redis: { cache: {} }, apps: { api: { links: ['db'] } } })
+    expect(diff.apps.api['links:cache']).toMatchObject({ status: 'extra', current: 'cache', removed: ['cache'], note: 'up unlinks' })
+    expect(diff.apps.api['links:db']).toBeUndefined()
+    expect(diff.inSync).toBe(false)
+  })
+
   it('verbose renders a marked key gone from the app as (unset)', async () => {
     const ctx = makeCtx({
       'config:get api DOKKU_COMPOSE_MANAGED_KEYS': 'A',

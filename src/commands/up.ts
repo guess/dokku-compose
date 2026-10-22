@@ -187,9 +187,14 @@ async function runUpPhases(
   if (config.networks) await ensureNetworks(ctx, config.networks)
 
   // Phase 4: Services
-  if (config.postgres) await ensurePostgres(ctx, config.postgres)
+  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
   if (config.redis) await ensureRedis(ctx, config.redis)
-  if (config.postgres) await ensurePostgresBackups(ctx, config.postgres, { prune: opts.prune })
+  if (config.postgres) {
+    await ensurePostgresBackups(ctx, config.postgres, {
+      prune: opts.prune,
+      dryRunCreated: opts.dryRun ? createdPostgres : undefined,
+    })
+  }
   await removeBackupHashKeys(ctx)
 
   // Phase 5: Per-app. Default (documented) behaviour is to continue to the

@@ -16,7 +16,7 @@ Every command that talks to a server (`up`, `diff`, `down`, `export`, `ps`)
 runs `dokku version` before any other Dokku call and stops on an older server:
 
 ```
-dokku-compose 0.13.1 needs Dokku >= 0.38.29; this server runs 0.37.9. Upgrade Dokku first.
+dokku-compose 0.14.0 needs Dokku >= 0.38.29; this server runs 0.37.9. Upgrade Dokku first.
 ```
 
 `validate` and `init` never touch a server and are not checked.

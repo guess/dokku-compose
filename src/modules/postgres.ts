@@ -7,7 +7,8 @@ import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
 export async function ensurePostgres(
   ctx: Context,
   services: Record<string, PostgresConfig>
-): Promise<void> {
+): Promise<Set<string>> {
+  const created = new Set<string>()
   for (const [name, config] of Object.entries(services)) {
     logAction('services', `Ensuring ${name}`)
     const exists = await ctx.check('postgres:exists', name)
@@ -30,8 +31,10 @@ export async function ensurePostgres(
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
     await ctx.run(...args)
+    created.add(name)
     logDone()
   }
+  return created
 }
 
 /**
@@ -39,11 +42,13 @@ export async function ensurePostgres(
  * reports. Credentials are compared by fingerprint, so a rotated key is
  * picked up, and are only ever passed to `:backup-auth` (masked in logs).
  * Only `backup: false` removes a backup; an absent block leaves it alone.
+ * `dryRunCreated` names services this --dry-run only planned to create: they
+ * cannot be read, and a new service has no backup, so every step is planned.
  */
 export async function ensurePostgresBackups(
   ctx: Context,
   services: Record<string, PostgresConfig>,
-  opts: { prune?: boolean } = {}
+  opts: { prune?: boolean; dryRunCreated?: Set<string> } = {}
 ): Promise<void> {
   for (const [name, config] of Object.entries(services)) {
     const backup = config.backup
@@ -62,6 +67,21 @@ export async function ensurePostgresBackups(
       if (hasBackup(info)) {
         logWarn('services', `${name}: has a backup the file does not declare (${describeServerBackup(info)}); --prune leaves it, set backup: false to remove it`)
       }
+      continue
+    }
+
+    if (opts.dryRunCreated?.has(name)) {
+      logAction('services', `Configuring backup for ${name}`)
+      if (backup !== false) {
+        const { schedule, bucket, auth } = backup
+        await ctx.run(
+          'postgres:backup-auth', name,
+          auth.access_key_id, auth.secret_access_key,
+          auth.region, auth.signature_version, auth.endpoint
+        )
+        await ctx.run('postgres:backup-schedule', name, schedule, bucket)
+      }
+      logDone()
       continue
     }
 

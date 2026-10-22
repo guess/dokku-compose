@@ -68,6 +68,15 @@ describe('ensurePostgresBackups', () => {
     })
   }
 
+  it('plans auth and schedule without reading a service created only by this dry run', async () => {
+    const { ctx, runner } = fakeContext({ checks: {}, queries: {} })
+    await ensurePostgresBackups(ctx, { 'new-db': { backup } }, { dryRunCreated: new Set(['new-db']) })
+    expect(runner.dryRunLog).toEqual([
+      'postgres:backup-auth new-db KEY SECRET auto s3v4 https://r2.example.com',
+      "postgres:backup-schedule new-db '0 * * * *' db-backups/api-db",
+    ])
+  })
+
   it('runs no command when the server matches the file', async () => {
     const { ctx, runner } = server(configured)
     await ensurePostgresBackups(ctx, { 'api-db': { backup } })
