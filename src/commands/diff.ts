@@ -431,8 +431,8 @@ export function formatSummary(diff: DiffResult): string {
       lines.push(`  services:`)
       lines.push(`    ${chalk.green('+')} ${svc}: not provisioned`)
     }
+    if (d.mismatches?.length) lines.push(`  services: ${svc}`)
     for (const m of d.mismatches ?? []) {
-      lines.push(`  services: ${svc}`)
       lines.push(`    ${chalk.yellow('~')} ${m.field}: ${m.current || '(unknown)'} → ${m.desired}`)
     }
   }

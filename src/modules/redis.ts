@@ -15,8 +15,10 @@ export async function ensureRedis(
       // Changing a service's version or image can need a dump and downtime, so
       // `up` only warns; run `redis:upgrade` yourself.
       try {
-        for (const m of await readServiceMismatches(ctx, 'redis', name, config)) {
-          logWarn('services', `${name}: ${m.field} is ${m.current || '(unknown)'} on the server but ${m.desired} in the file; up does not change it`)
+        const mismatches = await readServiceMismatches(ctx, 'redis', name, config)
+        if (mismatches.length > 0) {
+          const parts = mismatches.map(m => `${m.field} is ${m.current || '(unknown)'} on the server but ${m.desired} in the file`)
+          logWarn('services', `${name}: ${parts.join('; ')}; up does not change it`)
         }
       } catch (err) {
         logWarn('services', `${name}: could not compare version and image: ${err instanceof Error ? err.message : String(err)}`)
