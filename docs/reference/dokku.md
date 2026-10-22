@@ -4,35 +4,52 @@ Dokku docs: https://dokku.com/docs/getting-started/upgrading/
 
 Module: `src/modules/version.ts`
 
+## Supported Dokku versions
+
+dokku-compose never installs or upgrades Dokku and never pins an exact version.
+It has a built-in minimum, **Dokku 0.38.22**: the first release where
+`plugin:list`, `ps:scale`, `config:export` and `ps:report` all accept
+`--format json` (`plugin:list` is the last to gain it, in 0.38.22).
+
+Every command that talks to a server (`up`, `diff`, `down`, `export`, `ps`)
+runs `dokku version` before any other Dokku call and stops on an older server:
+
+```
+dokku-compose 0.13.1 needs Dokku >= 0.38.22; this server runs 0.37.9. Upgrade Dokku first.
+```
+
+`validate` and `init` never touch a server and are not checked.
+
 ## YAML Keys
 
-### Pinned Version (`dokku.version`)
+### Minimum Version (`dokku.version`)
 
-Declare the minimum Dokku server version your config requires. On `up` and
-`diff`, dokku-compose queries the server with `dokku version` and warns if
-the server is older than the pinned value. The check is opt-in — if the key
-is absent, no check runs.
+Declare the minimum Dokku server version your config requires. The check is
+opt-in: if the key is absent, only the built-in minimum applies.
 
-The value is interpreted as a **minimum**, not an exact match: a server
-running a newer version than pinned is silent. Pre-release suffixes
-(`-rc1`, `-beta`) are tolerated on both the server output and the pinned
-value itself — only the `X.Y.Z` numeric part is compared.
-
-The `export` command writes the running server's version into this field
-automatically, so round-tripping `export` → edit → `up` produces a useful
+The value is a **minimum**, not an exact match. Pre-release suffixes
+(`-rc1`, `-beta`) are tolerated on both the server output and the value
+itself; only the `X.Y.Z` numeric part is compared. `export` writes the running
+server's version into this field, so `export` → edit → `up` gives a useful
 floor without manual effort.
 
 ```yaml
 dokku:
-  version: "0.37.9"          # warn if server is < 0.37.9
+  version: "0.38.31"         # up stops if the server is < 0.38.31
 ```
 
-| Value | Behavior |
-|-------|----------|
-| `"X.Y.Z"` | `dokku version` (query)<br>warn if server version `< X.Y.Z` |
-| absent | no action |
+| Server vs. file | `up` | `diff` |
+|-----------------|------|--------|
+| older | stops before changing anything: `server is vZ but the file requires >= vX` | drift line, exit 1 (does not throw) |
+| equal | silent | silent |
+| newer | one notice, carries on | drift line, exit 1 |
+
+A server newer than the file is drift, not an error: `diff` shows
+`~ version: 0.38.31 (file) → 0.38.32 (server)` so you can update the file when
+you choose. An older server is a minimum violation: `up` refuses to run and
+`diff` reports the same line.
 
 If the server's `dokku version` output cannot be parsed as `X.Y.Z`,
-dokku-compose raises an error rather than continuing silently — that
-indicates either the runner is talking to something that isn't Dokku, or
-Dokku has changed its output format.
+dokku-compose raises an error rather than continuing silently: either the
+runner is talking to something that isn't Dokku, or Dokku has changed its
+output format.

@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-22
+
+### Changed (behaviour)
+
+- **Every command that talks to a server stops on a Dokku too old for dokku-compose.** `up`, `diff`, `down`, `export` and `ps` read `dokku version` first and, below 0.38.22 (the first release where `plugin:list`, `ps:scale`, `config:export` and `ps:report` all accept `--format json`), stop with `dokku-compose <version> needs Dokku >= 0.38.22; this server runs <server>. Upgrade Dokku first.` before any other Dokku call. `validate` and `init` are unchanged. This replaces the buried "plugin:list --format json did not return JSON" failure on older servers.
+- **`dokku.version` is a hard minimum for `up`.** `up` stops before changing anything when the server is older than the file's value (it was a warning).
+- **Version drift in `diff`.** A server whose Dokku version differs from `dokku.version` (older or newer) shows `~ version: <file> (file) → <server> (server)` and makes `diff` exit non-zero like other drift; `diff` never throws for it. A newer server makes `up` log one notice and carry on.
+
 ## [0.13.0] - 2026-10-22
 
 ### Breaking

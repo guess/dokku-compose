@@ -1,5 +1,6 @@
 import type { Runner } from '../core/dokku.js'
 import type { Config } from '../core/schema.js'
+import { assertDokkuSupported } from '../modules/version.js'
 
 export async function runPs(
   runner: Runner,
@@ -9,6 +10,8 @@ export async function runPs(
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
+
+  await assertDokkuSupported(runner)
 
   for (const app of apps) {
     const exists = await runner.check('apps:exists', app)

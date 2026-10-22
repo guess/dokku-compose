@@ -6,7 +6,7 @@ import { exportPostgres } from '../modules/postgres.js'
 import { exportRedis } from '../modules/redis.js'
 import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
-import { extractServerVersion } from '../modules/version.js'
+import { assertDokkuSupported } from '../modules/version.js'
 
 export interface ExportOptions {
   appFilter?: string[]
@@ -15,8 +15,7 @@ export interface ExportOptions {
 export async function runExport(ctx: Context, opts: ExportOptions): Promise<Config> {
   const config: Config = { apps: {} }
 
-  const version = extractServerVersion(await ctx.query('version'))
-  if (version) config.dokku = { version }
+  config.dokku = { version: await assertDokkuSupported(ctx) }
 
   // Apps
   const apps = opts.appFilter?.length ? opts.appFilter : await exportApps(ctx)

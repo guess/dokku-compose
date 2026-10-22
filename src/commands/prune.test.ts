@@ -27,6 +27,7 @@ function fakeBox(dryRun = false) {
   runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
   const read = async (...a: string[]) => {
     const c = a.join(' ')
+    if (c === 'version') return 'dokku version 0.38.31'
     if (c.startsWith('nginx:report')) return section('nginx', 'Nginx', st.nginx)
     if (c.startsWith('logs:report')) return section('logs', 'Logs', st.logs)
     if (c.startsWith('registry:report')) return section('registry', 'Registry', st.registry)
