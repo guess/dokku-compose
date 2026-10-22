@@ -1,0 +1,22 @@
+{
+  "build-dir": "",
+  "builder-build-dir": "",
+  "builder-computed-build-dir": "",
+  "builder-computed-selected": "",
+  "builder-computed-skip-cleanup": "<set>",
+  "builder-detected": "<set>",
+  "builder-global-build-dir": "",
+  "builder-global-selected": "",
+  "builder-global-skip-cleanup": "",
+  "builder-selected": "",
+  "builder-skip-cleanup": "",
+  "computed-build-dir": "",
+  "computed-selected": "",
+  "computed-skip-cleanup": "<set>",
+  "detected": "<set>",
+  "global-build-dir": "",
+  "global-selected": "",
+  "global-skip-cleanup": "",
+  "selected": "",
+  "skip-cleanup": ""
+}

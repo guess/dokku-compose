@@ -44,7 +44,7 @@ builder-pack:set	N	A8: `projecttoml-path`
 builder-railpack:report	X	Read-only
 builder-railpack:set	N	A8: `railpackjson-path`
 builder:report	R	`build.context` read
-builder:set	P	`build.context` (`build-dir`) only; `selected`, `skip-cleanup` and global missing (F5, F10)
+builder:set	P	`build.context` (`build-dir`), `build.selected`, `build.skip_cleanup`; no global (F10)
 buildpacks:add	N	A8
 buildpacks:clear	N	A8
 buildpacks:detect	X	Read-only
@@ -73,7 +73,7 @@ checks:disable	Y	`checks.disabled`
 checks:enable	Y	`checks` (re-enable)
 checks:report	R	`checks` read
 checks:run	X	Runtime action
-checks:set	P	`checks.<key>`; accepts any key, only `wait-to-retire` is valid; no global (F5, F10)
+checks:set	P	`checks.wait-to-retire`, the only key Dokku accepts; no global (F10)
 checks:skip	Y	`checks.skipped`
 config:bundle	X	Read-only
 config:clear	X	Destructive one-shot
@@ -116,13 +116,13 @@ git:initialize	X	Done by deploys
 git:load-image	X	Deploy trigger
 git:public-key	X	Read-only
 git:report	R	`git` read
-git:set	P	`git.deploy_branch` only; 5 other keys and global missing (F5, F10)
+git:set	P	`git.*`: `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image`; per-app `archive-max-*` not declarable (Dokku reads them globally only), no global (F10)
 git:status	X	Read-only (hidden)
 git:sync	X	Deploy trigger
 git:unlock	X	Recovery action (hidden)
 logs:failed	X	Read-only
 logs:report	R	`logs` read
-logs:set	P	`logs:` per app and global; `vector-image`, `vector-networks` not in the prune list (F5)
+logs:set	Y	`logs:` per app and global
 logs:vector-logs	X	Read-only
 logs:vector-start	X	Daemon control
 logs:vector-stop	X	Daemon control
@@ -134,12 +134,12 @@ network:list	R	`export`
 network:rebuild	X	Maintenance
 network:rebuildall	X	Maintenance
 network:report	R	`networks`, `network` read
-network:set	P	`networks`, `network.*`; `static-web-listener` and global missing (F5, F10)
+network:set	P	`networks`, `network.*` (all 6 keys); no global (F10)
 nginx:access-logs	X	Read-only
 nginx:error-logs	X	Read-only
 nginx:reload	X	Daemon control
 nginx:report	R	`nginx` read
-nginx:set	P	`nginx:` per app and global; `nginx-conf-sigil-path`, `nginx-service-command` not in the prune list (F5)
+nginx:set	Y	`nginx:` per app and global
 nginx:show-config	X	Read-only
 nginx:start	X	Daemon control
 nginx:stop	X	Daemon control
@@ -164,14 +164,14 @@ proxy:clear-config	X	Maintenance
 proxy:disable	Y	`proxy.enabled: false`
 proxy:enable	Y	`proxy.enabled: true`
 proxy:report	R	`proxy` read
-proxy:set	N	F5: `type`, `proxy-port`, `proxy-ssl-port`
+proxy:set	P	`proxy.type`, `proxy.proxy_port`, `proxy.proxy_ssl_port`; no global (F10)
 ps:inspect	X	Read-only
 ps:rebuild	X	Runtime action
 ps:report	R	`scale`, `ps` read; deployed check
 ps:restart	X	Runtime action
 ps:restore	X	Runtime action
 ps:scale	Y	`scale:` (`--skip-deploy`)
-ps:set	P	`ps:` has 3 of 7 keys; no global (F5, F10)
+ps:set	P	`ps:` (all 7 keys); no global (F10)
 ps:start	X	Runtime action
 ps:stop	X	Runtime action
 registry:auth-status	N	F4: makes `docker_auth` idempotent
@@ -194,7 +194,7 @@ run:stop	X	Runtime action
 scheduler-docker-local:report	X	Read-only
 scheduler-docker-local:set	N	A6: `init-process`, `parallel-schedule-count`
 scheduler:report	R	`scheduler` read
-scheduler:set	P	`scheduler:` (`selected`); `shell` and global missing (F5, F10)
+scheduler:set	P	`scheduler:` (`selected`, `shell`); no global (F10)
 ssh-keys:add	N	A7
 ssh-keys:list	N	A7 (read side)
 ssh-keys:remove	N	A7

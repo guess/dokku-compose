@@ -22,14 +22,20 @@ export const NGINX_KEYS = [
   'access-log-format', 'access-log-path', 'bind-address-ipv4', 'bind-address-ipv6',
   'client-body-timeout', 'client-header-timeout', 'client-max-body-size', 'disable-custom-config',
   'error-log-path', 'hsts', 'hsts-include-subdomains', 'hsts-max-age', 'hsts-preload',
-  'keepalive-timeout', 'lingering-timeout', 'proxy-buffer-size', 'proxy-buffering',
+  'keepalive-timeout', 'lingering-timeout', 'nginx-conf-sigil-path', 'nginx-service-command', 'proxy-buffer-size', 'proxy-buffering',
   'proxy-buffers', 'proxy-busy-buffers-size', 'proxy-connect-timeout', 'proxy-keepalive',
   'proxy-read-timeout', 'proxy-send-timeout', 'send-timeout', 'underscore-in-headers',
   'x-forwarded-for-value', 'x-forwarded-port-value', 'x-forwarded-proto-value', 'x-forwarded-ssl',
 ] as const
 export const LOGS_KEYS = ['app-label-alias', 'max-size', 'vector-cron-sink', 'vector-sink'] as const
+/** The top-level `logs:` block also takes the two keys only `logs:set --global` accepts. */
+export const LOGS_GLOBAL_KEYS = [...LOGS_KEYS, 'vector-image', 'vector-networks'] as const
+/**
+ * `auth-servers` is report-only (a registry login, not a `registry:set` key), so it
+ * is neither declared nor removed.
+ */
 export const REGISTRY_KEYS = [
-  'auth-servers', 'image-repo', 'image-repo-template', 'push-extra-tags', 'push-on-release', 'server',
+  'image-repo', 'image-repo-template', 'push-extra-tags', 'push-on-release', 'server',
 ] as const
 
 /** Settable keys that are set on the server and absent from the file. */
@@ -132,29 +138,61 @@ export const Registry = propertyResource({
   settable: REGISTRY_KEYS,
 })
 
-export const Scheduler: Resource<string> = {
-  key: 'scheduler',
-  // A scheduler selected on the app but not declared in the file.
-  removals: (current, desired) => (desired === undefined && current ? ['scheduler'] : []),
-  prune: async (ctx, target) => { await ctx.run('scheduler:set', target, 'selected') },
+/** Settable scheduler keys (`scheduler:set`). */
+export const SCHEDULER_KEYS = ['selected', 'shell'] as const
 
-  async read(ctx: Context, target: string): Promise<string> {
-    const raw = await ctx.query('scheduler:report', target)
-    const report = parseReport(raw, 'scheduler')
-    return report['selected'] ?? ''
+/** `scheduler: k3s` is shorthand for `scheduler: { selected: k3s }`. */
+export type SchedulerConfig = string | { selected?: string; shell?: string }
+
+function schedulerParts(cfg: SchedulerConfig | undefined): { selected: string; shell: string } {
+  if (typeof cfg === 'string') return { selected: cfg, shell: '' }
+  return { selected: cfg?.selected ?? '', shell: cfg?.shell ?? '' }
+}
+
+/** The server's scheduler state: a bare string while only `selected` is set (as before), else the object. */
+function schedulerFromReport(report: Record<string, string>): SchedulerConfig {
+  const selected = report['selected'] ?? ''
+  const shell = report['shell']
+  return shell ? { ...(selected ? { selected } : {}), shell } : selected
+}
+
+export const Scheduler: Resource<SchedulerConfig> = {
+  key: 'scheduler',
+  // A scheduler setting on the app that the file does not declare.
+  removals: (current, desired) => {
+    const have = schedulerParts(current)
+    const want = schedulerParts(desired)
+    const removed: string[] = []
+    if (have.selected && !want.selected) removed.push('scheduler')
+    if (have.shell && !want.shell) removed.push('shell')
+    return removed
+  },
+  prune: async (ctx, target, removed) => {
+    for (const label of removed) await ctx.run('scheduler:set', target, label === 'shell' ? 'shell' : 'selected')
+  },
+  inSync: (current, desired) => {
+    const have = schedulerParts(current)
+    const want = schedulerParts(desired)
+    return (!want.selected || want.selected === have.selected) && (!want.shell || want.shell === have.shell)
   },
 
-  async readAll(ctx: Context): Promise<Map<string, string>> {
+  async read(ctx: Context, target: string): Promise<SchedulerConfig> {
+    const raw = await ctx.query('scheduler:report', target)
+    return schedulerFromReport(parseReport(raw, 'scheduler'))
+  },
+
+  async readAll(ctx: Context): Promise<Map<string, SchedulerConfig>> {
     const raw = await ctx.query('scheduler:report')
     const bulk = parseBulkReport(raw, 'scheduler')
-    const result = new Map<string, string>()
-    for (const [app, report] of bulk) {
-      result.set(app, report['selected'] ?? '')
-    }
+    const result = new Map<string, SchedulerConfig>()
+    for (const [app, report] of bulk) result.set(app, schedulerFromReport(report))
     return result
   },
 
-  async onChange(ctx: Context, target: string, change: Change<string>): Promise<void> {
-    await ctx.run('scheduler:set', target, 'selected', change.after)
+  async onChange(ctx: Context, target: string, change: Change<SchedulerConfig>): Promise<void> {
+    const have = schedulerParts(change.before)
+    const want = schedulerParts(change.after)
+    if (want.selected && want.selected !== have.selected) await ctx.run('scheduler:set', target, 'selected', want.selected)
+    if (want.shell && want.shell !== have.shell) await ctx.run('scheduler:set', target, 'shell', want.shell)
   },
 }

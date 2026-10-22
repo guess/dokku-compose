@@ -133,8 +133,8 @@ dokku ps:restart worker  # env, storage
 ### Settings removed from the file
 
 `diff` marks with a red `-` every setting the server still has that the file no longer declares
-(managed env keys, nginx, logs, registry, scheduler, checks, `ps` and network properties, build
-args, and entries missing from a declared list), including when the whole block is gone. Only
+(managed env keys, nginx, logs, registry, scheduler, checks, `ps`, network, proxy and git
+properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. Only
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
@@ -144,10 +144,12 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 
 | Resource | Reset command |
 |----------|---------------|
-| `nginx`, `logs`, `registry`, `ps` | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
-| `scheduler` | `scheduler:set <app> selected` |
+| `nginx`, `logs`, `registry`, `ps`, `git` (not Dokku-written keys: `ps` `restore`, git `deploy-branch` and `source-image`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
+| `scheduler` | `scheduler:set <app> selected` or `shell` |
+| `proxy` properties | `proxy:set <app> type` with no value (`proxy-port` and `proxy-ssl-port` are written by Dokku) |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
 | `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
+| `build.selected`, `build.skip_cleanup` | `builder:set <app> selected` / `skip-cleanup` with no value |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
 It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
@@ -181,6 +183,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
 | Storage | Persistent bind mounts with full convergence (keys removed from the YAML are unset) | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
+| Scheduler, Registry, Git | `scheduler` (`selected`, `shell`), `registry` and `git` properties per app; every app-scope `:set` key of Dokku 0.38.31 (audit F5), keys Dokku refuses fail `validate` | [logs](docs/reference/logs.md#removal), [audit](docs/dokku-audit.md) |
 | Zero-Downtime Checks | Configure deploy checks, disable per process type | [checks](docs/reference/checks.md) |
 | Log Management | Log retention and vector sink configuration | [logs](docs/reference/logs.md) |
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |

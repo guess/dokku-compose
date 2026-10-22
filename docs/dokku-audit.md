@@ -66,14 +66,14 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `events` |  |  | 2 | 1 |
 | `git` | 1 | 1 | 3 | 9 |
 | `haproxy` |  |  | 3 | 5 |
-| `logs` | 1 | 1 |  | 4 |
+| `logs` | 2 |  |  | 4 |
 | `network` | 5 | 1 |  | 3 |
-| `nginx` | 1 | 1 |  | 7 |
+| `nginx` | 2 |  |  | 7 |
 | `openresty` |  |  | 3 | 5 |
 | `plugin` | 3 |  | 3 | 3 |
 | `ports` | 2 |  |  | 4 |
 | `postgres` | 7 | 4 | 12 | 19 |
-| `proxy` | 4 |  | 1 | 1 |
+| `proxy` | 4 | 1 |  | 1 |
 | `ps` | 2 | 1 |  | 6 |
 | `redis` | 6 | 2 | 15 | 17 |
 | `registry` | 1 | 2 | 2 |  |
@@ -87,7 +87,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 3 |  | 4 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **69** | **19** | **92** | **175** |
+| **Total** | **71** | **18** | **91** | **175** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -103,7 +103,7 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 | F2 | ✅ **Datastore `version` and `image` changes ignored** | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is shown by `diff` as drift and warned about by `up`; applying it with `:upgrade` is left out on purpose (an upgrade can need a dump and downtime) and would need an explicit opt-in. | 3 |
 | F3 | **Postgres backup state kept outside Dokku** | The backup config is tracked as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`, which Dokku merges into every app's environment. A change made on the server is never seen, and removing `backup:` leaves the schedule and credentials in place. Read the real state (`:backup-schedule-cat`, the 2.x `backup-*` properties), run `:backup-unschedule`/`:backup-deauth` when the block goes, add encryption, drop the env var. | 5 |
 | F4 | ✅ **Global `env:` and `docker_auth:` only ever add** | Fixed (LAB-751): global `env:` keeps the marker `DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS`, sets only changed keys and unsets marked keys removed from the file; `docker_auth:` skips a login `registry:auth-status` reports as matching, logs in with `--password-stdin`, and `up --prune` runs `registry:logout` for a server the file does not list. Dokku floor raised to 0.38.29. | 3 |
-| F5 | **Property lists behind Dokku 0.38.31** | See [Properties](#properties). `diff` and `--prune` cannot see, and `validate` cannot catch, keys missing from dokku-compose's lists: nginx `nginx-conf-sigil-path`, `nginx-service-command`; logs (global) `vector-image`, `vector-networks`; `ps:` rejects `restore`, `skip-deploy`, `start-cmd`, `dockerfile-start-cmd`; network `static-web-listener`; proxy `type`, `proxy-port`, `proxy-ssl-port`; scheduler `shell`; builder `selected`, `skip-cleanup`; git `keep-git-dir`, `rev-env-var`, `source-image`, `archive-max-files`, `archive-max-size`. `checks:` accepts any key though only `wait-to-retire` is valid. `REGISTRY_KEYS` lists `auth-servers`, which is report-only: an app with its own registry login would show it as removed, and `--prune` would fail running `registry:set <app> auth-servers`. Pin the lists in a test against the audited Dokku version. | 3 |
+| F5 | ✅ **Property lists behind Dokku 0.38.31** | Fixed (LAB-752), audited against Dokku v0.38.31: every app-scope `:set` key of nginx, logs, ps, network, proxy, scheduler, builder, git, registry and checks is in a list, the schema and `validate`; `diff` and `--prune` see them all. `checks:` takes only `wait-to-retire` (plus `disabled`/`skipped`), and `registry:` rejects the report-only `auth-servers`. `src/tests/property-keys.test.ts` derives each namespace's settable keys from real Dokku 0.38.31 `<ns>:report --format json` output checked in under `src/tests/fixtures/dokku-0.38.31/reports/` and compares them with the lists. Keys Dokku writes itself (git `deploy-branch` and `source-image`, proxy `proxy-port` and `proxy-ssl-port`, ps `restore`) are compared only when declared and never counted as removals. Global scopes stay in F10. | 3 |
 | F6 | ✅ **Link options** | Fixed (LAB-753): a `links:` entry is a name or `{ service, alias?, env_var?, querystring? }`, passed as `--alias`, `--env-var`, `--querystring`. `diff` reads the variable and its querystring from the app's env; changed options unlink then link. | 2 |
 | F7 | **Redis backups** | dokku-redis has the same backup commands as dokku-postgres; `redis:` has no `backup:`. Do it after F3 so both share one implementation. | 2 |
 | F8 | **Datastore settings after create** | No create flag beyond `--image`/`--image-version`, and no `:set`. dokku-postgres/redis 2.x make every setting a reconcilable `:set` property: `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `restart-policy`, `log-driver`, `log-opt`, `expose-*`, plus `:mount`. | 5 |
@@ -162,8 +162,8 @@ does not accept the property there.
 | `apps:set` | `disable-autocreation` | ❌ | ❌ | A4 |
 | `app-json:set` | `appjson-path` | ✅ | ❌ | `build.app_json`; global F10 |
 | `builder:set` | `build-dir` | ✅ | ❌ | `build.context`; global F10 |
-| `builder:set` | `selected` | ❌ | ❌ | F5, F10; other builders A8 |
-| `builder:set` | `skip-cleanup` | ❌ | ❌ | F5, F10 |
+| `builder:set` | `selected` | ✅ | ❌ | `build.selected`; global F10; other builders A8 |
+| `builder:set` | `skip-cleanup` | ✅ | ❌ | `build.skip_cleanup`; global F10 |
 | `builder-dockerfile:set` | `dockerfile-path` | ✅ | ❌ | `build.dockerfile`; global F10 |
 | `builder-herokuish:set` | `allowed` | ❌ | ❌ | A8 |
 | `builder-lambda:set` | `lambdayml-path` | ❌ | ❌ | A8 |
@@ -172,31 +172,32 @@ does not accept the property there.
 | `builder-railpack:set` | `railpackjson-path` | ❌ | ❌ | A8 |
 | `buildpacks:set-property` | `stack` | ❌ | ❌ | A8 |
 | `builds:set` | `retention` | ❌ | ❌ | A5 |
-| `checks:set` | `wait-to-retire` | 🟡 | ❌ | `checks.wait-to-retire`; any other key is accepted too (F5); global F10 |
+| `checks:set` | `wait-to-retire` | ✅ | ❌ | `checks.wait-to-retire`, the only key `validate` accepts; global F10 |
 | `cron:set` | `maintenance` | ❌ | ❌ | A2 |
 | `cron:set` | `maintenance.<cron-id>` | ❌ | — | A2 |
 | `cron:set` | `mailto`, `mailfrom` | — | ❌ | A2 |
 | `git:set` | `deploy-branch` | ✅ | ❌ | `git.deploy_branch` (top-level `git:` is a per-app default, not `--global`); global F10 |
-| `git:set` | `keep-git-dir`, `rev-env-var`, `source-image`, `archive-max-files`, `archive-max-size` | ❌ | ❌ | F5, F10 |
+| `git:set` | `keep-git-dir`, `rev-env-var`, `source-image` | ✅ | ❌ | `git.*`; global F10 |
+| `git:set` | `archive-max-files`, `archive-max-size` | — | ❌ | Dokku reads only the global value; `validate` rejects a per-app one; global F10 |
 | `logs:set` | `app-label-alias`, `max-size`, `vector-cron-sink`, `vector-sink` | ✅ | ✅ | `logs:` (app and top-level) |
-| `logs:set` | `vector-image`, `vector-networks` | — | 🟡 | Top-level `logs:` sets them; not in the prune list (F5) |
+| `logs:set` | `vector-image`, `vector-networks` | — | ✅ | Top-level `logs:` only; `validate` rejects them on an app |
 | `network:set` | `attach-post-create` | ✅ | ❌ | `network.attach_post_create`; global F10 |
 | `network:set` | `attach-post-deploy` | ✅ | ❌ | `networks:`; global F10 |
 | `network:set` | `bind-all-interfaces` | ✅ | ❌ | `network.bind_all_interfaces`; global F10 |
 | `network:set` | `initial-network` | ✅ | ❌ | `network.initial_network`; global F10 |
 | `network:set` | `tld` | ✅ | ❌ | `network.tld`; global F10 |
-| `network:set` | `static-web-listener` | ❌ | — | F5 |
+| `network:set` | `static-web-listener` | ✅ | — | `network.static_web_listener` |
 | `nginx:set` | 29 keys from `access-log-format` to `x-forwarded-ssl` | ✅ | ✅ | `nginx:` (app and top-level) |
-| `nginx:set` | `nginx-conf-sigil-path`, `nginx-service-command` | 🟡 | 🟡 | `nginx:` sets them; not in the prune list (F5) |
+| `nginx:set` | `nginx-conf-sigil-path`, `nginx-service-command` | ✅ | ✅ | `nginx:` (app and top-level) |
 | `proxy:set` / `proxy:enable` / `proxy:disable` | `disabled` | ✅ | — | `proxy.enabled` |
-| `proxy:set` | `type`, `proxy-port`, `proxy-ssl-port` | ❌ | ❌ | F5, F10 |
+| `proxy:set` | `type`, `proxy-port`, `proxy-ssl-port` | ✅ | ❌ | `proxy.type`, `proxy.proxy_port`, `proxy.proxy_ssl_port`; global F10 |
 | `ps:set` | `procfile-path`, `restart-policy`, `stop-timeout-seconds` | ✅ | ❌ | `ps:`; global F10 |
-| `ps:set` | `skip-deploy` | ❌ | ❌ | F5, F10 |
-| `ps:set` | `restore`, `start-cmd`, `dockerfile-start-cmd` | ❌ | — | F5 (`ps:` is strict and rejects them) |
-| `registry:set` | `image-repo` | ✅ | — | `registry:` |
+| `ps:set` | `skip-deploy` | ✅ | ❌ | `ps:`; global F10 |
+| `ps:set` | `restore`, `start-cmd`, `dockerfile-start-cmd` | ✅ | — | `ps:` |
+| `registry:set` | `image-repo` | ✅ | — | `registry:` (`auth-servers` is report-only: not settable, never removed) |
 | `registry:set` | `image-repo-template`, `push-on-release`, `push-extra-tags`, `server` | ✅ | ❌ | `registry:`; global F10 |
 | `scheduler:set` | `selected` | ✅ | ❌ | `scheduler:`; global F10 |
-| `scheduler:set` | `shell` | ❌ | ❌ | F5, F10 |
+| `scheduler:set` | `shell` | ✅ | ❌ | `scheduler.shell`; global F10 |
 | `scheduler-docker-local:set` | `init-process`, `parallel-schedule-count` | ❌ | ❌ | A6 |
 | `storage:set` | named-entry properties | ❌ | — | F9 |
 | `caddy:set` | `tls-internal` | ❌ | ❌ | A9 |
@@ -250,7 +251,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `git:load-image` | Updates an app's git repository with a docker image loaded from stdin | ⛔ | Deploy trigger |
 | `git:public-key` | Outputs the dokku public deploy key | ⛔ | Read-only |
 | `git:report` | Displays a git report for one or more apps | ✅ | `git` read |
-| `git:set` | Set or clear a git property for an app | 🟡 | `git.deploy_branch` only; 5 other keys and global missing (F5, F10) |
+| `git:set` | Set or clear a git property for an app | 🟡 | `git.*`: `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image`; per-app `archive-max-*` not declarable (Dokku reads them globally only), no global (F10) |
 | `git:status` | Show the git status of the app repo | ⛔ | Read-only (hidden) |
 | `git:sync` | Clone or fetch an app from remote git repo | ⛔ | Deploy trigger |
 | `git:unlock` | Remove a stale deploy lock from the app repo | ⛔ | Recovery action (hidden) |
@@ -274,7 +275,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `builder-railpack:report` | Displays a builder-railpack report for one or more apps | ⛔ | Read-only |
 | `builder-railpack:set` | Set or clear a builder-railpack property for an app | ❌ | A8: `railpackjson-path` |
 | `builder:report` | Displays a builder report for one or more apps | ✅ | `build.context` read |
-| `builder:set` | Set or clear a builder property for an app | 🟡 | `build.context` (`build-dir`) only; `selected`, `skip-cleanup` and global missing (F5, F10) |
+| `builder:set` | Set or clear a builder property for an app | 🟡 | `build.context` (`build-dir`), `build.selected`, `build.skip_cleanup`; no global (F10) |
 | `buildpacks:add` | Add new app buildpack while inserting into list of buildpacks if ne… | ❌ | A8 |
 | `buildpacks:clear` | Clear all buildpacks set on the app | ❌ | A8 |
 | `buildpacks:detect` | Detect the buildpack for an app (if not specified, the branch flag… | ⛔ | Read-only |
@@ -315,7 +316,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `checks:enable` | Enable zero-downtime deployment for all processes (or comma-separat… | ✅ | `checks` (re-enable) |
 | `checks:report` | Displays a checks report for one or more apps | ✅ | `checks` read |
 | `checks:run` | Runs zero-downtime checks for all processes (or comma-separated pro… | ⛔ | Runtime action |
-| `checks:set` | Set or clear a logs property for an app | 🟡 | `checks.<key>`; accepts any key, only `wait-to-retire` is valid; no global (F5, F10) |
+| `checks:set` | Set or clear a logs property for an app | 🟡 | `checks.wait-to-retire`, the only key Dokku accepts; no global (F10) |
 | `checks:skip` | Skip zero-downtime checks for all processes (or comma-separated pro… | ✅ | `checks.skipped` |
 | `cron:list` | List scheduled cron tasks for an app | ⛔ | Read-only |
 | `cron:report` | Display report about an app | ⛔ | Read-only |
@@ -329,7 +330,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `ps:restart` | Restart an app | ⛔ | Runtime action |
 | `ps:restore` | Start previously running apps e.g. after reboot | ⛔ | Runtime action |
 | `ps:scale` | Get/Set how many instances of a given process to run | ✅ | `scale:` (`--skip-deploy`) |
-| `ps:set` | Set or clear a ps property for an app | 🟡 | `ps:` has 3 of 7 keys; no global (F5, F10) |
+| `ps:set` | Set or clear a ps property for an app | 🟡 | `ps:` (all 7 keys); no global (F10) |
 | `ps:start` | Start an app | ⛔ | Runtime action |
 | `ps:stop` | Stop an app | ⛔ | Runtime action |
 | `run:detached` | Run a command in a new detached container using the current app image | ⛔ | One-off command |
@@ -340,7 +341,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `scheduler-docker-local:report` | Displays a scheduler-docker-local report for one or more apps | ⛔ | Read-only |
 | `scheduler-docker-local:set` | Set or clear a scheduler-docker-local property for an app or globally | ❌ | A6: `init-process`, `parallel-schedule-count` |
 | `scheduler:report` | Displays a scheduler report for one or more apps | ✅ | `scheduler` read |
-| `scheduler:set` | Set or clear a scheduler property for an app | 🟡 | `scheduler:` (`selected`); `shell` and global missing (F5, F10) |
+| `scheduler:set` | Set or clear a scheduler property for an app | 🟡 | `scheduler:` (`selected`, `shell`); no global (F10) |
 
 ### Networking
 
@@ -375,7 +376,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `network:rebuild` | Rebuilds network settings for an app | ⛔ | Maintenance |
 | `network:rebuildall` | Rebuild network settings for all apps | ⛔ | Maintenance |
 | `network:report` | Displays a network report for one or more apps | ✅ | `networks`, `network` read |
-| `network:set` | Set or clear a network property for an app | 🟡 | `networks`, `network.*`; `static-web-listener` and global missing (F5, F10) |
+| `network:set` | Set or clear a network property for an app | 🟡 | `networks`, `network.*` (all 6 keys); no global (F10) |
 | `ports:add` | Add port mappings to an app | ⛔ | `ports:` converges with `set` |
 | `ports:clear` | Clear all port mappings for an app | ⛔ | `ports:` converges with `set` |
 | `ports:list` | List port mappings for app | ⛔ | Read-only |
@@ -387,7 +388,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `proxy:disable` | Disable proxy for app | ✅ | `proxy.enabled: false` |
 | `proxy:enable` | Enable proxy for app | ✅ | `proxy.enabled: true` |
 | `proxy:report` | Displays a proxy report for one or more apps | ✅ | `proxy` read |
-| `proxy:set` | Set proxy type for app | ❌ | F5: `type`, `proxy-port`, `proxy-ssl-port` |
+| `proxy:set` | Set proxy type for app | 🟡 | `proxy.type`, `proxy.proxy_port`, `proxy.proxy_ssl_port`; no global (F10) |
 
 ### Nginx
 
@@ -397,7 +398,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `nginx:error-logs` | Show the nginx error logs for an application (-t follows) | ⛔ | Read-only |
 | `nginx:reload` | Reloads the nginx server config | ⛔ | Daemon control |
 | `nginx:report` | Displays an nginx report for one or more apps | ✅ | `nginx` read |
-| `nginx:set` | Set or clear an nginx property for an app | 🟡 | `nginx:` per app and global; `nginx-conf-sigil-path`, `nginx-service-command` not in the prune list (F5) |
+| `nginx:set` | Set or clear an nginx property for an app | ✅ | `nginx:` per app and global |
 | `nginx:show-config` | Display app nginx config | ⛔ | Read-only |
 | `nginx:start` | Starts the nginx server | ⛔ | Daemon control |
 | `nginx:stop` | Stops the nginx server | ⛔ | Daemon control |
@@ -441,7 +442,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 |---|---|:-:|---|
 | `logs:failed` | Shows the last failed deploy logs | ⛔ | Read-only |
 | `logs:report` | Displays a logs report for one or more apps | ✅ | `logs` read |
-| `logs:set` | Set or clear a logs property for an app | 🟡 | `logs:` per app and global; `vector-image`, `vector-networks` not in the prune list (F5) |
+| `logs:set` | Set or clear a logs property for an app | ✅ | `logs:` per app and global |
 | `logs:vector-logs` | Display vector log output | ⛔ | Read-only |
 | `logs:vector-start` | Start the vector logging container | ⛔ | Daemon control |
 | `logs:vector-stop` | Stop the vector logging container | ⛔ | Daemon control |

@@ -56,6 +56,26 @@ apps:
 | `<path>` | `app-json:set <app> appjson-path <path>` |
 | absent | no action |
 
+### Builder Selection and Cleanup (`build.selected`, `build.skip_cleanup`)
+
+Pick the builder and skip the post-build cleanup. Dokku 0.38.31's `builder:set` takes `build-dir` (`build.context`), `selected` and `skip-cleanup`; `detected` is read-only.
+
+```yaml
+apps:
+  api:
+    build:
+      selected: dockerfile            # builder:set api selected dockerfile
+      skip_cleanup: true              # builder:set api skip-cleanup true
+```
+
+| Value | Dokku Command |
+|-------|---------------|
+| `selected: <builder>` | `builder:report <app>` (check)<br>`builder:set <app> selected <builder>` (if changed) |
+| `skip_cleanup: true/false` | `builder:set <app> skip-cleanup <value>` (if changed) |
+| absent | no action |
+
+`selected` or `skip-cleanup` set on the server but absent from `build:` is a removal; `up --prune` resets it with `builder:set <app> <key>`.
+
 ### Build Args (`build.args`)
 
 Pass build-time arguments to Docker. Values support `${ENV_VAR}` interpolation from the host environment.

@@ -1,0 +1,16 @@
+{
+  "computed-archive-max-files": "<set>",
+  "computed-archive-max-size": "<set>",
+  "computed-deploy-branch": "<set>",
+  "computed-keep-git-dir": "<set>",
+  "deploy-branch": "main",
+  "global-archive-max-files": "",
+  "global-archive-max-size": "",
+  "global-deploy-branch": "<set>",
+  "global-keep-git-dir": "",
+  "keep-git-dir": "",
+  "last-updated-at": "<set>",
+  "rev-env-var": "<set>",
+  "sha": "<set>",
+  "source-image": ""
+}

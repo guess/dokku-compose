@@ -1,0 +1,7 @@
+{
+  "computed-wait-to-retire": "<set>",
+  "disabled-list": "<set>",
+  "global-wait-to-retire": "",
+  "skipped-list": "<set>",
+  "wait-to-retire": ""
+}

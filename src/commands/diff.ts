@@ -3,6 +3,7 @@ import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
+import { proxyProps } from '../resources/toggle.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
@@ -133,6 +134,11 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       let desired: unknown
       if (resource.key === 'proxy') {
         desired = appConfig.proxy?.enabled
+      } else if (resource.key === 'git') {
+        // `up` applies the top-level `git:` to an app that declares none.
+        desired = appConfig.git ?? config.git
+      } else if (resource.key === 'proxy_props') {
+        desired = proxyProps(appConfig.proxy)
       } else {
         desired = (appConfig as any)[resource.key]
       }

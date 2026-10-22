@@ -3,6 +3,14 @@ import type { ListChange, Change } from '../core/change.js'
 import type { Context } from '../core/context.js'
 import { parseReport, parseBulkReport } from './parsers.js'
 
+/**
+ * Every `network:set` key (Dokku 0.38.31 `plugins/network/network.go`). `attach-post-deploy`
+ * is the `networks:` list; the rest are the `network:` block.
+ */
+export const NETWORK_KEYS = [
+  'attach-post-create', 'attach-post-deploy', 'bind-all-interfaces', 'initial-network', 'static-web-listener', 'tld',
+] as const
+
 export const Networks: Resource<string[]> = {
   key: 'networks',
   read: async (ctx, target) => {
@@ -31,6 +39,7 @@ type NetworkPropsConfig = {
   attach_post_create?: string[] | false
   initial_network?: string | false
   bind_all_interfaces?: boolean
+  static_web_listener?: string | false
   tld?: string | false
 }
 
@@ -57,6 +66,7 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
     }
     if (report['initial-network']) config.initial_network = report['initial-network']
     if (report['bind-all-interfaces'] === 'true') config.bind_all_interfaces = true
+    if (report['static-web-listener']) config.static_web_listener = report['static-web-listener']
     if (report['tld']) config.tld = report['tld']
     return config
   },
@@ -71,6 +81,7 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
       }
       if (report['initial-network']) config.initial_network = report['initial-network']
       if (report['bind-all-interfaces'] === 'true') config.bind_all_interfaces = true
+      if (report['static-web-listener']) config.static_web_listener = report['static-web-listener']
       if (report['tld']) config.tld = report['tld']
       result.set(app, config)
     }
@@ -90,6 +101,9 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
     if (after.bind_all_interfaces !== undefined) {
       await ctx.run('network:set', target, 'bind-all-interfaces', String(after.bind_all_interfaces))
       ctx.needsRestart(target, 'network')
+    }
+    if (after.static_web_listener !== undefined && after.static_web_listener !== false) {
+      await ctx.run('network:set', target, 'static-web-listener', after.static_web_listener)
     }
     if (after.tld !== undefined && after.tld !== false) {
       await ctx.run('network:set', target, 'tld', after.tld)

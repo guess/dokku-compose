@@ -51,6 +51,7 @@ apps:
         - init-net
       initial_network: custom-bridge  # string = set; false = clear; absent = no action
       bind_all_interfaces: true  # true = bind 0.0.0.0; false = bind internal; absent = no action
+      static_web_listener: 127.0.0.1:5000  # string = set; false = clear; absent = no action
       tld: internal              # string = set; false = clear; absent = no action
 ```
 
@@ -84,6 +85,14 @@ Controls whether the app container binds to all network interfaces (`0.0.0.0`) o
 | `false` | `network:set <app> bind-all-interfaces false` |
 | absent | no action |
 
+### `static_web_listener`
+
+| Value | Dokku command |
+|-------|---------------|
+| `host:port` string | `network:set <app> static-web-listener <value>` |
+| `false` | `network:set <app> static-web-listener` (clear) |
+| absent | no action |
+
 ### `tld`
 
 Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when multiple apps on the same network need to resolve each other by a consistent hostname suffix.
@@ -103,7 +112,7 @@ Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when mu
 
 ## Removal
 
-A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `network:set <app> <property>` and no value (`attach-post-create`, `initial-network`, `bind-all-interfaces`, `tld`), also for a removed block. `attach-post-deploy` belongs to `networks:`: `--prune` does not touch it and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does.
+A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `static_web_listener`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `network:set <app> <property>` and no value (`attach-post-create`, `initial-network`, `bind-all-interfaces`, `static-web-listener`, `tld`), also for a removed block. `attach-post-deploy` belongs to `networks:`: `--prune` does not touch it and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does.
 
 `attach-post-deploy` belongs to `apps.<app>.networks`, so its removals are shown under `networks`, not under network properties. `web-listeners` and `static-web-listener` are read-only report lines and are never shown.
 
