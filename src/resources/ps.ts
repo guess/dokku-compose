@@ -68,12 +68,13 @@ export const Scale: Resource<Record<string, string | number>> = {
 }
 
 /**
- * ps properties, read per app from `ps:report --format json`. Not additive: a
- * listed-elsewhere key set on the server shows as drift, though removal is not
- * applied yet.
+ * ps properties, read per app from `ps:report --format json`. Additive: a
+ * settable key that is set on the server but absent from the file is neither
+ * shown nor reset yet (removal display and --prune come later).
  */
 export const Ps: Resource<Record<string, string | number>> = {
   key: 'ps',
+  additive: true,
 
   async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
     return parsePsReport(await ctx.query('ps:report', target, '--format', 'json'))

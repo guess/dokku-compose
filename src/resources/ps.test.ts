@@ -78,6 +78,16 @@ describe('Ps resource', () => {
   })
 })
 
+describe('Ps resource, hand-set key absent from the file', () => {
+  it('is no change and diff reports in sync', async () => {
+    const report = JSON.stringify({ 'restart-policy': 'always', 'stop-timeout-seconds': '30' })
+    const ctx = makeCtx({ 'ps:report': report })
+    await reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 30 })
+    expect(ctx.commands).toEqual([])
+    expect(computeAdditiveChange(await Ps.read(ctx, 'myapp'), { 'stop-timeout-seconds': 30 }).changed).toBe(false)
+  })
+})
+
 describe('additive change with unreadable current state', () => {
   it('an undefined current state is drift, not in sync', () => {
     expect(computeAdditiveChange(undefined, { web: 1 }).changed).toBe(true)

@@ -42,7 +42,7 @@ apps:
 |-------|---------------|
 | Property differs from `ps:report` | `ps:set <app> <key> <value>` |
 | Property matches | none |
-| A property on the server is not listed | none (not reset yet) |
+| A property on the server is not listed | none (not shown or reset yet) |
 | `ps` absent | none |
 
-Only `procfile-path`, `restart-policy` and `stop-timeout-seconds` are accepted; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. A property set on the server but missing from the file shows in `diff` but is not reset yet; removal handling comes with `--prune` in a later release.
+Only `procfile-path`, `restart-policy` and `stop-timeout-seconds` are accepted; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. A property set on the server but missing from the file is neither shown nor reset yet; that comes with diff removals and `--prune` in a later release.
