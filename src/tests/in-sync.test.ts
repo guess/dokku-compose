@@ -95,6 +95,16 @@ function inSyncServer(): FakeServer {
         'Docker options deploy': '--shm-size 256m --link dokku.postgres.myapp-db:dokku-postgres-myapp-db',
         'Docker options run': '--ulimit nofile=12',
       }),
+      // Stored as Dokku keeps them: values with a space or `?` are shell-quoted.
+      [`docker-options:report ${app} --format json`]: JSON.stringify({
+        'build-list': [
+          '--build-arg NODE_ENV=production',
+          "--build-arg 'GREETING=hello big world'",
+          "--build-arg 'API_URL=https://api.example.com/v1?debug=1'",
+          '--link dokku.postgres.myapp-db:dokku-postgres-myapp-db',
+        ],
+        'deploy-list': ['--shm-size 256m'],
+      }),
       [`git:report ${app} --git-deploy-branch`]: 'main',
 
       // myapp-worker: no cert, all checks disabled, its own deploy branch
@@ -116,6 +126,7 @@ function inSyncServer(): FakeServer {
       [`builder-dockerfile:report ${worker}`]: report(worker, 'builder-dockerfile', {}),
       [`app-json:report ${worker}`]: report(worker, 'app-json', {}),
       [`docker-options:report ${worker}`]: report(worker, 'docker-options', {}),
+      [`docker-options:report ${worker} --format json`]: JSON.stringify({ 'build-list': [] }),
     },
   }
 }

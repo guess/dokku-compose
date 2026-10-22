@@ -90,6 +90,8 @@ apps:
       context: apps/myapp
       args:
         NODE_ENV: production
+        GREETING: "hello big world"
+        API_URL: "https://api.example.com/v1?debug=1"
     docker_options:
       deploy:
         - "--shm-size 256m"

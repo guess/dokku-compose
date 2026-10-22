@@ -107,21 +107,21 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 | F6 | **Link options** | `links:` runs `:link` with no options, so the URL always lands in `DATABASE_URL`/`REDIS_URL`. Add `alias`, `env_var` and `querystring` (`--alias`, `--env-var`, `--querystring`), which a second database on one app needs. | 2 |
 | F7 | **Redis backups** | dokku-redis has the same backup commands as dokku-postgres; `redis:` has no `backup:`. Do it after F3 so both share one implementation. | 2 |
 | F8 | **Datastore settings after create** | No create flag beyond `--image`/`--image-version`, and no `:set`. dokku-postgres/redis 2.x make every setting a reconcilable `:set` property: `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `restart-policy`, `log-driver`, `log-opt`, `expose-*`, plus `:mount`. | 5 |
-| F9 | **Named storage entries** | Dokku 0.38 adds named entries (`storage:create` with `--chown`, `storage:set`, `storage:destroy`) and deprecates `storage:ensure-directory`. Declaring entries would replace qlustr's manual `mkdir` + `chown 32767` step for each new mount. `storage:mount --replace` would also converge an app's mounts in one call. | 5 |
-| F10 | **Global defaults for supported namespaces** | Global settings exist only for `domains`, `env`, `nginx`, `logs` and registry logins. Dokku also takes `--global` for `scheduler`, `registry:set`, `checks`, `ps`, `builder`, `network`, `proxy`, `git` and `app-json`. qlustr runs `git:set --global deploy-branch` by hand in `setup/setup.sh`. | 3 |
+| F9 | **Named storage entries** | Dokku 0.38 adds named entries (`storage:create` with `--chown`, `storage:set`, `storage:destroy`) and deprecates `storage:ensure-directory`. Declaring entries would replace a manual `mkdir` + `chown 32767` step for each new mount. `storage:mount --replace` would also converge an app's mounts in one call. | 5 |
+| F10 | **Global defaults for supported namespaces** | Global settings exist only for `domains`, `env`, `nginx`, `logs` and registry logins. Dokku also takes `--global` for `scheduler`, `registry:set`, `checks`, `ps`, `builder`, `network`, `proxy`, `git` and `app-json`. Box setup scripts run `git:set --global deploy-branch` by hand today. | 3 |
 
 ### Add new namespaces
 
 | # | Item | Why | Size |
 |---|---|---|:-:|
-| A1 | **`resource:` limits and reservations** | `resource:limit` / `resource:reserve`, per app and per process type, for CPU, memory and more. qlustr caps memory with `docker_options.deploy: ["--memory=…"]` today, which covers every process type at once and does not show in `resource:report`. | 3 |
+| A1 | **`resource:` limits and reservations** | `resource:limit` / `resource:reserve`, per app and per process type, for CPU, memory and more. A production box can cap memory with `docker_options.deploy: ["--memory=…"]` today, which covers every process type at once and does not show in `resource:report`. | 3 |
 | A2 | **`cron:` settings** | `cron:set`: `maintenance` (app and global), `maintenance.<id>` (one task, what `cron:suspend`/`:resume` write), `mailto` and `mailfrom` (global). Task definitions stay in `app.json`. | 2 |
-| A3 | **Git host auth** | `git:auth` (made idempotent by the new `git:auth-status`) and `git:allow-host`. qlustr runs `git:auth` by hand in `setup/lib.sh`. | 2 |
+| A3 | **Git host auth** | `git:auth` (made idempotent by the new `git:auth-status`) and `git:allow-host`. Box setup scripts run `git:auth` by hand today. | 2 |
 | A4 | **App locks and `apps:set`** | `apps:lock`/`apps:unlock` as a `locked:` key; global `apps:set disable-autocreation`. | 1 |
 | A5 | **Build record retention** | `builds:set retention`, per app and global (new in 0.38). | 1 |
 | A6 | **docker-local scheduler settings** | `scheduler-docker-local:set init-process`, `parallel-schedule-count`, per app and global. | 1 |
 | A7 | **`ssh-keys:`** | Declare who can push to the server; converge with `ssh-keys:add`/`:remove`. | 3 |
-| A8 | **Other builders and buildpacks** | `builder:set selected` plus the herokuish, pack, nixpacks, railpack and lambda settings, and `buildpacks:set --replace`/`set-property stack`. Nothing qlustr runs needs them: every app deploys a prebuilt image. | 5 |
+| A8 | **Other builders and buildpacks** | `builder:set selected` plus the herokuish, pack, nixpacks, railpack and lambda settings, and `buildpacks:set --replace`/`set-property stack`. Not needed where every app deploys a prebuilt image. | 5 |
 | A9 | **Other proxies** | caddy, haproxy, openresty and traefik `:set` properties and `:labels:add`/`:remove`, after F5 adds `proxy.type`. | 5 |
 | A10 | **Other datastore plugins** | mysql, mariadb, mongo, rabbitmq, elasticsearch and the rest share dokku-postgres's command set, so one generic service module built after F2, F3 and F8 would cover them all. Also the letsencrypt plugin. | 5 |
 | A11 | **Event logging toggle** | `events:on`/`events:off`, a server-wide setting. | 1 |
@@ -241,7 +241,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `builds:report` | Display a build report for one or more apps | ⛔ | Read-only |
 | `builds:set` | Set or clear a builds property | ❌ | A5: `retention` |
 | `git:allow-host` | Adds a host to known_hosts | ❌ | A3 |
-| `git:auth` | Configures netrc authentication for a given git server | ❌ | A3 (qlustr runs it in `setup/lib.sh`) |
+| `git:auth` | Configures netrc authentication for a given git server | ❌ | A3 (box setup scripts run it by hand) |
 | `git:auth-status` | Reports whether the netrc entry matches the requested state (exit 0… | ❌ | A3: makes `git:auth` idempotent |
 | `git:from-archive` | Updates an app's git repository with a given archive file | ⛔ | Deploy trigger |
 | `git:from-image` | Updates an app's git repository with a given docker image | ⛔ | Deploy trigger |
@@ -571,7 +571,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `:unmount` | ❌ | ❌ | F8 |
 | `:connect` | ⛔ | ⛔ | Interactive |
 | `:enter` | ⛔ | ⛔ | Interactive |
-| `:expose` | ❌ | ❌ | postgres: F8 (low: qlustr avoids it on Docker 29); redis: F8 |
+| `:expose` | ❌ | ❌ | postgres: F8 (low: its ambassador container breaks on Docker 29); redis: F8 |
 | `:unexpose` | ❌ | ❌ | F8 |
 | `:reexpose` | ⛔ | ⛔ | Maintenance |
 | `:promote` | ⛔ | ⛔ | One-shot action |
