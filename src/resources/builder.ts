@@ -101,7 +101,10 @@ export const Builder: Resource<BuildConfig> = {
   ],
   // Reset the stale `builder:set` keys; remove exactly the stale `--build-arg` options, other build options stay.
   prune: async (ctx, target, removed) => {
-    for (const key of removed.filter(l => !l.startsWith('args.'))) await ctx.run('builder:set', target, key.replaceAll('_', '-'))
+    for (const key of removed.filter(l => !l.startsWith('args.'))) {
+      await ctx.run('builder:set', target, key.replaceAll('_', '-'))
+      ctx.needsRebuild(target, 'build')
+    }
     const stale = new Set(removed.filter(l => l.startsWith('args.')).map(l => l.slice('args.'.length)))
     if (stale.size === 0) return
     // Same query `read` made, so this is the cached report. Remove every stale occurrence, by exact option text.
