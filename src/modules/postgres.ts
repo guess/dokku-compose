@@ -48,15 +48,24 @@ export async function ensurePostgresBackups(
   for (const [name, config] of Object.entries(services)) {
     const backup = config.backup
     if (backup === undefined && !opts.prune) continue
-    const info = await readServiceInfo(ctx, 'postgres', name)
 
     if (backup === undefined) {
+      // Only a warning can come of this, so a failed read (a service created
+      // on this --dry-run, a transient error) never stops the run.
+      let info
+      try {
+        info = await readServiceInfo(ctx, 'postgres', name)
+      } catch (err) {
+        logWarn('services', `could not read backup state for ${name}: ${err instanceof Error ? err.message : String(err)}`)
+        continue
+      }
       if (hasBackup(info)) {
         logWarn('services', `${name}: has a backup the file does not declare (${describeServerBackup(info)}); --prune leaves it, set backup: false to remove it`)
       }
       continue
     }
 
+    const info = await readServiceInfo(ctx, 'postgres', name)
     logAction('services', `Configuring backup for ${name}`)
     const fields = new Set(backupMismatches(info, backup).map(m => m.field))
     if (fields.size === 0) { logSkip(); continue }
@@ -100,7 +109,15 @@ export async function ensurePostgresBackups(
  * (Dokku merges global env into every app). Global unset never restarts apps.
  */
 export async function removeBackupHashKeys(ctx: Context): Promise<void> {
-  const stale = staleBackupHashKeys(await readGlobalEnv(ctx))
+  let env: Record<string, string>
+  try {
+    env = await readGlobalEnv(ctx)
+  } catch (err) {
+    // With env: declared the global env step has already failed loudly; this cleanup can wait for the next run.
+    logWarn('global', `could not read global env to remove old backup hash keys: ${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  const stale = staleBackupHashKeys(env)
   if (stale.length === 0) return
   logAction('global', `Removing ${stale.length} old backup hash key(s)`)
   await ctx.run('config:unset', '--global', '--no-restart', ...stale)

@@ -79,7 +79,9 @@ export async function readServiceMismatches(
  * sha256 of the access key id and the secret joined by one newline.
  */
 export function backupAuthFingerprint(accessKeyId: string, secretAccessKey: string): string {
-  return createHash('sha256').update(`${accessKeyId}\n${secretAccessKey}`).digest('hex')
+  // Dokku stores each credential in a file and fingerprints its trimmed first line.
+  const firstLine = (v: string) => v.trim().split('\n')[0].trim()
+  return createHash('sha256').update(`${firstLine(accessKeyId)}\n${firstLine(secretAccessKey)}`).digest('hex')
 }
 
 /** Whether the server holds any backup schedule or credentials for the service. */
@@ -93,6 +95,10 @@ export function hasBackup(info: ServiceInfo): boolean {
  * `false` drifts when any backup is left on the server.
  */
 export function backupMismatches(info: ServiceInfo, backup: ServiceBackupConfig | false): ServiceMismatch[] {
+  // An absent key is not an empty value: an older plugin would read as "no backup" and re-apply every run.
+  for (const key of ['backup-authenticated', 'backup-auth-fingerprint', 'backup-schedule']) {
+    if (!(key in info)) throw new Error('dokku-postgres too old to report backup state (needs 2.3.1+)')
+  }
   if (backup === false) {
     return hasBackup(info) ? [{ field: 'backup', desired: 'none', current: describeServerBackup(info) }] : []
   }

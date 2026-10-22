@@ -424,6 +424,19 @@ describe('a server whose state equals the file', () => {
     ])
   })
 
+  it('a dokku-postgres too old to report backup state is unknown in diff', async () => {
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-db'].backup = {
+      schedule: '0 * * * *', bucket: 'backups/myapp-db',
+      auth: { access_key_id: 'KEY', secret_access_key: 'SECRET', region: 'auto', signature_version: 's3v4', endpoint: 'https://s3.example.com' },
+    }
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = JSON.stringify({ image: 'postgis/postgis', 'image-version': '17-3.5' })
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db']).toMatchObject({ status: 'unknown' })
+    expect(diff.readWarnings.join('\n')).toContain('needs 2.3.1+')
+  })
+
   it('a backup on the server that the file omits is a diff note; up --prune only warns', async () => {
     const server = inSyncServer()
     server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {

@@ -135,6 +135,31 @@ describe('ensurePostgresBackups', () => {
     warn.mockRestore()
   })
 
+  it('throws on a plugin too old to report backup state, instead of re-applying every run', async () => {
+    const { ctx, runner } = fakeContext({ checks: {}, queries: {
+      'postgres:info api-db --format json': JSON.stringify({ image: 'postgres', 'image-version': '17' }),
+    } })
+    await expect(ensurePostgresBackups(ctx, { 'api-db': { backup } })).rejects.toThrow('needs 2.3.1+')
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('compares the trimmed first line of each credential, as Dokku stores it', async () => {
+    const { ctx, runner } = server(configured)
+    const padded = { ...backup, auth: { ...backup.auth, access_key_id: ' KEY\n', secret_access_key: 'SECRET \n' } }
+    await ensurePostgresBackups(ctx, { 'api-db': { backup: padded } })
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('--prune with an absent backup warns and carries on when the info read fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { ctx, runner } = fakeContext({ checks: {}, queries: {} })
+      await ensurePostgresBackups(ctx, { 'api-db': {} }, { prune: true })
+      expect(runner.dryRunLog).toEqual([])
+      expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('could not read backup state for api-db')
+    } finally { warn.mockRestore() }
+  })
+
   it('never prints the credentials: logs carry none and the dry-run listing masks them', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {})
     const { ctx, runner } = server({})
@@ -148,6 +173,16 @@ describe('ensurePostgresBackups', () => {
 })
 
 describe('removeBackupHashKeys', () => {
+  it('warns and carries on when the global env cannot be read', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const { ctx, runner } = fakeContext({ checks: {}, queries: {} })
+      await removeBackupHashKeys(ctx)
+      expect(runner.dryRunLog).toEqual([])
+      expect(warn.mock.calls.length).toBe(1)
+    } finally { warn.mockRestore() }
+  })
+
   it('unsets every old DOKKU_COMPOSE_BACKUP_HASH_* global, and a second run unsets none', async () => {
     const { ctx, runner } = fakeContext({ checks: {}, queries: {
       'config:export --global --format json': JSON.stringify({ APP_ENV: 'x', DOKKU_COMPOSE_BACKUP_HASH_WEB_DB: 'h', DOKKU_COMPOSE_BACKUP_HASH_API_DB: 'h' }),
