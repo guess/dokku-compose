@@ -1,8 +1,9 @@
 import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
-import { computeChange } from '../core/change.js'
+import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { maskSensitiveData } from '../core/mask.js'
+import { planPlugins } from '../modules/plugins.js'
 import { ensureDokkuVersion } from '../modules/version.js'
 import chalk from 'chalk'
 
@@ -12,6 +13,7 @@ interface FeatureDiff {
   status: DiffStatus
   desired?: unknown
   current?: unknown
+  note?: string
 }
 
 interface AppDiff {
@@ -21,6 +23,7 @@ interface AppDiff {
 interface DiffResult {
   apps: Record<string, AppDiff>
   services: Record<string, { status: DiffStatus }>
+  plugins: Record<string, FeatureDiff>
   inSync: boolean
   /** Bulk or per-app reads that could not be trusted; diff falls back but flags them. */
   readWarnings: string[]
@@ -56,7 +59,7 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
-  const result: DiffResult = { apps: {}, services: {}, inSync: true, readWarnings: [] }
+  const result: DiffResult = { apps: {}, services: {}, plugins: {}, inSync: true, readWarnings: [] }
   const appNames = Object.keys(config.apps)
 
   await ensureDokkuVersion(ctx, config.dokku?.version)
@@ -150,7 +153,9 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         continue
       }
 
-      const change = computeChange(current as any, desired as any)
+      const change = resource.additive
+        ? computeAdditiveChange(current, desired)
+        : computeChange(current as any, desired as any)
 
       if (!change.changed) {
         appDiff[resource.key] = { status: 'in-sync', desired, current }
@@ -174,6 +179,22 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     result.apps[app] = appDiff
   }
 
+  // Compare plugin pins
+  if (config.plugins) {
+    const plans = planPlugins(await ctx.queryStrict('plugin:list', '--format', 'json'), config.plugins)
+    for (const plan of plans) {
+      if (plan.action === 'ok') continue
+      const status: DiffStatus = plan.action === 'install' ? 'missing'
+        : plan.action === 'unknown' ? 'unknown' : 'changed'
+      const note = plan.action === 'newer' ? 'installed is newer; up warns and leaves it'
+        : plan.action === 'unknown' ? 'versions cannot be compared; up leaves it'
+        : undefined
+      result.plugins[plan.name] = { status, desired: plan.desired, current: plan.installed, note }
+      // An uncomparable pin is shown but is not drift: up leaves it, so it must not fail a check.
+      if (plan.action !== 'unknown') result.inSync = false
+    }
+  }
+
   // Compare services
   for (const svc of Object.keys(config.postgres ?? {})) {
     const exists = await ctx.check('postgres:exists', svc)
@@ -190,7 +211,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 }
 
 export function maskDiffResult(diff: DiffResult): DiffResult {
-  const masked: DiffResult = { apps: {}, services: diff.services, inSync: diff.inSync, readWarnings: diff.readWarnings }
+  const masked: DiffResult = { apps: {}, services: diff.services, plugins: diff.plugins, inSync: diff.inSync, readWarnings: diff.readWarnings }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
     for (const [feature, d] of Object.entries(appDiff)) {
@@ -224,6 +245,13 @@ export function formatSummary(diff: DiffResult): string {
     }
   }
 
+  for (const [name, d] of Object.entries(diff.plugins)) {
+    const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
+    const detail = d.status === 'missing' ? `not installed (want ${d.desired ?? 'any'})` : `${d.current} → ${d.desired}`
+    lines.push(`  plugin: ${name}`)
+    lines.push(`    ${sym} version: ${detail}${d.note ? ` (${d.note})` : ''}`)
+  }
+
   for (const [svc, d] of Object.entries(diff.services)) {
     if (d.status === 'missing') {
       lines.push(`  services:`)
@@ -234,7 +262,8 @@ export function formatSummary(diff: DiffResult): string {
   const total = Object.values(diff.apps)
     .flatMap(a => Object.values(a))
     .filter(d => d.status !== 'in-sync').length +
-    Object.values(diff.services).filter(d => d.status !== 'in-sync').length
+    Object.values(diff.services).filter(d => d.status !== 'in-sync').length +
+    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length
 
   if (diff.readWarnings.length > 0) {
     lines.push('')
@@ -283,6 +312,12 @@ export function formatVerbose(diff: DiffResult): string {
       for (const line of currentLines) lines.push(chalk.red(`- ${line}`))
       for (const line of desiredLines) lines.push(chalk.green(`+ ${line}`))
     }
+  }
+
+  for (const [name, d] of Object.entries(diff.plugins)) {
+    lines.push(`@@ plugin: ${name} @@`)
+    if (d.current !== undefined) lines.push(chalk.red(`- ${d.current}`))
+    lines.push(chalk.green(`+ ${d.desired ?? '(any version)'}`) + (d.note ? ` (${d.note})` : ''))
   }
 
   for (const [svc, d] of Object.entries(diff.services)) {

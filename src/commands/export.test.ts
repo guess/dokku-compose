@@ -2,6 +2,17 @@ import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { runExport } from './export.js'
 
+// Strict reads go through the same stub as lenient ones; an empty JSON
+// report reads as nothing set.
+function stubStrict(runner: ReturnType<typeof createRunner>) {
+  runner.queryStrict = vi.fn(async (...args: string[]) => {
+    const out = await runner.query(...args)
+    if (out) return out
+    if (args[0] === 'plugin:list') return '[]'
+    return args.includes('json') ? '{}' : out
+  })
+}
+
 describe('runExport', () => {
   it('includes dokku version from version command', async () => {
     const runner = createRunner({ dryRun: false })
@@ -10,6 +21,7 @@ describe('runExport', () => {
       return ''
     })
     runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
     const result = await runExport(runner, {})
     expect(result.dokku).toEqual({ version: '0.34.5' })
   })
@@ -24,16 +36,17 @@ describe('runExport', () => {
       return ''
     })
     runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
     await runExport(runner, {})
     // Should call bulk reports without app arg
     const bulkCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length === 1 && c[0] !== 'apps:report'
+      c => c[0].endsWith(':report') && c.length === 1 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
     )
     // Should have bulk calls for: nginx, logs, registry, scheduler, proxy, ports, domains, storage, certs, network, git
     expect(bulkCalls.length).toBeGreaterThanOrEqual(10)
-    // Should NOT have per-app report calls (except config which has no readAll)
+    // Should NOT have per-app report calls (except config and ps, which have no readAll; ps reads per-app JSON)
     const perAppReportCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length >= 2 && c[0] !== 'apps:report'
+      c => c[0].endsWith(':report') && c.length >= 2 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
     )
     expect(perAppReportCalls).toEqual([])
   })
@@ -42,6 +55,7 @@ describe('runExport', () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockResolvedValue('')
     runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
     const result = await runExport(runner, { appFilter: ['myapp'] })
     expect(Object.keys(result.apps)).toContain('myapp')
     expect(Object.keys(result.apps)).toHaveLength(1)
@@ -68,6 +82,7 @@ describe('runExport', () => {
       return ''
     })
     runner.check = vi.fn().mockResolvedValue(false)
+    stubStrict(runner)
     const result = await runExport(runner, {})
     expect(result.apps['myapp'].nginx).toEqual({ 'client-max-body-size': '50m' })
     expect(result.apps['myapp'].proxy).toEqual({ enabled: true })

@@ -9,6 +9,10 @@ function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, bool
       const key = args.join(' ')
       return queryMap[key] ?? ''
     }),
+    queryStrict: vi.fn(async (...args: string[]) => {
+      const key = args.join(' ')
+      return queryMap[key] ?? ''
+    }),
     check: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
       if (key in checkMap) return checkMap[key]
@@ -271,5 +275,40 @@ describe('formatVerbose', () => {
     expect(output).toContain('could not read server state')
     // No proposed-change lines for the unknown domains feature.
     expect(output).not.toMatch(/- \[\s*\n\s*"api\.example\.com"/)
+  })
+
+  it('reports plugin version drift and leaves in-sync plugins out', async () => {
+    const ctx = makeCtx({
+      'plugin:list --format json': JSON.stringify([{ name: 'postgres', version: '1.0.0' }, { name: 'redis', version: '1.2.0' }]),
+    })
+    const cfg: Config = {
+      apps: {},
+      plugins: {
+        postgres: { url: 'https://example.com/p.git', version: '1.2.0' },
+        redis: { url: 'https://example.com/r.git', version: '1.2.0' },
+        extra: { url: 'https://example.com/e.git', version: '1.0.0' },
+      },
+    }
+    const diff = await computeDiff(ctx, cfg)
+    expect(diff.plugins.postgres.status).toBe('changed')
+    expect(diff.plugins.redis).toBeUndefined()
+    expect(diff.plugins.extra.status).toBe('missing')
+    expect(diff.inSync).toBe(false)
+  })
+
+  it('shows scale drift but not a process type removed from the file', async () => {
+    const table = JSON.stringify([{ process_type: 'web', quantity: 1 }, { process_type: 'worker', quantity: 0 }])
+    const ctx = makeCtx({ 'ps:scale --format json api': table })
+    const drift = await computeDiff(ctx, { apps: { api: { scale: { web: 1, worker: 1 } } } })
+    expect(drift.apps.api.scale?.status).toBe('changed')
+    const same = await computeDiff(makeCtx({ 'ps:scale --format json api': table }), { apps: { api: { scale: { web: 1 } } } })
+    expect(same.apps.api.scale?.status).toBe('in-sync')
+  })
+
+  it('shows an uncomparable plugin pin as unknown without failing the check', async () => {
+    const ctx = makeCtx({ 'plugin:list --format json': JSON.stringify([{ name: 'p', version: '1.0.0' }]) })
+    const diff = await computeDiff(ctx, { apps: {}, plugins: { p: { url: 'https://example.com/p.git', version: '1.0' } } })
+    expect(diff.plugins.p.status).toBe('unknown')
+    expect(diff.inSync).toBe(true)
   })
 })

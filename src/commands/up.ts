@@ -9,6 +9,7 @@ import { Config as ConfigResource } from '../resources/config.js'
 import { Certs } from '../resources/certs.js'
 import { Builder } from '../resources/builder.js'
 import { DockerOptions } from '../resources/docker-options.js'
+import { Scale, Ps } from '../resources/ps.js'
 import { Git } from '../resources/git.js'
 import { Checks } from '../resources/checks.js'
 import { Networks, NetworkProps } from '../resources/network.js'
@@ -90,6 +91,8 @@ async function processApp(
   await step(() => reconcile(Logs, ctx, app, appConfig.logs))
   await step(() => reconcile(Registry, ctx, app, appConfig.registry))
   await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler))
+  await step(() => reconcile(Ps, ctx, app, appConfig.ps))
+  await step(() => reconcile(Scale, ctx, app, appConfig.scale))
   await step(() => reconcile(ConfigResource, ctx, app, appConfig.env || {}))
 
   // Build

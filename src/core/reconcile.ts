@@ -1,6 +1,6 @@
 // src/core/reconcile.ts
 import type { Context } from './context.js'
-import { computeChange } from './change.js'
+import { computeChange, computeAdditiveChange } from './change.js'
 import { logAction, logDone, logSkip } from './logger.js'
 
 export interface Resource<T = unknown> {
@@ -11,6 +11,11 @@ export interface Resource<T = unknown> {
   onChange: (ctx: Context, target: string, change: any) => void | Promise<void>
   /** Skip diff, always call onChange. For resources without parseable reports. */
   forceApply?: boolean
+  /**
+   * Only keys present in the desired map count as drift. Keys that exist on the
+   * server but not in the desired map are left alone (never reported or removed).
+   */
+  additive?: boolean
 }
 
 export async function reconcile<T>(
@@ -29,7 +34,7 @@ export async function reconcile<T>(
   }
 
   const before = await resource.read(ctx, target)
-  const change = computeChange(before, desired)
+  const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
   if (!change.changed) {
     logSkip()
     return

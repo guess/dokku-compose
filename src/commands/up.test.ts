@@ -7,12 +7,22 @@ import path from 'path'
 
 const FIXTURES = path.join(import.meta.dirname, '../tests/fixtures')
 
+// Strict reads go through the same stub as lenient ones; an empty
+// `plugin:list` reads as no plugins installed.
+function stubStrict(runner: ReturnType<typeof createRunner>) {
+  runner.queryStrict = vi.fn(async (...args: string[]) => {
+    const out = await runner.query(...args)
+    return args[0] === 'plugin:list' && !out ? '[]' : out
+  })
+}
+
 describe('runUp', () => {
   it('creates app and services from simple.yml', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
     runner.query = vi.fn().mockResolvedValue('')
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
     await runUp(ctx, config, [])
@@ -42,6 +52,7 @@ describe('runUp', () => {
       return ''
     })
     runner.run = vi.fn()
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
     await runUp(ctx, config, [])
@@ -60,6 +71,7 @@ describe('runUp', () => {
       if (args[0] === 'version') return 'dokku version 0.35.12'
       return ''
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
     await runUp(ctx, config, ['funqtion'])
@@ -80,6 +92,7 @@ describe('runUp', () => {
         throw new DokkuCommandError(args, 1, 'app already exists under a different owner')
       }
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
 
@@ -106,6 +119,7 @@ describe('runUp', () => {
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
       if (args[0] === 'domains:add' || args[0] === 'domains:set') throw new DokkuCommandError(args, 1, 'domain boom')
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
     config.apps.funqtion.domains = ['a.example.com']
@@ -126,6 +140,7 @@ describe('runUp', () => {
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
       if (args[0] === 'apps:create') throw new DokkuCommandError(args, 1, 'nope')
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
     config.apps.funqtion.env = { MY_KEY: 'v' }
@@ -146,6 +161,7 @@ describe('runUp', () => {
         throw new DokkuCommandError(args, 1, 'boom')
       }
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
 
@@ -173,6 +189,7 @@ describe('runUp', () => {
         throw new DokkuCommandError(args, 1, 'network already in use')
       }
     })
+    stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
 
