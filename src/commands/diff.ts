@@ -453,10 +453,16 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.inSync = false
         continue
       }
+      const backup = plugin === 'postgres' ? (declared as PostgresConfig).backup : undefined
+      // Nothing declared to compare: redis needs no read; postgres reads only to note an undeclared backup.
+      const compares = declared?.version !== undefined || declared?.image !== undefined || backup !== undefined
+      if (!compares && plugin === 'redis') {
+        result.services[svc] = { status: 'in-sync', mismatches: [] }
+        continue
+      }
       try {
         // One info read covers version, image and backup.
         const info = await readServiceInfo(ctx, plugin, svc)
-        const backup = plugin === 'postgres' ? (declared as PostgresConfig).backup : undefined
         const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(info, backup) : [])]
         // An undeclared backup is never removed (only `backup: false` does), so it is a note, not drift.
         const note = plugin === 'postgres' && backup === undefined && hasBackup(info)
@@ -465,8 +471,10 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches, note }
         if (mismatches.length) result.inSync = false
       } catch (err) {
-        result.services[svc] = { status: 'unknown' }
         result.readWarnings.push(`could not read ${plugin} service '${svc}': ${err instanceof Error ? err.message : String(err)}`)
+        // Only a read the file depends on makes the service unknown; the undeclared-backup note is best effort.
+        if (!compares) { result.services[svc] = { status: 'in-sync', mismatches: [] }; continue }
+        result.services[svc] = { status: 'unknown' }
         result.inSync = false
       }
     }
