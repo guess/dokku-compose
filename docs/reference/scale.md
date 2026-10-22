@@ -18,6 +18,8 @@ apps:
       worker: 1
 ```
 
+A count may be a `${VAR}` reference: `${VAR}` always expands to a string, and `scale` coerces a numeric string (`"2"`) to an integer. A non-numeric string, a fraction or a negative count fails validation.
+
 | State | Dokku Command |
 |-------|---------------|
 | A listed type differs from the server (or the app reports no scale yet) | `ps:scale --skip-deploy <app> <proc>=<count>...` (one command for all changed types) |

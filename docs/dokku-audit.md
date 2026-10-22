@@ -28,7 +28,7 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 | 11 | version | dokku.sh | supported | [link](https://dokku.com/docs/getting-started/installation/) |
 | 12 | git | git.sh | skipped | [link](https://dokku.com/docs/deployment/methods/git/) |
 | 13 | proxy | proxy.sh | supported | [link](https://dokku.com/docs/networking/proxy-management/) |
-| 14 | ps | — | planned | [link](https://dokku.com/docs/processes/process-management/) |
+| 14 | ps | ps.ts | supported | [link](https://dokku.com/docs/processes/process-management/) |
 | 15 | storage | storage.sh | partial | [link](https://dokku.com/docs/advanced-usage/persistent-storage/) |
 | 16 | resource | — | planned | [link](https://dokku.com/docs/advanced-usage/resource-management/) |
 | 17 | registry | registry.sh | partial | [link](https://dokku.com/docs/advanced-usage/registry-management/) |
@@ -44,9 +44,9 @@ See `docs/plans/2026-03-03-dokku-feature-audit-design.md` for methodology.
 
 ## Statistics
 
-- **Supported:** 11 namespaces (apps, certs, checks, config, docker-options, network, nginx, plugin, ports, proxy, version)
+- **Supported:** 12 namespaces (apps, certs, checks, config, docker-options, network, nginx, plugin, ports, proxy, ps, version)
 - **Partial:** 7 namespaces (domains, builder-*, storage, registry, scheduler, logs, app-json)
-- **Planned:** 3 namespaces (ps, resource, cron)
+- **Planned:** 2 namespaces (resource, cron)
 - **Skipped:** 5 namespaces (git, run, repo, image, backup)
 
 ---
@@ -545,19 +545,19 @@ apps:
 ## 14. ps — Process Management
 
 **Doc:** https://dokku.com/docs/processes/process-management/
-**Module:** No module exists. New: `lib/ps.sh`
-**Status:** planned
+**Module:** `src/resources/ps.ts`; see [reference/scale.md](reference/scale.md)
+**Status:** supported
 
 ### Commands
 
 | Command | Type | Supported | Notes |
 |---------|------|-----------|-------|
-| ps:set restart-policy | declarative | no | Per-app restart policy |
-| ps:set procfile-path | declarative | no | Custom Procfile path |
-| ps:set stop-timeout-seconds | declarative | no | Stop timeout |
-| ps:scale web=N worker=N | declarative | no | Process formation / scaling |
+| ps:set restart-policy | declarative | yes | Per-app restart policy |
+| ps:set procfile-path | declarative | yes | Custom Procfile path |
+| ps:set stop-timeout-seconds | declarative | yes | Stop timeout |
+| ps:scale web=N worker=N | declarative | yes | Process formation / scaling |
 | ps:start / stop / restart / rebuild | imperative | no | Runtime actions |
-| ps:report | read-only | no | Display process report |
+| ps:report | read-only | yes | Display process report |
 
 ### Proposed YAML Keys
 
@@ -575,7 +575,7 @@ apps:
 
 ### Decision
 
-**Planned.** `ps:scale` (process formation) and `ps:set` (restart policy, procfile path, stop timeout) are high-priority declarative settings. `scale:` kept separate from `ps:` because it uses different command syntax.
+**Supported.** `ps:scale` (process formation, the `scale:` key) and `ps:set` (restart policy, procfile path, stop timeout, the `ps:` key) are declarative; `scale:` is kept separate from `ps:` because it uses different command syntax. Runtime actions (start, stop, restart, rebuild) stay imperative and unsupported. See [reference/scale.md](reference/scale.md).
 
 ---
 

@@ -34,6 +34,8 @@ apps:
 
 Removing a key from `env:` and re-running `up` unsets it and drops it from the marker.
 
+**Limit:** only keys named in the marker are unset. dokku-compose 0.12 and earlier rewrote the marker on every run to just the keys still in the YAML, so a key removed from the YAML under those versions dropped out of the marker without being unset. Nothing can tell such an orphan from a key set by hand, so unset those once yourself (`dokku config:unset --no-restart <app> KEY`). Keys removed from the YAML under 0.13 or later are cleaned up normally.
+
 ## Failures
 
 - **A failed `config:unset`** is reported with the app and the masked command. The marker is not rewritten, so it still names the key and the next `up` retries.

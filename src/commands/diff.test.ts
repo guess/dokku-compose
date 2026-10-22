@@ -436,6 +436,18 @@ describe('computeDiff — settings removed from the file', () => {
     expect(declared.apps.api.links).toBeUndefined()
   })
 
+  it('verbose renders a marked key gone from the app as (unset)', async () => {
+    const ctx = makeCtx({
+      'config:get api DOKKU_COMPOSE_MANAGED_KEYS': 'A',
+      'config:export --format json api': JSON.stringify({}),
+    })
+    const diff = await computeDiff(ctx, { apps: { api: { env: { A: '1' } } } })
+    const out = formatVerbose(diff)
+    expect(out).toContain('(unset)')
+    expect(out).not.toContain('missing')
+    expect(out).not.toContain('\\u0000')
+  })
+
   it('verbose prints "-" lines for removals', async () => {
     const ctx = makeCtx({ 'nginx:report': nginxBulk })
     const out = formatVerbose(await computeDiff(ctx, { apps: { api: {} } }))

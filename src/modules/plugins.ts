@@ -13,16 +13,18 @@ export interface InstalledPlugin {
   committish: string
 }
 
-/** Parse `plugin:list --format json` into name -> installed info. A plugin without a version is still installed. */
+/** Parse `plugin:list --format json` into name -> installed info. Throws on non-JSON or non-array output, so a Dokku that ignores the flag never plans installs over installed plugins. A plugin without a version is still installed. */
 export function parsePluginList(raw: string): Map<string, InstalledPlugin> {
   const result = new Map<string, InstalledPlugin>()
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return result
+    throw new Error(`plugin:list --format json did not return JSON (does this Dokku support --format json?): ${raw.slice(0, 200)}`)
   }
-  if (!Array.isArray(parsed)) return result
+  if (!Array.isArray(parsed)) {
+    throw new Error(`plugin:list --format json did not return a JSON array: ${raw.slice(0, 200)}`)
+  }
   for (const p of parsed) {
     if (p && typeof p.name === 'string') {
       result.set(p.name, {

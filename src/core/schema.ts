@@ -45,7 +45,7 @@ const AppSchema = z.object({
   logs: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   registry: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   scheduler: z.string().optional(),
-  scale: z.record(z.string(), z.number().int().min(0)).optional(),
+  scale: z.record(z.string(), z.preprocess(v => (typeof v === 'string' && /^\s*-?\d+\s*$/.test(v) ? Number(v) : v), z.number().int().min(0))).optional(),
   ps: z.object({
     'procfile-path': z.union([z.string(), z.number()]).optional(),
     'restart-policy': z.union([z.string(), z.number()]).optional(),
