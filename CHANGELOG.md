@@ -4,18 +4,22 @@
 
 ## [0.13.0] - 2026-10-22
 
+### Breaking
+
+- **Requires Dokku with `--format json`** for `config:export`, `plugin:list`, `ps:report` and `ps:scale` (Dokku 0.38 has it). A read that does not return JSON now fails the run instead of being treated as empty.
+- **A `${VAR}` is substituted after the YAML is parsed**, in string values only. A variable can no longer inject YAML structure, a `${VAR}` value is always a string, and keys and comments are not substituted. `$${` writes a literal `${`.
+
 ### Added
 
-- **`up --prune`** resets settings the file no longer declares (nginx, logs, registry, scheduler, ps, network, checks, build and env leftovers). `diff` is the preview; there is no prompt. It never destroys an app, service or network, never uninstalls a plugin and never changes `scale`.
-- **New `diff` `-` lines** for settings on the server that the file does not declare (shown by `diff --verbose` too).
-- **`ps:` and `scale:`** per-app keys (`ps:set` properties and `ps:scale`), applied with `--skip-deploy`. A `scale` count may be a `${VAR}` reference: numeric strings are coerced to integers.
-- Plugin version pins and `env` keys that are removed from the file are now really unset.
+- **`up --prune`** resets settings the file no longer declares: nginx, logs, registry, scheduler, `ps` and network properties, checks, and build args. `diff` is the preview; there is no prompt. It never destroys an app, service or network, never uninstalls a plugin, and never changes `scale` or env.
+- **`diff` `-` lines** for settings on the server that the file does not declare, and a warning when an app with no `links:` has linked services.
+- **`ps:` and `scale:`** per-app keys: `ps:set` properties (`procfile-path`, `restart-policy`, `stop-timeout-seconds`) and `ps:scale`, applied with `--skip-deploy`. A `scale` count may be a `${VAR}` reference: numeric strings are coerced to integers.
+- **Plugin `version` pins.** A missing plugin is installed with `--committish`; an older installed plugin is moved forward with `plugin:update`; a newer one is never downgraded; a SHA pin is compared with the installed commit.
 
 ### Changed (behaviour)
 
-- **A `${VAR}` value is always a string.** Keys and comments are not substituted.
-- **Env keys are really unset.** `env` is read as JSON, so Dokku with `config:export --format json` is required. Plugins are read with `plugin:list --format json`; output that is not a JSON array now fails the run instead of planning installs over installed plugins.
-- **Each step keeps going after a failure**; the run ends non-zero with a summary.
+- **Env keys removed from the file are really unset**, including when the whole `env:` block is removed. `env` is read with `config:export --format json`, so any value round-trips and an unchanged value is no longer re-set on every `up`.
+- **Each step keeps going after a failure**; the run ends non-zero with a summary. A failed `apps:create` stops that app.
 - **Leftovers on the box no longer trigger nginx `proxy:build-config`.**
 - `diff --verbose` shows an env key that is marked but gone from the app as `(unset)`.
 
