@@ -1,7 +1,8 @@
 import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
 import type { PostgresConfig, ServiceBackupConfig } from '../core/schema.js'
-import { logAction, logDone, logSkip } from '../core/logger.js'
+import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
+import { readServiceMismatches } from './service-drift.js'
 
 function backupHashKey(serviceName: string): string {
   return 'DOKKU_COMPOSE_BACKUP_HASH_' + serviceName.toUpperCase().replace(/-/g, '_')
@@ -18,7 +19,19 @@ export async function ensurePostgres(
   for (const [name, config] of Object.entries(services)) {
     logAction('services', `Ensuring ${name}`)
     const exists = await ctx.check('postgres:exists', name)
-    if (exists) { logSkip(); continue }
+    if (exists) {
+      logSkip()
+      // Changing a service's version or image can need a dump and downtime, so
+      // `up` only warns; run `postgres:upgrade` yourself.
+      try {
+        for (const m of await readServiceMismatches(ctx, 'postgres', name, config)) {
+          logWarn('services', `${name}: ${m.field} is ${m.current || '(unknown)'} on the server but ${m.desired} in the file; up does not change it`)
+        }
+      } catch (err) {
+        logWarn('services', `${name}: could not compare version and image: ${err instanceof Error ? err.message : String(err)}`)
+      }
+      continue
+    }
     const args: string[] = ['postgres:create', name]
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)

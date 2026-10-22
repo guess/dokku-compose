@@ -163,7 +163,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |
 | Process Scale & ps | Declare process counts (`ps:scale`) and ps properties (`ps:set`) | [scale](docs/reference/scale.md) |
 | Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
-| Postgres | Postgres services with optional S3 backups | [postgres](docs/reference/postgres.md) |
+| Postgres | Postgres services with optional S3 backups; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
 | Redis | Redis service instances | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps | [plugins](docs/reference/plugins.md#linking-services-to-apps-appsapplinks) |
 

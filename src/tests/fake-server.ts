@@ -94,3 +94,17 @@ export function logsGlobalJson(values: Record<string, string> = {}): string {
 export function nginxGlobalJson(values: Record<string, string> = {}): string {
   return fill(NGINX_PROPS.map(p => `global-${p}`), values)
 }
+
+/**
+ * `<plugin>:info <svc> --format json` as dokku-postgres 2.4.0 and dokku-redis
+ * 2.4.0 print it (a flat object; `image` and `image-version` are the pair
+ * `up` created the service with, `version` the image tag the container runs).
+ */
+export function serviceInfoJson(svc: string, image: string, imageVersion: string, values: Record<string, string> = {}): string {
+  return JSON.stringify({
+    'backup-schedule': '', 'backup-bucket': '', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
+    'data-dir': `/var/lib/dokku/services/x/${svc}/data`, status: 'running',
+    service: svc, image, 'image-version': imageVersion, version: `${image}:${imageVersion}`, links: 'myapp',
+    ...values,
+  })
+}

@@ -8,6 +8,7 @@ import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
+import { readServiceMismatches, type ServiceMismatch } from '../modules/service-drift.js'
 import type { Resource } from '../core/reconcile.js'
 import chalk from 'chalk'
 
@@ -28,7 +29,7 @@ interface AppDiff {
 
 interface DiffResult {
   apps: Record<string, AppDiff>
-  services: Record<string, { status: DiffStatus }>
+  services: Record<string, { status: DiffStatus; mismatches?: ServiceMismatch[] }>
   plugins: Record<string, FeatureDiff>
   /** Set when the server's Dokku version differs from the file's `dokku.version`. */
   dokku?: { file: string; server: string }
@@ -323,15 +324,24 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   }
 
   // Compare services
-  for (const svc of Object.keys(config.postgres ?? {})) {
-    const exists = await ctx.check('postgres:exists', svc)
-    result.services[svc] = { status: exists ? 'in-sync' : 'missing' }
-    if (!exists) result.inSync = false
-  }
-  for (const svc of Object.keys(config.redis ?? {})) {
-    const exists = await ctx.check('redis:exists', svc)
-    result.services[svc] = { status: exists ? 'in-sync' : 'missing' }
-    if (!exists) result.inSync = false
+  for (const [plugin, services] of [['postgres', config.postgres], ['redis', config.redis]] as const) {
+    for (const [svc, declared] of Object.entries(services ?? {})) {
+      const exists = await ctx.check(`${plugin}:exists`, svc)
+      if (!exists) {
+        result.services[svc] = { status: 'missing' }
+        result.inSync = false
+        continue
+      }
+      try {
+        const mismatches = await readServiceMismatches(ctx, plugin, svc, declared)
+        result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches }
+        if (mismatches.length) result.inSync = false
+      } catch (err) {
+        result.services[svc] = { status: 'unknown' }
+        result.readWarnings.push(`could not read ${plugin} service '${svc}': ${err instanceof Error ? err.message : String(err)}`)
+        result.inSync = false
+      }
+    }
   }
 
   return result
@@ -420,6 +430,10 @@ export function formatSummary(diff: DiffResult): string {
     if (d.status === 'missing') {
       lines.push(`  services:`)
       lines.push(`    ${chalk.green('+')} ${svc}: not provisioned`)
+    }
+    for (const m of d.mismatches ?? []) {
+      lines.push(`  services: ${svc}`)
+      lines.push(`    ${chalk.yellow('~')} ${m.field}: ${m.current || '(unknown)'} → ${m.desired}`)
     }
   }
 
@@ -523,6 +537,11 @@ export function formatVerbose(diff: DiffResult): string {
     if (d.status === 'missing') {
       lines.push(`@@ services @@`)
       lines.push(chalk.green(`+ ${svc}`))
+    }
+    for (const m of d.mismatches ?? []) {
+      lines.push(`@@ services: ${svc} ${m.field} @@`)
+      lines.push(chalk.red(`- ${m.current}`))
+      lines.push(chalk.green(`+ ${m.desired}`))
     }
   }
 
