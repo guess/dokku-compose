@@ -35,12 +35,13 @@ program
   .option('--dry-run', 'Print commands without executing')
   .option('--sensitive', 'Show sensitive values in dry-run output (masked by default)')
   .option('--fail-fast', 'Stop on first error')
+  .option('--prune', 'Also reset settings the file no longer declares (read `diff` first)')
   .action(async (apps, opts) => {
     const config = loadConfig(opts.file)
     const runner = makeRunner(opts)
     const ctx = createContext(runner)
     try {
-      await runUp(ctx, config, apps, { failFast: opts.failFast ?? false })
+      await runUp(ctx, config, apps, { failFast: opts.failFast ?? false, prune: opts.prune ?? false })
       if (opts.dryRun) {
         console.log('\n# Commands that would run:')
         for (const cmd of runner.dryRunLog) {

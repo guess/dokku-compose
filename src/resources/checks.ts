@@ -27,6 +27,22 @@ export const Checks: Resource<ChecksConfig> = {
   removals: (current, desired) =>
     desired === false ? [] :
     Object.keys(current || {}).filter(k => !(desired && k in desired)),
+  prune: async (ctx, target, removed, current, desired) => {
+    const cur = current as Record<string, string>
+    const types = removed
+      .filter(k => k === 'disabled' || k === 'skipped')
+      .flatMap(k => cur[k].split(',').map(s => s.trim()).filter(Boolean))
+    if (types.length > 0) {
+      // `checks:enable` clears both the disabled and the skipped state of a type.
+      await ctx.run('checks:enable', target, ...(types.includes('_all_') ? [] : [...new Set(types)]))
+      // Put back what the file still declares for those types.
+      if (desired && desired !== false) {
+        if (desired.disabled?.length) await ctx.run('checks:disable', target, ...desired.disabled)
+        if (desired.skipped?.length) await ctx.run('checks:skip', target, ...desired.skipped)
+      }
+    }
+    if (removed.includes('wait-to-retire')) await ctx.run('checks:set', target, 'wait-to-retire')
+  },
   onChange: async (ctx, target, { after }: Change<ChecksConfig>) => {
     if (after === false) {
       await ctx.run('checks:disable', target)

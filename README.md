@@ -101,6 +101,7 @@ Running `up` again produces no changes — every step checks current state befor
 | `--dry-run` | Print commands without executing |
 | `--sensitive` | Show sensitive values in output (masked by default) |
 | `--fail-fast` | Stop on first error (default: continue to next app) |
+| `--prune` | `up` only: also reset settings the file no longer declares (read `diff` first) |
 | `--remove-orphans` | Destroy services and networks not in config |
 | `--verbose` | Show git-style +/- diff (diff command only) |
 
@@ -112,7 +113,19 @@ args, and entries missing from a declared list), including when the whole block 
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
-`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints a one-line count per app of the leftovers it noticed in the blocks you declare; it does not look at removed whole blocks or checks. Run `dokku-compose diff` for the full list. `--prune` (coming next) will remove them.
+`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints a one-line count per app of the leftovers it noticed in the blocks you declare; it does not look at removed whole blocks or checks. Run `dokku-compose diff` for the full list.
+
+**`up --prune`** resets those leftovers. Read `diff` first: every `-` it shows for the resources below is what `--prune` will reset, and there is no prompt (`diff` is the preview, the flag is the consent). Add `--dry-run` to print the reset commands without running them.
+
+| Resource | Reset command |
+|----------|---------------|
+| `nginx`, `logs`, `registry`, `ps` | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
+| `scheduler` | `scheduler:set <app> selected` |
+| `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
+| `checks` | `checks:enable <app> <types>` for a removed `disabled`/`skipped` list (what the file still declares is put back), `checks:set <app> wait-to-retire` |
+| `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key only; other build options stay |
+
+It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. After `up --prune`, `diff` shows no `-` for the resources above.
 
 ### Errors
 

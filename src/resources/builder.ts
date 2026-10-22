@@ -46,6 +46,13 @@ export const Builder: Resource<BuildConfig> = {
     Object.keys(current?.args ?? {})
       .filter(k => !(desired?.args && k in desired.args))
       .map(k => `args.${k}`),
+  // Remove exactly the stale `--build-arg` options; other build options stay.
+  prune: async (ctx, target, removed, current) => {
+    for (const label of removed) {
+      const key = label.slice('args.'.length)
+      await ctx.run('docker-options:remove', target, 'build', `--build-arg ${key}=${current.args![key]}`)
+    }
+  },
 
   async read(ctx: Context, target: string): Promise<BuildConfig> {
     const [builderRaw, dockerfileRaw, appJsonRaw, dockerOptsRaw] = await Promise.all([

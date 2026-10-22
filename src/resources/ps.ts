@@ -77,6 +77,9 @@ export const Ps: Resource<Record<string, string | number>> = {
   additive: true,
   removals: (current, desired) =>
     PS_KEYS.filter(k => current?.[k] !== undefined && !(desired && k in desired)),
+  prune: async (ctx, target, removed) => {
+    for (const key of removed) await ctx.run('ps:set', target, key)
+  },
 
   async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
     return parsePsReport(await ctx.queryStrict('ps:report', target, '--format', 'json'))

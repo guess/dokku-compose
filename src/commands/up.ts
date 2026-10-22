@@ -31,6 +31,8 @@ import type { AppConfig } from '../core/schema.js'
 export interface RunUpOptions {
   /** Stop at the first per-app failure instead of continuing to the next app. */
   failFast?: boolean
+  /** Reset settings the file no longer declares (nginx, logs, registry, scheduler, ps, network, checks, build args). */
+  prune?: boolean
 }
 
 /** Thrown by runUp when one or more apps failed during the per-app phase. */
@@ -52,7 +54,7 @@ class AppStepsError extends AggregateError {
 }
 
 async function processApp(
-  ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false
+  ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false, prune = false
 ): Promise<void> {
   // A resource that throws is recorded and the rest of the app still runs,
   // so one broken resource cannot hide another (e.g. env never being reached).
@@ -60,7 +62,7 @@ async function processApp(
   // Settings that left a declared block stay on the box (env keys are always
   // unset; lists are pruned). Counted from reads reconcile already made.
   let leftOnServer = 0
-  const count = (removed: string[]) => { leftOnServer += removed.length }
+  const count = prune ? undefined : (removed: string[]) => { leftOnServer += removed.length }
   const step = async (fn: () => Promise<void>): Promise<void> => {
     try {
       await fn()
@@ -79,7 +81,7 @@ async function processApp(
   // Networking
   await step(() => reconcile(Domains, ctx, app, appConfig.domains))
   await step(() => reconcile(Networks, ctx, app, appConfig.networks))
-  await step(() => reconcile(NetworkProps, ctx, app, appConfig.network, count))
+  await step(() => reconcile(NetworkProps, ctx, app, appConfig.network, count, prune))
   await step(() => reconcile(Proxy, ctx, app, appConfig.proxy?.enabled))
   await step(() => reconcile(Ports, ctx, app, appConfig.ports))
 
@@ -91,17 +93,17 @@ async function processApp(
   // Configuration
   await step(() => reconcile(Certs, ctx, app, appConfig.ssl))
   await step(() => reconcile(Storage, ctx, app, appConfig.storage))
-  await step(() => reconcile(Nginx, ctx, app, appConfig.nginx, count))
-  await step(() => reconcile(Checks, ctx, app, appConfig.checks))
-  await step(() => reconcile(Logs, ctx, app, appConfig.logs, count))
-  await step(() => reconcile(Registry, ctx, app, appConfig.registry, count))
-  await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler, count))
-  await step(() => reconcile(Ps, ctx, app, appConfig.ps, count))
+  await step(() => reconcile(Nginx, ctx, app, appConfig.nginx, count, prune))
+  await step(() => reconcile(Checks, ctx, app, appConfig.checks, undefined, prune))
+  await step(() => reconcile(Logs, ctx, app, appConfig.logs, count, prune))
+  await step(() => reconcile(Registry, ctx, app, appConfig.registry, count, prune))
+  await step(() => reconcile(Scheduler, ctx, app, appConfig.scheduler, count, prune))
+  await step(() => reconcile(Ps, ctx, app, appConfig.ps, count, prune))
   await step(() => reconcile(Scale, ctx, app, appConfig.scale))
   await step(() => reconcile(ConfigResource, ctx, app, appConfig.env || {}))
 
   // Build
-  await step(() => reconcile(Builder, ctx, app, appConfig.build, count))
+  await step(() => reconcile(Builder, ctx, app, appConfig.build, count, prune))
   await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
 
@@ -155,7 +157,7 @@ export async function runUp(
     if (!appConfig) continue
 
     try {
-      await processApp(ctx, config, app, appConfig, opts.failFast)
+      await processApp(ctx, config, app, appConfig, opts.failFast, opts.prune)
     } catch (error) {
       if (opts.failFast) throw error
       // Failures from individual steps were already logged by processApp.

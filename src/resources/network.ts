@@ -36,6 +36,10 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
   removals: (current, desired) =>
     (Object.keys(current ?? {}) as (keyof NetworkPropsConfig)[])
       .filter(k => !(desired && k in desired)),
+  // Dokku's property names are hyphenated; the schema's are underscored.
+  prune: async (ctx, target, removed) => {
+    for (const key of removed) await ctx.run('network:set', target, key.replaceAll('_', '-'))
+  },
   read: async (ctx, target) => {
     const raw = await ctx.query('network:report', target)
     const report = parseReport(raw, 'network')

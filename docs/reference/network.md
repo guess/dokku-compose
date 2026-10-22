@@ -101,7 +101,7 @@ Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when mu
 
 ## Removal
 
-A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `--prune` (coming next) will remove it.
+A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `network:set <app> <property>` and no value (`attach-post-create`, `initial-network`, `bind-all-interfaces`, `tld`), also for a removed block. `attach-post-deploy` belongs to `networks:` and is cleared by `networks: []`, not by `--prune`.
 
 `attach-post-deploy` belongs to `apps.<app>.networks`, so its removals are shown under `networks`, not under network properties. `web-listeners` and `static-web-listener` are read-only report lines and are never shown.
 
