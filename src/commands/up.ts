@@ -33,6 +33,17 @@ export interface RunUpOptions {
   failFast?: boolean
   /** Reset settings the file no longer declares (nginx, logs, registry, scheduler, ps, network, checks, build args). */
   prune?: boolean
+  /** The run is a dry run: the restart summary says "would need". */
+  dryRun?: boolean
+}
+
+/** Print the apps whose applied changes need `dokku ps:restart`. Nothing is restarted (no --restart flag by design). */
+export function printRestartSummary(ctx: Context, dryRun = false): void {
+  if (ctx.restarts.size === 0) return
+  console.log(`\n# Apps that ${dryRun ? 'would need' : 'need'} a restart:`)
+  for (const [app, reasons] of ctx.restarts) {
+    console.log(`dokku ps:restart ${app}  # ${reasons.join(', ')}`)
+  }
 }
 
 /** Thrown by runUp when one or more apps failed during the per-app phase. */
@@ -120,6 +131,20 @@ export async function runUp(
   appFilter: string[],
   opts: RunUpOptions = {}
 ): Promise<void> {
+  try {
+    await runUpPhases(ctx, config, appFilter, opts)
+  } finally {
+    // Also after a partial failure: applied changes still wait for a restart.
+    printRestartSummary(ctx, opts.dryRun)
+  }
+}
+
+async function runUpPhases(
+  ctx: Context,
+  config: Config,
+  appFilter: string[],
+  opts: RunUpOptions
+): Promise<void> {
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
@@ -136,7 +161,11 @@ export async function runUp(
 
   // Phase 2: Global config
   if (config.domains !== undefined) await ensureGlobalDomains(ctx, config.domains)
-  if (config.env !== undefined) await ensureGlobalConfig(ctx, config.env)
+  if (config.env !== undefined) {
+    await ensureGlobalConfig(ctx, config.env)
+    // Global env is read when a container starts, so every app in the file needs a restart.
+    if (config.env !== false) for (const app of Object.keys(config.apps)) ctx.needsRestart(app, 'global env')
+  }
   if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
   if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)
 

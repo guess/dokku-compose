@@ -6,6 +6,8 @@ Module: `lib/docker_options.sh`
 
 ## YAML Keys
 
+Dokku applies deploy and run options only to containers created afterwards, so `up` lists an app whose deploy or run options changed as needing `dokku ps:restart <app>`. Build options need a rebuild instead and are not listed.
+
 ### Per-Phase Options (`docker_options.<phase>`)
 
 Add custom Docker flags per build phase. Valid phases are `build`, `deploy`, and `run`. Each declared phase is cleared and re-populated on every `up`, providing idempotent convergence. Undeclared phases are left untouched.

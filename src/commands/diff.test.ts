@@ -27,6 +27,8 @@ function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, bool
     }),
     run: vi.fn(),
     commands: [],
+    restarts: new Map(),
+    needsRestart: vi.fn(),
     runner: {} as any,
     close: vi.fn(),
   }

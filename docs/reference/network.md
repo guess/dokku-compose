@@ -22,6 +22,8 @@ Networks are created idempotently — skipped if they already exist. `diff` chec
 
 ## `apps.<app>.networks`
 
+> Any change to `networks` or `network` needs a deploy or rebuild to apply (Dokku network docs); `up` lists the app as needing `dokku ps:restart <app>`.
+
 Attach an app to one or more shared networks after a successful deploy (`attach-post-deploy`). This is the standard way to connect apps to each other over a shared network.
 
 ```yaml

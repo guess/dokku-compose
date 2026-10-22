@@ -10,6 +10,8 @@ Module: `lib/storage.sh`
 
 Declare persistent host-to-container bind mounts for an app. Each entry is a `host-path:container-path` string.
 
+Mounting or unmounting needs `dokku ps:restart <app>` (Dokku: "the app requires a restart"); `up` lists the app at the end and does not restart it.
+
 On each `up` run, mounts are fully converged against Dokku's current state:
 - Mounts in YAML but not in Dokku → mounted
 - Mounts in Dokku but not in YAML → unmounted

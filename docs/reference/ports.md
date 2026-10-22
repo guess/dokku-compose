@@ -6,6 +6,8 @@ Module: `lib/ports.sh`
 
 ## YAML Keys
 
+A port change is live: `ports:set` rebuilds the nginx config, so `up` does not list the app as needing a restart.
+
 ### Port Mappings (`apps.<app>.ports`)
 
 Set the port mappings for an app. Each mapping follows the format `SCHEME:HOST_PORT:CONTAINER_PORT`. When a list is provided, all mappings are set atomically (replacing any existing ones). When absent, no changes are made.

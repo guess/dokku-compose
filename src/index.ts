@@ -41,7 +41,7 @@ program
     const runner = makeRunner(opts)
     const ctx = createContext(runner)
     try {
-      await runUp(ctx, config, apps, { failFast: opts.failFast ?? false, prune: opts.prune ?? false })
+      await runUp(ctx, config, apps, { failFast: opts.failFast ?? false, prune: opts.prune ?? false, dryRun: opts.dryRun ?? false })
       if (opts.dryRun) {
         console.log('\n# Commands that would run:')
         for (const cmd of runner.dryRunLog) {

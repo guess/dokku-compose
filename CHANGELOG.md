@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`up` lists the apps that need a restart.** Env, storage, deploy and run Docker options, links and network changes (`networks`, `network`) only reach a running container when it restarts, so `up` ends with `dokku ps:restart <app>  # <reasons>` for each app it changed (`would need` on `--dry-run`, also after a partial failure). A global `env:` change lists every app in the file. Nothing is restarted and there is no `--restart` flag. Changes Dokku applies live (ports, domains, nginx, proxy, logs, checks) and build options are not listed. See the README's `up` section for the evidence table.
+
 ### Fixed
 
 - **Build args with unusual values round-trip.** `build.args` are read from `docker-options:report <app> --format json` (`build-list`, each option as Dokku stored it) instead of splitting the text report, and are added with the `KEY=VALUE` word shell-quoted so Dokku stores it as one word. A value containing ` --x`, `-t x` stored beside a build arg, spaces, `?`, `$` or a quote is no longer re-added on every `up`, and `up --prune` removes a stale one by its stored text. `diff` and `export` read build settings per app.

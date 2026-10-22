@@ -83,6 +83,28 @@ dokku-compose up
 
 Running `up` again produces no changes — every step checks current state before acting.
 
+#### Apps that need a restart
+
+`up` applies env, storage, links and Docker options without restarting anything, so the changes wait for a restart. It ends by listing each app it changed that way, with the exact command (`would need` on `--dry-run`, also after a partial failure). It never runs the restart and has no `--restart` flag.
+
+```
+# Apps that need a restart:
+dokku ps:restart worker  # env, storage
+```
+
+| Change | Listed | Evidence (Dokku 0.38.31) |
+|--------|--------|--------------------------|
+| `env` set or unset, per app | yes | applied with `--no-restart` |
+| top-level `env:` | yes, every app in the file | global env is read when a container starts |
+| `storage` mount or unmount | yes | persistent-storage docs: "the app requires a restart" |
+| `docker_options` deploy and run | yes | docker-options docs: applies "only to containers created after" the change |
+| `links` link or unlink | yes | applied with `--no-restart` |
+| `networks`, `network` | yes | network docs: "A change in these values will require an app deploy or rebuild" |
+| `docker_options` build, `build.args` | no | read by a build, which a restart does not run (`dokku ps:rebuild`) |
+| `ports` | no | `ports:set` fires `post-proxy-ports-update`, which rebuilds the nginx config |
+| `domains`, `nginx`, `proxy`, `certs`, `logs`, `checks`, `registry`, `scheduler` | no | applied live or read at deploy |
+| `scale`, `ps` | no | `--skip-deploy`: takes effect on the next deploy |
+
 ## Commands
 
 | Command | Description |

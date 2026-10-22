@@ -67,6 +67,8 @@ apps:
 | `[]` (empty) | Unlink all services from the app | `<plugin>:unlink <service> <app> --no-restart` |
 | absent | No change to links | — |
 
+A link or unlink needs `dokku ps:restart <app>` (the service's connection variables are read at container start); `up` lists the app at the end.
+
 Because reconciliation is declarative, removing a service from `links:` and re-running `up` will unlink it automatically.
 
 ### Shared Services

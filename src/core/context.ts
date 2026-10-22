@@ -11,6 +11,16 @@ export interface Context {
   run(...args: string[]): Promise<void>
   /** All commands that were run (or would be in dry-run) */
   commands: string[][]
+  /**
+   * Record that `app` needs `dokku ps:restart <app>` for a change `up` just
+   * applied (a setting Dokku only reads when a container starts). Call it
+   * after the mutating command succeeded; `reason` is a short label such as
+   * `env` or `storage`. Changes Dokku applies live must not call it. The
+   * summary `up` prints at the end comes from this record.
+   */
+  needsRestart(app: string, reason: string): void
+  /** App -> reasons recorded by `needsRestart`, in the order apps were first marked */
+  restarts: Map<string, string[]>
   /** The underlying runner (for backward compat during migration) */
   runner: Runner
   /** Close the underlying SSH connection */
@@ -20,10 +30,18 @@ export interface Context {
 export function createContext(runner: Runner): Context {
   const cache = new Map<string, Promise<string>>()
   const commands: string[][] = []
+  const restarts = new Map<string, string[]>()
 
   return {
     commands,
     runner,
+    restarts,
+
+    needsRestart(app: string, reason: string): void {
+      const reasons = restarts.get(app) ?? []
+      if (!reasons.includes(reason)) reasons.push(reason)
+      restarts.set(app, reasons)
+    },
 
     query(...args: string[]): Promise<string> {
       const key = args.join('\0')
