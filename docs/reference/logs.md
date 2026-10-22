@@ -51,7 +51,8 @@ apps:
 | `vector-sink` | global + per-app | Log sink destination in DSN format |
 | `vector-image` | global only | Vector container image version |
 | `app-label-alias` | global + per-app | Label name for the app identifier |
+| `vector-cron-sink` | global + per-app | Log sink for cron task output |
 
 ## Removal
 
-A property set on the server but absent from `apps.<app>.logs` (`app-label-alias`, `max-size`, `vector-sink`) is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it. A `registry` property (`image-repo`, `push-extra-tags`, `push-on-release`, `server`) or a `scheduler` selected on the server but absent from the file is treated the same way.
+A property set on the server but absent from `apps.<app>.logs` (`app-label-alias`, `max-size`, `vector-cron-sink`, `vector-sink`) is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it. A `registry` property (`auth-servers`, `image-repo`, `image-repo-template`, `push-extra-tags`, `push-on-release`, `server`; `tag-version` is read-only) or a `scheduler` selected on the server but absent from the file is treated the same way.

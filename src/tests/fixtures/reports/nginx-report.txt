@@ -1,0 +1,95 @@
+=====> myapp nginx information
+       Nginx access log format:                
+       Nginx access log path:                  
+       Nginx bind address ipv4:                
+       Nginx bind address ipv6:                
+       Nginx client body timeout:              
+       Nginx client header timeout:            
+       Nginx client max body size:             100m
+       Nginx computed access log format:       
+       Nginx computed access log path:         /var/log/nginx/myapp-access.log
+       Nginx computed bind address ipv4:       
+       Nginx computed bind address ipv6:       ::
+       Nginx computed client body timeout:     60s
+       Nginx computed client header timeout:   60s
+       Nginx computed client max body size:    100m
+       Nginx computed disable custom config:   false
+       Nginx computed error log path:          /var/log/nginx/myapp-error.log
+       Nginx computed hsts:                    true
+       Nginx computed hsts include subdomains: true
+       Nginx computed hsts max age:            15724800
+       Nginx computed hsts preload:            false
+       Nginx computed keepalive timeout:       75s
+       Nginx computed lingering timeout:       5s
+       Nginx computed nginx conf sigil path:   nginx.conf.sigil
+       Nginx computed nginx service command:   
+       Nginx computed proxy buffer size:       4k
+       Nginx computed proxy buffering:         on
+       Nginx computed proxy buffers:           8 4k
+       Nginx computed proxy busy buffers size: 8k
+       Nginx computed proxy connect timeout:   60s
+       Nginx computed proxy keepalive:         
+       Nginx computed proxy read timeout:      60s
+       Nginx computed proxy send timeout:      60s
+       Nginx computed send timeout:            60s
+       Nginx computed underscore in headers:   off
+       Nginx computed x forwarded for value:   $http_cf_connecting_ip
+       Nginx computed x forwarded port value:  $server_port
+       Nginx computed x forwarded proto value: $http_x_forwarded_proto
+       Nginx computed x forwarded ssl:         
+       Nginx disable custom config:            
+       Nginx error log path:                   
+       Nginx global access log format:         
+       Nginx global access log path:           
+       Nginx global bind address ipv4:         
+       Nginx global bind address ipv6:         
+       Nginx global client body timeout:       
+       Nginx global client header timeout:     
+       Nginx global client max body size:      
+       Nginx global disable custom config:     
+       Nginx global error log path:            
+       Nginx global hsts:                      
+       Nginx global hsts include subdomains:   
+       Nginx global hsts max age:              
+       Nginx global hsts preload:              
+       Nginx global keepalive timeout:         
+       Nginx global lingering timeout:         
+       Nginx global nginx conf sigil path:     
+       Nginx global nginx service command:     
+       Nginx global proxy buffer size:         
+       Nginx global proxy buffering:           
+       Nginx global proxy buffers:             
+       Nginx global proxy busy buffers size:   
+       Nginx global proxy connect timeout:     
+       Nginx global proxy keepalive:           
+       Nginx global proxy read timeout:        
+       Nginx global proxy send timeout:        
+       Nginx global send timeout:              
+       Nginx global underscore in headers:     
+       Nginx global x forwarded for value:     
+       Nginx global x forwarded port value:    
+       Nginx global x forwarded proto value:   
+       Nginx global x forwarded ssl:           
+       Nginx hsts:                             
+       Nginx hsts include subdomains:          
+       Nginx hsts max age:                     
+       Nginx hsts preload:                     
+       Nginx keepalive timeout:                
+       Nginx last visited at:                  
+       Nginx lingering timeout:                
+       Nginx nginx conf sigil path:            
+       Nginx nginx service command:            
+       Nginx proxy buffer size:                
+       Nginx proxy buffering:                  
+       Nginx proxy buffers:                    
+       Nginx proxy busy buffers size:          
+       Nginx proxy connect timeout:            
+       Nginx proxy keepalive:                  
+       Nginx proxy read timeout:               
+       Nginx proxy send timeout:               
+       Nginx send timeout:                     
+       Nginx underscore in headers:            
+       Nginx x forwarded for value:            $http_cf_connecting_ip
+       Nginx x forwarded port value:           
+       Nginx x forwarded proto value:          $http_x_forwarded_proto
+       Nginx x forwarded ssl:                  

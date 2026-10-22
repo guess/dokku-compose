@@ -69,8 +69,8 @@ export const Scale: Resource<Record<string, string | number>> = {
 
 /**
  * ps properties, read per app from `ps:report --format json`. Additive: a
- * settable key that is set on the server but absent from the file is neither
- * not reset by `up`; `diff` shows it as a removal.
+ * settable key that is set on the server but absent from the file is not
+ * reset by `up`; `diff` shows it as a removal.
  */
 export const Ps: Resource<Record<string, string | number>> = {
   key: 'ps',

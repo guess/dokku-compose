@@ -367,10 +367,10 @@ describe('computeDiff — settings removed from the file', () => {
   })
 
   it('checks (applied without diffing): leftover settings are "-"', async () => {
-    const ctx = makeCtx({ 'checks:report api': '       Checks wait: 10\n       Checks computed wait: 5\n' })
+    const ctx = makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n       Checks computed wait to retire: 5\n' })
     const diff = await computeDiff(ctx, { apps: { api: {} } })
-    expect(diff.apps.api.checks).toMatchObject({ status: 'extra', removed: ['wait'] })
-    const declared = await computeDiff(makeCtx({ 'checks:report api': '       Checks wait: 10\n' }), { apps: { api: { checks: { wait: 10 } } } })
+    expect(diff.apps.api.checks).toMatchObject({ status: 'extra', removed: ['wait-to-retire'] })
+    const declared = await computeDiff(makeCtx({ 'checks:report api': '       Checks wait to retire: 10\n' }), { apps: { api: { checks: { 'wait-to-retire': 10 } } } })
     expect(declared.apps.api.checks).toBeUndefined()
     expect(declared.inSync).toBe(true)
   })

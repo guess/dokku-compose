@@ -1,0 +1,17 @@
+=====> myapp logs information
+       Logs app label alias:           
+       Logs computed app label alias:  com.dokku.app-name
+       Logs computed max size:         10m
+       Logs computed vector cron sink:
+       Logs computed vector image:     timberio/vector:0.58.0-debian
+       Logs computed vector networks:  
+       Logs computed vector sink:      
+       Logs global app label alias:    
+       Logs global max size:           
+       Logs global vector cron sink:  
+       Logs global vector image:       
+       Logs global vector networks:    
+       Logs global vector sink:        
+       Logs max size:                  
+       Logs vector cron sink:         
+       Logs vector sink:              

@@ -1,0 +1,7 @@
+=====> myapp scheduler information
+       Scheduler computed selected:   docker-local
+       Scheduler computed shell:      
+       Scheduler global selected:     
+       Scheduler global shell:        
+       Scheduler selected:            
+       Scheduler shell:               

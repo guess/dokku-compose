@@ -20,15 +20,17 @@ async function isAppDeployed(ctx: Context, target: string): Promise<boolean> {
 /** Settable keys per property namespace (`<namespace>:set`); only these can be reported as removed. */
 export const NGINX_KEYS = [
   'access-log-format', 'access-log-path', 'bind-address-ipv4', 'bind-address-ipv6',
-  'client-body-timeout', 'client-header-timeout', 'client-max-body-size', 'error-log-path',
-  'hsts', 'hsts-include-subdomains', 'hsts-max-age', 'hsts-preload', 'keepalive-timeout',
-  'lingering-timeout', 'nginx-conf-sigil-path', 'proxy-buffer-size', 'proxy-buffering',
-  'proxy-buffers', 'proxy-busy-buffers-size', 'proxy-connect-timeout', 'proxy-read-timeout',
-  'proxy-send-timeout', 'send-timeout', 'underscore-in-headers', 'x-forwarded-for-value',
-  'x-forwarded-port-value', 'x-forwarded-proto-value', 'x-forwarded-ssl',
+  'client-body-timeout', 'client-header-timeout', 'client-max-body-size', 'disable-custom-config',
+  'error-log-path', 'hsts', 'hsts-include-subdomains', 'hsts-max-age', 'hsts-preload',
+  'keepalive-timeout', 'lingering-timeout', 'proxy-buffer-size', 'proxy-buffering',
+  'proxy-buffers', 'proxy-busy-buffers-size', 'proxy-connect-timeout', 'proxy-keepalive',
+  'proxy-read-timeout', 'proxy-send-timeout', 'send-timeout', 'underscore-in-headers',
+  'x-forwarded-for-value', 'x-forwarded-port-value', 'x-forwarded-proto-value', 'x-forwarded-ssl',
 ] as const
-export const LOGS_KEYS = ['app-label-alias', 'max-size', 'vector-sink'] as const
-export const REGISTRY_KEYS = ['image-repo', 'push-extra-tags', 'push-on-release', 'server'] as const
+export const LOGS_KEYS = ['app-label-alias', 'max-size', 'vector-cron-sink', 'vector-sink'] as const
+export const REGISTRY_KEYS = [
+  'auth-servers', 'image-repo', 'image-repo-template', 'push-extra-tags', 'push-on-release', 'server',
+] as const
 
 /** Settable keys that are set on the server and absent from the file. */
 function propertyRemovals(allowed: readonly string[]) {

@@ -29,7 +29,9 @@ export async function reconcile<T>(
   resource: Resource<T>,
   ctx: Context,
   target: string,
-  desired: T | undefined
+  desired: T | undefined,
+  /** Called with the removals found in the state this reconcile already read. */
+  onRemovals?: (removed: string[]) => void
 ): Promise<void> {
   if (desired === undefined) return
   logAction(target, `${resource.key}`)
@@ -41,6 +43,7 @@ export async function reconcile<T>(
   }
 
   const before = await resource.read(ctx, target)
+  if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
   const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
   if (!change.changed) {
     logSkip()

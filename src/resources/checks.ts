@@ -13,8 +13,7 @@ export const Checks: Resource<ChecksConfig> = {
   key: 'checks',
   forceApply: true,
   // Applying never reads (forceApply); the read only finds settings to report as removed.
-  // Settable state: the per-process lists and wait/timeout/attempts. "none" and
-  // "_all_" in a list line mean no names, so they are not settings.
+  // Settable state: the per-process lists and `wait-to-retire`. A list of "none" is empty.
   read: async (ctx: Context, target: string) => {
     const report = parseReport(await ctx.query('checks:report', target), 'checks')
     const current: Record<string, string> = {}
@@ -22,9 +21,7 @@ export const Checks: Resource<ChecksConfig> = {
       const v = report[reportKey]
       if (v && v !== 'none' && v !== '_all_') current[key] = v
     }
-    for (const key of ['wait', 'timeout', 'attempts']) {
-      if (report[key]) current[key] = report[key]
-    }
+    if (report['wait-to-retire']) current['wait-to-retire'] = report['wait-to-retire']
     return current as ChecksConfig
   },
   removals: (current, desired) =>

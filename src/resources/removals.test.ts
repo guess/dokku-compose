@@ -11,6 +11,12 @@ import { Checks } from './checks.js'
 import { Proxy } from './toggle.js'
 import { Config } from './config.js'
 import { DockerOptions } from './docker-options.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+// Real `<plugin>:report myapp` output from Dokku 0.38.31 (sanitized).
+const real = (name: string) =>
+  readFileSync(join(import.meta.dirname, '../tests/fixtures/reports', `${name}-report.txt`), 'utf8')
 
 function makeCtx(results: Record<string, string>) {
   const runner = createRunner({ dryRun: false })
@@ -124,18 +130,60 @@ describe('build args removals', () => {
 })
 
 describe('checks removals', () => {
-  it('reports per-process lists and tunables set on the box; "none", "_all_" and computed lines never', async () => {
+  it('real report with nothing set: "none" lists and computed/global lines are not settings', async () => {
+    const current = await Checks.read(makeCtx({ 'checks:report myapp': real('checks') }), 'myapp')
+    expect(current).toEqual({})
+    expect(Checks.removals!(current, undefined)).toEqual([])
+  })
+
+  it('reports disabled/skipped lists and wait-to-retire set on the box', async () => {
     const ctx = makeCtx({
       'checks:report myapp':
-        '       Checks disabled list: web\n       Checks skipped list: none\n       Checks wait: 10\n       Checks computed wait: 5\n       Checks global wait: 5\n',
+        '       Checks computed wait to retire: 60\n       Checks disabled list:           web\n       Checks skipped list:            none\n       Checks wait to retire:          30\n',
     })
     const current = await Checks.read(ctx, 'myapp')
-    expect(current).toEqual({ disabled: 'web', wait: '10' })
-    expect(Checks.removals!(current, { disabled: ['web'] })).toEqual(['wait'])
-    expect(Checks.removals!(current, undefined)).toEqual(['disabled', 'wait'])
+    expect(current).toEqual({ disabled: 'web', 'wait-to-retire': '30' })
+    expect(Checks.removals!(current, { disabled: ['web'] })).toEqual(['wait-to-retire'])
+    expect(Checks.removals!(current, undefined)).toEqual(['disabled', 'wait-to-retire'])
     expect(Checks.removals!(current, false)).toEqual([])
     const all = await Checks.read(makeCtx({ 'checks:report myapp': '       Checks disabled list: _all_\n' }), 'myapp')
     expect(Checks.removals!(all, undefined)).toEqual([])
+  })
+})
+
+describe('real Dokku 0.38 reports', () => {
+  it('nginx: only client-max-body-size and the x-forwarded values are settings; last-visited-at, computed and global never', async () => {
+    const current = await Nginx.read(makeCtx({ 'nginx:report myapp': real('nginx') }), 'myapp')
+    expect(Nginx.removals!(current, undefined)).toEqual([
+      'client-max-body-size', 'x-forwarded-for-value', 'x-forwarded-proto-value',
+    ])
+    expect(Nginx.removals!(current, { 'client-max-body-size': '100m' })).toEqual(['x-forwarded-for-value', 'x-forwarded-proto-value'])
+  })
+
+  it('nginx allowlist covers disable-custom-config and proxy-keepalive, not last-visited-at', () => {
+    const set = ['disable-custom-config', 'proxy-keepalive', 'last-visited-at']
+    const cur = Object.fromEntries(set.map(k => [k, 'x']))
+    expect(Nginx.removals!(cur as any, undefined)).toEqual(['disable-custom-config', 'proxy-keepalive'])
+  })
+
+  it('logs, registry, scheduler, builder: an unset real report has no removals', async () => {
+    expect(Logs.removals!(await Logs.read(makeCtx({ 'logs:report myapp': real('logs') }), 'myapp'), undefined)).toEqual([])
+    expect(Registry.removals!(await Registry.read(makeCtx({ 'registry:report myapp': real('registry') }), 'myapp'), undefined)).toEqual([])
+    expect(Scheduler.removals!(await Scheduler.read(makeCtx({ 'scheduler:report myapp': real('scheduler') }), 'myapp'), undefined)).toEqual([])
+    const b = await Builder.read(makeCtx({ 'builder:report myapp': real('builder') }), 'myapp')
+    expect(Builder.removals!(b, undefined)).toEqual([])
+  })
+
+  it('logs and registry allowlists include the real vector-cron-sink, auth-servers and image-repo-template, not tag-version', () => {
+    expect(Logs.removals!({ 'vector-cron-sink': 'x' } as any, undefined)).toEqual(['vector-cron-sink'])
+    expect(Registry.removals!({ 'auth-servers': 'x', 'image-repo-template': 'y', 'tag-version': '1' } as any, undefined))
+      .toEqual(['auth-servers', 'image-repo-template'])
+  })
+
+  it('network: attach-post-create is the only setting in the real report; listeners and attach-post-deploy never', async () => {
+    const current = await NetworkProps.read(makeCtx({ 'network:report myapp': real('network') }), 'myapp')
+    expect(current).toEqual({ attach_post_create: ['app-net'] })
+    expect(NetworkProps.removals!(current, undefined)).toEqual(['attach_post_create'])
   })
 })
 

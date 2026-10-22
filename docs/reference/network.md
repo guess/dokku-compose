@@ -103,4 +103,6 @@ Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when mu
 
 A `network` property (`attach_post_create`, `initial_network`, `bind_all_interfaces`, `tld`) set on the server but absent from `apps.<app>.network` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it.
 
+`attach-post-deploy` belongs to `apps.<app>.networks`, so its removals are shown under `networks`, not under network properties. `web-listeners` and `static-web-listener` are read-only report lines and are never shown.
+
 Networks in `apps.<app>.networks` are replaced as a whole by `up`, so an attached network the file lacks is shown with `-` and removed by `up` when the key is present.
