@@ -44,6 +44,34 @@ describe('built-in Dokku floor', () => {
     expect(other).toEqual([])
   })
 
+  it('up --dry-run on an old server still stops before any other call', async () => {
+    const { other } = fakeServer('0.37.9')
+    const dry = createRunner({ dryRun: true })
+    const seen: string[] = []
+    dry.query = vi.fn(async (...a: string[]) => {
+      if (a[0] === 'version') return 'dokku version 0.37.9'
+      seen.push(a.join(' '))
+      return ''
+    })
+    dry.queryStrict = vi.fn(async (...a: string[]) => { seen.push(a.join(' ')); return '' })
+    dry.check = vi.fn(async (...a: string[]) => { seen.push(a.join(' ')); return false })
+    await expect(runUp(createContext(dry), config(), [])).rejects.toThrow(TOO_OLD)
+    expect(seen).toEqual([])
+    expect(dry.dryRunLog).toEqual([])
+    expect(other).toEqual([])
+  })
+
+  it('0.38.22 passes the floor', async () => {
+    const { ctx } = fakeServer('0.38.22')
+    await expect(computeDiff(ctx, config())).resolves.toBeDefined()
+  })
+
+  it('0.38.21 fails the floor', async () => {
+    const { ctx, other } = fakeServer('0.38.21')
+    await expect(computeDiff(ctx, config())).rejects.toThrow(/this server runs 0\.38\.21/)
+    expect(other).toEqual([])
+  })
+
   it('diff stops before any other Dokku call', async () => {
     const { ctx, other } = fakeServer('0.37.9')
     await expect(computeDiff(ctx, config())).rejects.toThrow(TOO_OLD)

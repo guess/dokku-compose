@@ -117,6 +117,9 @@ program
       } else {
         process.stdout.write(out)
       }
+    } catch (error: any) {
+      console.error(chalk.red(`\n${error.message}`))
+      process.exitCode = 1
     } finally {
       await ctx.close()
     }
@@ -141,6 +144,9 @@ program
       // (and any SSH control socket) open — set exitCode instead so
       // ctx.close() still runs before the process exits naturally.
       process.exitCode = rawDiff.inSync ? 0 : 1
+    } catch (error: any) {
+      console.error(chalk.red(`\n${error.message}`))
+      process.exitCode = 1
     } finally {
       await ctx.close()
     }
@@ -156,6 +162,9 @@ program
     try {
       const { runPs } = await import('./commands/ps.js')
       await runPs(runner, config, apps)
+    } catch (error: any) {
+      console.error(chalk.red(`\n${error.message}`))
+      process.exitCode = 1
     } finally {
       await runner.close()
     }
