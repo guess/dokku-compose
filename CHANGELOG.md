@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-22
+
 ### Breaking
 
 - **Needs Dokku >= 0.38.29** (was 0.38.22), the first release with `registry:auth-status`. Every server command stops on an older Dokku with `dokku-compose <version> needs Dokku >= 0.38.29; this server runs <server>. Upgrade Dokku first.`
