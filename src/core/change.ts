@@ -59,3 +59,9 @@ export function computeChange(before: unknown, after: unknown): Change | ListCha
   // Scalars
   return { before, after, changed: before !== after } satisfies Change
 }
+
+/** For additive resources: true only when a desired key is new or differs. */
+export function hasAdditions(change: Change): boolean {
+  const c = change as unknown as { added?: object; modified?: object }
+  return Object.keys(c.added ?? {}).length > 0 || Object.keys(c.modified ?? {}).length > 0
+}

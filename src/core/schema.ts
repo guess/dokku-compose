@@ -45,6 +45,8 @@ const AppSchema = z.object({
   logs: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   registry: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   scheduler: z.string().optional(),
+  scale: z.record(z.string(), z.number().int().min(0)).optional(),
+  ps: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
   checks: ChecksSchema.optional(),
   build: z.object({
     dockerfile: z.string().optional(),

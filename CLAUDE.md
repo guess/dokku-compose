@@ -43,7 +43,8 @@ bun run build
 - `postgres.ts` — Postgres service creation, backups, export
 - `redis.ts` — Redis service creation, export
 - `links.ts` — Cross-plugin service link resolution and convergence
-- `plugins.ts` — Plugin installation
+- `plugins.ts` — Plugin installation, version pins (forward-only updates), plugin:list parser
+- `src/resources/ps.ts` — Process scale (`ps:scale --skip-deploy`) and ps properties (`ps:set`); additive resources
 - `network.ts` — Shared Docker networks
 - `proxy.ts` — Proxy enable/disable
 - `ports.ts` — Port mappings (order-insensitive comparison)

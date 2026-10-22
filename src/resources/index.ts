@@ -8,6 +8,7 @@ import { Certs } from './certs.js'
 import { Builder } from './builder.js'
 import { DockerOptions } from './docker-options.js'
 import { Git } from './git.js'
+import { Scale, Ps } from './ps.js'
 import { Checks } from './checks.js'
 import { Networks, NetworkProps } from './network.js'
 import type { Resource } from '../core/reconcile.js'
@@ -18,7 +19,7 @@ export const NETWORKING_RESOURCES: Resource[] = [
 ]
 
 export const CONFIG_RESOURCES: Resource[] = [
-  Certs, Storage, Nginx, Checks, Logs, Registry, Scheduler, Config,
+  Certs, Storage, Nginx, Checks, Logs, Registry, Scheduler, Ps, Scale, Config,
 ]
 
 export const BUILD_RESOURCES: Resource[] = [
@@ -32,5 +33,5 @@ export const ALL_APP_RESOURCES: Resource[] = [
 export {
   Apps, Domains, Ports, Storage, Nginx, Logs, Registry,
   Scheduler, Proxy, Config, Certs, Builder, DockerOptions,
-  Git, Checks, Networks, NetworkProps,
+  Git, Checks, Networks, NetworkProps, Scale, Ps,
 }

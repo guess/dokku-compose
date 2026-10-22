@@ -272,4 +272,32 @@ describe('formatVerbose', () => {
     // No proposed-change lines for the unknown domains feature.
     expect(output).not.toMatch(/- \[\s*\n\s*"api\.example\.com"/)
   })
+
+  it('reports plugin version drift and leaves in-sync plugins out', async () => {
+    const ctx = makeCtx({
+      'plugin:list': '  postgres 1.0.0 enabled x\n  redis 1.2.0 enabled y\n',
+    })
+    const cfg: Config = {
+      apps: {},
+      plugins: {
+        postgres: { url: 'https://example.com/p.git', version: '1.2.0' },
+        redis: { url: 'https://example.com/r.git', version: '1.2.0' },
+        extra: { url: 'https://example.com/e.git', version: '1.0.0' },
+      },
+    }
+    const diff = await computeDiff(ctx, cfg)
+    expect(diff.plugins.postgres.status).toBe('changed')
+    expect(diff.plugins.redis).toBeUndefined()
+    expect(diff.plugins.extra.status).toBe('missing')
+    expect(diff.inSync).toBe(false)
+  })
+
+  it('shows scale drift but not a process type removed from the file', async () => {
+    const table = '-----> web   1\n-----> worker   0\n'
+    const ctx = makeCtx({ 'ps:scale api': table })
+    const drift = await computeDiff(ctx, { apps: { api: { scale: { web: 1, worker: 1 } } } })
+    expect(drift.apps.api.scale?.status).toBe('changed')
+    const same = await computeDiff(makeCtx({ 'ps:scale api': table }), { apps: { api: { scale: { web: 1 } } } })
+    expect(same.apps.api.scale?.status).toBe('in-sync')
+  })
 })
