@@ -139,9 +139,20 @@ describe('runUp restart summary', () => {
 
   it('an unchanged run with a global env declared prints no list', async () => {
     const lines = capture()
-    const { ctx } = makeCtx()
+    const { runner, ctx } = makeCtx()
+    const lenient = runner.query
+    runner.query = vi.fn(async (...args: string[]) => args.join(' ') === 'config:export --global --format json'
+      ? JSON.stringify({ G: '1', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'G' }) : lenient(...args))
     await runUp(ctx, cfg({ a: {}, b: {} }, { env: { G: '1' } }), [])
     expect(lines.filter(l => /restart|rebuild/.test(l))).toEqual([])
+  })
+
+  it('a changed global env lists every processed app', async () => {
+    const lines = capture()
+    const { ctx } = makeCtx()
+    await runUp(ctx, cfg({ a: {}, b: {}, c: {} }, { env: { G: '1' } }), ['a', 'c'])
+    expect(lines.filter(l => l.startsWith('dokku ps:')))
+      .toEqual(['dokku ps:restart a  # global env', 'dokku ps:restart c  # global env'])
   })
 
   it('an app needing both shows only the rebuild line, after the restart lines', async () => {

@@ -55,8 +55,10 @@ Global variables are inherited by every app (app values take precedence). `up` r
 - A key whose value differs, or that is missing, is set with `config:set --global`; an unchanged key is not set again.
 - A key the marker lists that the file no longer declares is unset with `config:unset --global`, on every `up`.
 - A box with no marker yet unsets nothing on its first run; that run only writes the marker.
-- An empty `env: {}` unsets every marked key and drops the marker. `env: false` (or no `env:`) leaves global env alone.
+- An empty `env: {}`, or no `env:` block at all, unsets every marked key and drops the marker; with no marker on the box it does nothing. `env: false` leaves global env alone.
 - Only marker-listed keys are ever unset: keys set by hand, `DOKKU_COMPOSE_BACKUP_HASH_*` and the markers themselves are never touched.
+
+`config:set --global` and `config:unset --global` never restart an app (Dokku's config plugin skips the restart for `--global`), so no `--no-restart` is passed. A container reads global env only when it starts, so when `up` sets or unsets a global key it lists every app the run processes in its restart summary; an unchanged run lists none.
 
 `diff` shows global env drift under `global / env` by key name only: values are always masked as `****`, a removed key is shown as `- KEY (not in the file)`, and the marker is never listed as a user key.
 

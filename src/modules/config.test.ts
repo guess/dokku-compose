@@ -85,6 +85,24 @@ describe('ensureGlobalConfig', () => {
     expect(runner.dryRunLog).toEqual([`config:set --global ${M}=A`])
   })
 
+  it('a removed env: block unsets every marked key and drops the marker', async () => {
+    const { ctx, runner } = globalServer({ A: '1', HAND_SET: 'x', [M]: 'A' })
+    expect(await ensureGlobalConfig(ctx, undefined)).toBe(true)
+    expect(runner.dryRunLog).toEqual([`config:unset --global A ${M}`])
+  })
+
+  it('no env: block and no marker does nothing', async () => {
+    const { ctx, runner } = globalServer({ HAND_SET: 'x' })
+    expect(await ensureGlobalConfig(ctx, undefined)).toBe(false)
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('reports a change only when a user key was set or unset', async () => {
+    expect(await ensureGlobalConfig(globalServer({ A: '1', [M]: 'A' }).ctx, { A: '1' })).toBe(false)
+    expect(await ensureGlobalConfig(globalServer({ A: '1' }).ctx, { A: '1' })).toBe(false)
+    expect(await ensureGlobalConfig(globalServer({ A: '1', [M]: 'A' }).ctx, { A: '2' })).toBe(true)
+  })
+
   it('env: false leaves global env alone', async () => {
     const { ctx, runner } = globalServer({ A: '1', [M]: 'A' })
     await ensureGlobalConfig(ctx, false)
@@ -98,6 +116,11 @@ describe('readGlobalEnvDrift', () => {
     const drift = await readGlobalEnvDrift(ctx, { A: 'plain-new', B: 'same' })
     expect(drift).toEqual({ changed: ['A'], removed: ['GONE'], markerOutdated: true })
     expect(JSON.stringify(drift)).not.toContain(M_)
+  })
+
+  it('a removed env: block shows the marked keys as removed', async () => {
+    const { ctx } = globalServer({ A: '1', [M_]: 'A' })
+    expect(await readGlobalEnvDrift(ctx, undefined)).toEqual({ changed: [], removed: ['A'], markerOutdated: true })
   })
 
   it('is empty when in sync', async () => {

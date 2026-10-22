@@ -18,6 +18,7 @@ function fakeServer(version: string) {
   })
   runner.queryStrict = vi.fn(async (...a: string[]) => {
     other.push(a.join(' '))
+    if (a.join(' ') === 'config:export --global --format json') return '{}'
     return a[0] === 'plugin:list' ? '[]' : ''
   })
   runner.check = vi.fn(async (...a: string[]) => {

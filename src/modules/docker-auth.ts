@@ -11,12 +11,15 @@ const AUTH_UNKNOWN = 4
 
 /**
  * The server name `registry:report --registry-global-auth-servers` prints for
- * a file's key: scheme and path stripped, every Docker Hub alias as docker.io
- * (Dokku's convertToHostname/dockerAuthKey).
+ * a file's key, in Dokku's order (plugins/registry/functions.go): the bare
+ * name hub.docker.com or docker.com becomes docker.io (normalizeRegistryServer),
+ * then scheme and path are stripped (convertToHostname), and every Docker Hub
+ * key prints as docker.io (dockerAuthKey, authServersFromConfig).
  */
 export function registryHostname(server: string): string {
-  const host = server.replace(/^https?:\/\//, '').split('/')[0]
-  return ['', 'docker.io', 'index.docker.io', 'hub.docker.com', 'docker.com'].includes(host) ? 'docker.io' : host
+  const normalized = server === 'hub.docker.com' || server === 'docker.com' ? 'docker.io' : server
+  const host = normalized.replace(/^https?:\/\//, '').split('/')[0]
+  return ['', 'docker.io', 'index.docker.io'].includes(host) ? 'docker.io' : host
 }
 
 /** Whether the stored global login for `server` matches; the password goes on stdin. */

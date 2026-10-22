@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
-import { ensureDockerAuth, pruneDockerAuth, readDockerAuthDrift } from './docker-auth.js'
+import { ensureDockerAuth, pruneDockerAuth, readDockerAuthDrift, registryHostname } from './docker-auth.js'
 
 function fake(statusByServer: Record<string, number>, globalServers = '') {
   const runner = createRunner({ dryRun: true })
@@ -93,5 +93,18 @@ describe('readDockerAuthDrift', () => {
   it('lists the servers whose login is missing or differs, never a password', async () => {
     const { ctx } = fake({ 'ghcr.io': 2, 'registry.example.com': 0 }, 'ghcr.io,registry.example.com,old.example.com')
     expect(await readDockerAuthDrift(ctx, AUTH)).toEqual({ stale: ['ghcr.io'], extra: ['old.example.com'] })
+  })
+})
+
+describe('registryHostname mirrors Dokku (normalize the bare name, then strip scheme and path)', () => {
+  it.each([
+    ['hub.docker.com', 'docker.io'],
+    ['docker.com', 'docker.io'],
+    ['index.docker.io', 'docker.io'],
+    ['https://index.docker.io/v1/', 'docker.io'],
+    ['https://hub.docker.com', 'hub.docker.com'],
+    ['https://ghcr.io/v2', 'ghcr.io'],
+  ])('%s -> %s', (server, host) => {
+    expect(registryHostname(server)).toBe(host)
   })
 })

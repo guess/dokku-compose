@@ -238,6 +238,8 @@ describe('a server whose state equals the file', () => {
     expect(warned).toHaveLength(2)
     expect(warned[0]).toContain('myapp-db: version is 16.1 on the server but 17-3.5 in the file; image is postgres on the server but postgis/postgis in the file')
     warn.mockRestore()
+  })
+
   it('a removed global key and a changed registry password show in diff without values, and up fixes exactly those', async () => {
     const server = inSyncServer()
     server.queries['config:export --global --format json'] = JSON.stringify({
@@ -302,6 +304,31 @@ describe('a server whose state equals the file', () => {
     expect(second.runner.dryRunLog).toEqual([])
     const keys = stored.filter(o => o.startsWith('--build-arg ')).map(o => o.replace(/^--build-arg '?([^=]+)=.*$/s, '$1'))
     expect(keys.sort()).toEqual([...new Set(keys)].sort())
+  })
+
+  it('a changed global key lists every processed app for restart; an unchanged run lists none', async () => {
+    const same = fakeContext(inSyncServer())
+    await runUp(same.ctx, loadConfig(FIXTURE), [])
+    expect([...same.ctx.restarts.keys()]).toEqual([])
+
+    const server = inSyncServer()
+    server.queries['config:export --global --format json'] = JSON.stringify({
+      TZ: 'Europe/Paris', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X',
+    })
+    const changed = fakeContext(server)
+    await runUp(changed.ctx, loadConfig(FIXTURE), ['myapp', 'myapp-edge'])
+    expect(changed.runner.dryRunLog).toContain('config:set --global TZ=UTC')
+    expect([...changed.ctx.restarts.keys()].sort()).toEqual(['myapp', 'myapp-edge'])
+  })
+
+  it('removing the env: block unsets the marked global keys and drops the marker', async () => {
+    const config = loadConfig(FIXTURE)
+    delete config.env
+    const diff = await computeDiff(fakeContext(inSyncServer()).ctx, config)
+    expect(diff.global.env).toMatchObject({ removed: ['TZ', 'FEATURE_X'] })
+    const { ctx, runner } = fakeContext(inSyncServer())
+    await runUp(ctx, config, [])
+    expect(runner.dryRunLog).toEqual(['config:unset --global TZ FEATURE_X DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS'])
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.

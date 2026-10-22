@@ -35,12 +35,18 @@ async function planGlobalEnv(ctx: Context, env: Record<string, string | number |
   return { toSet, removed, marker, markerOutdated }
 }
 
+/**
+ * Converge the top-level `env:`. No `env:` block (undefined) counts as `{}`, so
+ * marked keys are unset and the marker dropped; a box with no marker is left
+ * alone. `env: false` skips global env. Returns whether a user key was set or
+ * unset (a marker-only write is not a change apps can see).
+ */
 export async function ensureGlobalConfig(
   ctx: Context,
-  env: Record<string, string | number | boolean> | false
-): Promise<void> {
-  if (env === false) return
-  const { toSet, removed, marker, markerOutdated } = await planGlobalEnv(ctx, env)
+  env: Record<string, string | number | boolean> | false | undefined
+): Promise<boolean> {
+  if (env === false) return false
+  const { toSet, removed, marker, markerOutdated } = await planGlobalEnv(ctx, env ?? {})
   const unset = [...removed]
   if (markerOutdated && marker === '') unset.push(GLOBAL_MANAGED_KEYS_VAR)
   // Unset first: if it throws, the marker still names the keys and the next run retries.
@@ -48,16 +54,15 @@ export async function ensureGlobalConfig(
   const pairs = Object.entries(toSet).map(([k, v]) => `${k}=${v}`)
   if (markerOutdated && marker !== '') pairs.push(`${GLOBAL_MANAGED_KEYS_VAR}=${marker}`)
   if (pairs.length > 0) await ctx.run('config:set', '--global', ...pairs)
-  // TODO(LAB-754): when a user key was set or unset (toSet or removed non-empty,
-  // never for a marker-only write), mark every app this run processes for restart.
+  return Object.keys(toSet).length > 0 || removed.length > 0
 }
 
 /** For `diff`: the names (never values) of global keys `up` would set or unset. */
 export async function readGlobalEnvDrift(
   ctx: Context,
-  env: Record<string, string | number | boolean>
+  env: Record<string, string | number | boolean> | undefined
 ): Promise<{ changed: string[]; removed: string[]; markerOutdated: boolean }> {
-  const { toSet, removed, markerOutdated } = await planGlobalEnv(ctx, env)
+  const { toSet, removed, markerOutdated } = await planGlobalEnv(ctx, env ?? {})
   return { changed: Object.keys(toSet), removed, markerOutdated }
 }
 

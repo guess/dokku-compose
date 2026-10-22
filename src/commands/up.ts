@@ -174,10 +174,11 @@ async function runUpPhases(
 
   // Phase 2: Global config
   if (config.domains !== undefined) await ensureGlobalDomains(ctx, config.domains)
-  // Global env is not marked here: ensureGlobalConfig sets without reading, so it
-  // cannot tell a change from a no-op. Whoever makes it read-first calls
-  // markGlobalEnvRestart(ctx, apps) when a key actually changes.
-  if (config.env !== undefined) await ensureGlobalConfig(ctx, config.env)
+  // Global env reaches a container only when it starts: list the apps this run
+  // processes for restart, and only when a key was actually set or unset.
+  if (await ensureGlobalConfig(ctx, config.env)) {
+    markGlobalEnvRestart(ctx, apps.filter(app => config.apps[app]))
+  }
   if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
   if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)
 

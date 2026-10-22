@@ -13,6 +13,7 @@ const FIXTURES = path.join(import.meta.dirname, '../tests/fixtures')
 function stubStrict(runner: ReturnType<typeof createRunner>) {
   runner.queryStrict = vi.fn(async (...args: string[]) => {
     const out = await runner.query(...args)
+    if (!out && args.join(' ') === 'config:export --global --format json') return '{}'
     return args[0] === 'plugin:list' && !out ? '[]' : out
   })
   // No registry login stored yet; a login goes through runner.run like any other mutation.

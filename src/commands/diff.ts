@@ -297,7 +297,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   }
 
   // Top-level env: by key name only; values are never shown (they are often secrets).
-  if (config.env !== undefined && config.env !== false) {
+  // No env: block counts as {}: marked keys show as removed.
+  if (config.env !== false) {
     try {
       const { changed, removed, markerOutdated } = await readGlobalEnvDrift(ctx, config.env)
       if (changed.length > 0 || removed.length > 0 || markerOutdated) {
@@ -310,7 +311,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.inSync = false
       }
     } catch (err) {
-      result.global.env = { status: 'unknown', desired: Object.keys(config.env) }
+      result.global.env = { status: 'unknown', desired: Object.keys(config.env ?? {}) }
       result.readWarnings.push(`could not read global 'env': ${err instanceof Error ? err.message : String(err)}`)
       result.inSync = false
     }
