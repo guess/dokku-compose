@@ -3,8 +3,8 @@ import { findLinkVariables } from './links.js'
 const MANAGED_KEYS_VAR = 'DOKKU_COMPOSE_MANAGED_KEYS'
 /** App env Dokku 0.38.31 writes itself outside `DOKKU_*` (git's rev env var, domains' vhost flag). */
 const DOKKU_WRITTEN = new Set(['GIT_REV', 'NO_VHOST'])
-/** A link URL of a postgres or redis service, declared or not. */
-const SERVICE_URL_HOST = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?]*@)?dokku-(?:postgres|redis)-[^:/?]+/i
+/** A link URL of any Dokku datastore service (postgres, redis, mysql, mongo...), declared or not. */
+const SERVICE_URL_HOST = /^[a-z][a-z0-9+.-]*:\/\/(?:[^@/?]*@)?dokku-[a-z]+-[^:/?]+/i
 
 export interface EnvNote {
   key: string

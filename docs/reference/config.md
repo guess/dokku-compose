@@ -41,8 +41,8 @@ Removing a key from `env:` and re-running `up` unsets it and drops it from the m
 `diff` notes each app env key the file does not account for, by name, so a key set by hand or by a script shows up. It reads the app once with `config:export --format json <app>` (app keys only) and skips:
 
 - the marker and every key it names (the app's `env:`);
-- the variables a declared link injects (found by the service's URL host, including Dokku's alternate `DOKKU_<PLUGIN>_<COLOR>_URL`), and any value whose URL host is a postgres or redis service (`dokku-postgres-*`, `dokku-redis-*`), declared or not;
-- `GIT_REV` and `NO_VHOST`, which Dokku writes itself;
+- the variables a declared link injects (found by the service's URL host, including Dokku's alternate `DOKKU_<PLUGIN>_<COLOR>_URL`), and any value whose URL host is a Dokku datastore service (`dokku-<plugin>-<service>`, e.g. `dokku-postgres-*`, `dokku-redis-*`), declared or not;
+- `GIT_REV` and `NO_VHOST`, which Dokku writes itself (if a box renames the rev variable with `git:set <app> rev-env-var`, list the new name in `env_external`);
 - `DOKKU_*`, except `DOKKU_START_CMD`.
 
 A noted key whose value equals the server's global value of a key in the top-level `env:` (read from `config:export --global`) is labelled `duplicate of global`. The notes are printed as `note:` lines (summary, `--verbose`, and the `envNotes` field of the diff result): key names only, never values. They are not drift: they do not change the out-of-sync count, the in-sync status or the exit code, and `up` (with or without `--prune`) never sets or unsets these keys.
