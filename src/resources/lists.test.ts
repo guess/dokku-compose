@@ -46,6 +46,13 @@ describe('Domains resource', () => {
     await reconcile(Domains, ctx, 'myapp', ['example.com'])
     expect(ctx.commands).toEqual([])
   })
+
+  // Dokku 0.38.31 prints `--domains-app-vhosts` on one line, space-separated.
+  it('skips when several domains match, as Dokku prints them on one line', async () => {
+    const ctx = makeCtx('example.com www.example.com')
+    await reconcile(Domains, ctx, 'myapp', ['www.example.com', 'example.com'])
+    expect(ctx.commands).toEqual([])
+  })
 })
 
 describe('Storage resource', () => {

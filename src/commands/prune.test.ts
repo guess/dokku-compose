@@ -6,6 +6,7 @@ import { createContext } from '../core/context.js'
 import { runUp } from './up.js'
 import { computeDiff } from './diff.js'
 import type { Config } from '../core/schema.js'
+import { emptyAnswer } from '../tests/fake-server.js'
 
 function fakeBox(dryRun = false) {
   const st = {
@@ -29,7 +30,7 @@ function fakeBox(dryRun = false) {
     const c = a.join(' ')
     if (c === 'version') return 'dokku version 0.38.31'
     if (c.startsWith('nginx:report')) return section('nginx', 'Nginx', st.nginx)
-    if (c.startsWith('logs:report')) return section('logs', 'Logs', st.logs)
+    if (c.startsWith('logs:report')) return JSON.stringify(st.logs)
     if (c.startsWith('registry:report')) return section('registry', 'Registry', st.registry)
     if (c.startsWith('scheduler:report')) return section('scheduler', 'Scheduler', { selected: st.scheduler })
     if (c.startsWith('network:report')) return section('network', 'Network', st.network)
@@ -37,7 +38,7 @@ function fakeBox(dryRun = false) {
     if (c.startsWith('docker-options:report')) return JSON.stringify({ 'build-list': st.build })
     if (c.startsWith('ps:report')) return JSON.stringify(st.ps)
     if (c === 'plugin:list' || c.startsWith('plugin:list')) return '[]'
-    return ''
+    return emptyAnswer(...a) ?? ''
   }
   runner.query = vi.fn(read)
   runner.queryStrict = vi.fn(read)
@@ -49,7 +50,8 @@ function fakeBox(dryRun = false) {
     if (tables[cmd]) { if (value === undefined) delete tables[cmd][key]; else tables[cmd][key] = value }
     if (cmd === 'scheduler:set') st.scheduler = ''
     if (cmd === 'checks:set') st.wait = ''
-    const types = a.slice(2)
+    // Dokku takes the process types as one comma-separated argument.
+    const types = a.slice(2).flatMap(t => t.split(','))
     if (cmd === 'checks:enable') for (const t of types) { st.disabled.delete(t); st.skipped.delete(t) }
     if (cmd === 'checks:disable') types.forEach(t => st.disabled.add(t))
     if (cmd === 'checks:skip') types.forEach(t => st.skipped.add(t))
@@ -100,7 +102,8 @@ describe('up --prune', () => {
     // Declared state survives: web and worker stay disabled, only the stale skip is cleared.
     expect([...st.disabled].sort()).toEqual(['web', 'worker'])
     expect([...st.skipped]).toEqual([])
-    expect(log.filter(l => /^checks:(disable|skip)/.test(l))).toEqual(['checks:disable myapp web'])
+    // web is already disabled on the box, so checks reads first and never re-disables it.
+    expect(log.filter(l => /^checks:(disable|skip)/.test(l))).toEqual([])
     expect(log.filter(l => l.startsWith('docker-options:remove'))).toEqual(['docker-options:remove myapp build --build-arg B=2'])
     expect(log.some(l => /apps:destroy|ps:scale|destroy/.test(l))).toBe(false)
   })

@@ -5,6 +5,8 @@ import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
+import { readGlobalLogs } from '../modules/logs.js'
+import { readGlobalNginx } from '../modules/nginx.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra' | 'unknown'
@@ -28,32 +30,19 @@ interface DiffResult {
   plugins: Record<string, FeatureDiff>
   /** Set when the server's Dokku version differs from the file's `dokku.version`. */
   dokku?: { file: string; server: string }
+  /** Top-level settings: the declared keys of `logs:` and `nginx:` against the server's global values. */
+  global: Record<string, FeatureDiff>
+  /** Declared shared networks; only a network missing on the server is listed. */
+  networks: Record<string, FeatureDiff>
   inSync: boolean
   /** Bulk or per-app reads that could not be trusted; diff falls back but flags them. */
   readWarnings: string[]
 }
 
-/**
- * `ssl` is special: the current value from certs:report is only ever a
- * boolean (cert present or not), while desired can be an object
- * ({certfile, keyfile}) or a boolean. A plain computeChange() would compare
- * `true` against `{certfile, keyfile}` as unequal scalars and report
- * "changed" on every run even when the cert is already in place. Treat:
- *  - desired object + current true  -> in-sync (a cert is present)
- *  - desired object + current false -> missing
- *  - desired false + current true -> changed (should be removed)
- *  - current undefined (report was empty/unreadable) -> defer to the
- *    generic path so the unknown handling applies, same as any other
- *    resource whose read failed; `undefined` must never be coerced to
- *    "missing" here, or an installed cert reads back as absent.
- *  - anything else (both booleans) -> fall through to the normal comparison
- */
-function diffSslStatus(desired: unknown, current: unknown): DiffStatus | undefined {
-  if (typeof desired !== 'object' || desired === null) return undefined
-  if (current === undefined) return undefined
-  if (current === true) return 'in-sync'
-  if (current === false || current === null) return 'missing'
-  return undefined
+/** How a server value shows in diff output: an installed cert as a label, never its text. */
+function displayCurrent(resourceKey: string, current: unknown): unknown {
+  if (resourceKey === 'ssl' && current && typeof current === 'object') return '(certificate installed)'
+  return current
 }
 
 /** Whether a change holds anything besides entries only on the server. */
@@ -71,7 +60,7 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
-  const result: DiffResult = { apps: {}, services: {}, plugins: {}, inSync: true, readWarnings: [] }
+  const result: DiffResult = { apps: {}, services: {}, plugins: {}, global: {}, networks: {}, inSync: true, readWarnings: [] }
   const appNames = Object.keys(config.apps)
 
   const serverVersion = await assertDokkuSupported(ctx)
@@ -168,24 +157,27 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         current = await resource.read(ctx, app)
       } else if (bulk) {
         current = bulk.get(app)
-        // `ssl`'s bulk report can be well-formed overall (readAll's
-        // unreadable check passes) yet still miss the `enabled` key for one
-        // app's section. That per-app gap must fall back to a direct read,
-        // same as a fully-unreadable bulk report, rather than being coerced
-        // into "missing".
-        if (resource.key === 'ssl' && current === undefined) {
-          current = await resource.read(ctx, app)
-          if (current === undefined) bulkUnreadable = true
-        }
       } else {
         current = await resource.read(ctx, app)
       }
 
-      const sslStatus = resource.key === 'ssl' ? diffSslStatus(desired, current) : undefined
-
-      if (sslStatus) {
-        appDiff[resource.key] = { status: sslStatus, desired, current }
-        if (sslStatus !== 'in-sync') result.inSync = false
+      if (resource.inSync) {
+        // The server's state has its own shape (certs, checks): the resource compares.
+        const removedHere = resource.removals ? resource.removals(current as any, desired as any) : []
+        let status: DiffStatus
+        if (current === undefined) {
+          status = 'unknown'
+          result.readWarnings.push(`could not read '${resource.key}' for app '${app}'`)
+        } else if (resource.inSync(current as any, desired as any)) {
+          status = removedHere.length > 0 ? 'extra' : 'in-sync'
+        } else {
+          status = current === false || isEmptyValue(current) ? 'missing' : 'changed'
+        }
+        appDiff[resource.key] = {
+          status, desired, current: displayCurrent(resource.key, current),
+          ...(removedHere.length > 0 ? { removed: removedHere } : {}),
+        }
+        if (status !== 'in-sync') result.inSync = false
         continue
       }
 
@@ -270,6 +262,35 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     }
   }
 
+  // Top-level logs: and nginx: against the server's global values
+  for (const [name, declared, read] of [
+    ['logs', config.logs, readGlobalLogs],
+    ['nginx', config.nginx, readGlobalNginx],
+  ] as const) {
+    if (declared === undefined) continue
+    let current: Record<string, string>
+    try {
+      current = await read(ctx)
+    } catch (err) {
+      result.global[name] = { status: 'unknown', desired: declared }
+      result.readWarnings.push(`could not read global '${name}': ${err instanceof Error ? err.message : String(err)}`)
+      result.inSync = false
+      continue
+    }
+    const differs = Object.entries(declared).filter(([k, v]) => current[k] !== String(v))
+    if (differs.length === 0) continue
+    const shown = Object.fromEntries(Object.keys(declared).filter(k => k in current).map(k => [k, current[k]]))
+    result.global[name] = { status: differs.every(([k]) => !(k in current)) ? 'missing' : 'changed', desired: declared, current: shown }
+    result.inSync = false
+  }
+
+  // Shared networks
+  for (const net of config.networks ?? []) {
+    if (await ctx.check('network:exists', net)) continue
+    result.networks[net] = { status: 'missing' }
+    result.inSync = false
+  }
+
   // Compare services
   for (const svc of Object.keys(config.postgres ?? {})) {
     const exists = await ctx.check('postgres:exists', svc)
@@ -286,7 +307,13 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 }
 
 export function maskDiffResult(diff: DiffResult): DiffResult {
-  const masked: DiffResult = { apps: {}, services: diff.services, plugins: diff.plugins, dokku: diff.dokku, inSync: diff.inSync, readWarnings: diff.readWarnings }
+  const masked: DiffResult = {
+    apps: {}, services: diff.services, plugins: diff.plugins, dokku: diff.dokku,
+    global: Object.fromEntries(Object.entries(diff.global).map(([k, d]) => [k, {
+      ...d, desired: maskSensitiveData(d.desired), current: maskSensitiveData(d.current),
+    }])),
+    networks: diff.networks, inSync: diff.inSync, readWarnings: diff.readWarnings,
+  }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
     for (const [feature, d] of Object.entries(appDiff)) {
@@ -301,6 +328,18 @@ export function maskDiffResult(diff: DiffResult): DiffResult {
     masked.apps[app] = maskedAppDiff
   }
   return masked
+}
+
+/** Resources out of sync; an uncomparable plugin pin is shown but not counted. */
+function driftCount(diff: DiffResult): number {
+  return Object.values(diff.apps)
+    .flatMap(a => Object.values(a))
+    .filter(d => d.status !== 'in-sync').length +
+    Object.values(diff.services).filter(d => d.status !== 'in-sync').length +
+    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length +
+    Object.keys(diff.global).length +
+    Object.keys(diff.networks).length +
+    (diff.dokku ? 1 : 0)
 }
 
 export function formatSummary(diff: DiffResult): string {
@@ -328,6 +367,17 @@ export function formatSummary(diff: DiffResult): string {
     lines.push(`    ${chalk.yellow('~')} version: ${diff.dokku.file} (file) → ${diff.dokku.server} (server)`)
   }
 
+  for (const [name, d] of Object.entries(diff.global)) {
+    const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
+    lines.push(`  global`)
+    lines.push(`    ${sym} ${name}: ${formatChange(d)}`)
+  }
+
+  for (const net of Object.keys(diff.networks)) {
+    lines.push(`  networks:`)
+    lines.push(`    ${chalk.green('+')} ${net}: not created`)
+  }
+
   for (const [name, d] of Object.entries(diff.plugins)) {
     const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
     const detail = d.status === 'missing' ? `not installed (want ${d.desired ?? 'any'})` : `${d.current} → ${d.desired}`
@@ -342,12 +392,7 @@ export function formatSummary(diff: DiffResult): string {
     }
   }
 
-  const total = Object.values(diff.apps)
-    .flatMap(a => Object.values(a))
-    .filter(d => d.status !== 'in-sync').length +
-    Object.values(diff.services).filter(d => d.status !== 'in-sync').length +
-    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length +
-    (diff.dokku ? 1 : 0)
+  const total = driftCount(diff)
 
   if (diff.readWarnings.length > 0) {
     lines.push('')
@@ -422,6 +467,21 @@ export function formatVerbose(diff: DiffResult): string {
     lines.push(chalk.green(`+ ${diff.dokku.file} (file)`))
   }
 
+  for (const [name, d] of Object.entries(diff.global)) {
+    lines.push(`@@ global / ${name} @@`)
+    if (d.status === 'unknown') {
+      lines.push(chalk.red(`  ? could not read server state — not reported as missing`))
+      continue
+    }
+    if (d.current !== undefined) for (const line of JSON.stringify(d.current, null, 2).split('\n')) lines.push(chalk.red(`- ${line}`))
+    for (const line of JSON.stringify(d.desired, null, 2).split('\n')) lines.push(chalk.green(`+ ${line}`))
+  }
+
+  for (const net of Object.keys(diff.networks)) {
+    lines.push(`@@ networks @@`)
+    lines.push(chalk.green(`+ ${net}`))
+  }
+
   for (const [name, d] of Object.entries(diff.plugins)) {
     lines.push(`@@ plugin: ${name} @@`)
     if (d.current !== undefined) lines.push(chalk.red(`- ${d.current}`))
@@ -441,6 +501,9 @@ export function formatVerbose(diff: DiffResult): string {
     for (const w of diff.readWarnings) lines.push(chalk.red(`  - ${w}`))
   }
 
+  if (driftCount(diff) === 0) {
+    lines.push(chalk.green('Everything in sync.'))
+  }
   lines.push('')
   return lines.join('\n')
 }

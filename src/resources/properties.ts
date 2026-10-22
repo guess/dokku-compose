@@ -1,7 +1,7 @@
 import type { Resource } from '../core/reconcile.js'
 import type { MapChange, Change } from '../core/change.js'
 import type { Context } from '../core/context.js'
-import { parseReport, parseBulkReport } from './parsers.js'
+import { parseReport, parseBulkReport, parseJsonReport } from './parsers.js'
 import { logWarn } from '../core/logger.js'
 
 /**
@@ -59,6 +59,13 @@ function propertyResource(opts: {
   setCmd: string
   settable: readonly string[]
   afterChange?: string[]
+  /**
+   * Read `<namespace>:report <app> --format json` instead of the stdout report,
+   * and skip the bulk read. For logs: the stdout report redacts a sink to
+   * `<type>://redacted`, while the json report prints it as set (Dokku 0.38.31
+   * `plugins/logs/report.go`, `redactedSink`), so only json compares.
+   */
+  json?: boolean
 }): Resource<Record<string, string>> {
   return {
     key: opts.key,
@@ -68,14 +75,17 @@ function propertyResource(opts: {
     prune: propertyPrune(opts.setCmd, opts.afterChange),
 
     async read(ctx: Context, target: string): Promise<Record<string, string>> {
+      if (opts.json) return parseJsonReport(await ctx.queryStrict(`${opts.namespace}:report`, target, '--format', 'json'))
       const raw = await ctx.query(`${opts.namespace}:report`, target)
       return parseReport(raw, opts.namespace)
     },
 
-    async readAll(ctx: Context): Promise<Map<string, Record<string, string>>> {
-      const raw = await ctx.query(`${opts.namespace}:report`)
-      return parseBulkReport(raw, opts.namespace)
-    },
+    ...(opts.json ? {} : {
+      async readAll(ctx: Context): Promise<Map<string, Record<string, string>>> {
+        const raw = await ctx.query(`${opts.namespace}:report`)
+        return parseBulkReport(raw, opts.namespace)
+      },
+    }),
 
     async onChange(ctx: Context, target: string, change: MapChange, deferFollowUp = false): Promise<void> {
       for (const [key, value] of Object.entries({ ...change.added, ...change.modified })) {
@@ -112,6 +122,7 @@ export const Logs = propertyResource({
   namespace: 'logs',
   setCmd: 'logs:set',
   settable: LOGS_KEYS,
+  json: true,
 })
 
 export const Registry = propertyResource({

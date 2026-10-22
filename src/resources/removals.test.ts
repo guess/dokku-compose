@@ -18,6 +18,10 @@ import { join } from 'node:path'
 const real = (name: string) =>
   readFileSync(join(import.meta.dirname, '../tests/fixtures/reports', `${name}-report.txt`), 'utf8')
 
+// The same report as `<plugin>:report myapp --format json` prints it.
+const realJson = (name: string) =>
+  readFileSync(join(import.meta.dirname, '../tests/fixtures/reports', `${name}-report.json`), 'utf8')
+
 function makeCtx(results: Record<string, string>) {
   const runner = createRunner({ dryRun: false })
   const read = async (...args: string[]) => results[args.join(' ')] ?? ''
@@ -51,7 +55,7 @@ describe('nginx / logs / registry removals', () => {
 
   it('logs: only settable keys', async () => {
     const ctx = makeCtx({
-      'logs:report myapp': '       Logs max size:  10m\n       Logs computed max size: 10m\n       Logs vector sink: console://\n       Logs read only: x\n',
+      'logs:report myapp --format json': JSON.stringify({ 'max-size': '10m', 'computed-max-size': '10m', 'vector-sink': 'console://', 'read-only': 'x' }),
     })
     const current = await Logs.read(ctx, 'myapp')
     expect(Logs.removals!(current, { 'max-size': '10m' })).toEqual(['vector-sink'])
@@ -167,7 +171,7 @@ describe('real Dokku 0.38 reports', () => {
   })
 
   it('logs, registry, scheduler, builder: an unset real report has no removals', async () => {
-    expect(Logs.removals!(await Logs.read(makeCtx({ 'logs:report myapp': real('logs') }), 'myapp'), undefined)).toEqual([])
+    expect(Logs.removals!(await Logs.read(makeCtx({ 'logs:report myapp --format json': realJson('logs') }), 'myapp'), undefined)).toEqual([])
     expect(Registry.removals!(await Registry.read(makeCtx({ 'registry:report myapp': real('registry') }), 'myapp'), undefined)).toEqual([])
     expect(Scheduler.removals!(await Scheduler.read(makeCtx({ 'scheduler:report myapp': real('scheduler') }), 'myapp'), undefined)).toEqual([])
     const b = await Builder.read(makeCtx({ 'builder:report myapp': real('builder') }), 'myapp')

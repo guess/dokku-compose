@@ -72,3 +72,33 @@ export function parseBulkReport(raw: string, namespace: string, headerNamespace?
 
   return result
 }
+
+/**
+ * Parse a `<namespace>:report <app|--global> --format json` object. Dokku trims
+ * the `--<namespace>-` prefix from each key, so an app's own settings are bare
+ * (`max-size`) and the others start with `global-` or `computed-`. With
+ * `scope: 'global'` only the `global-` keys are kept, prefix stripped; else
+ * only the bare keys. Empty values are unset and dropped. Throws on output
+ * that is not a JSON object, so a failed read is never an empty report.
+ */
+export function parseJsonReport(raw: string, scope: 'app' | 'global' = 'app'): Record<string, string> {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    throw new Error(`report --format json did not return JSON: ${raw.slice(0, 200)}`)
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error(`report --format json did not return a JSON object: ${raw.slice(0, 200)}`)
+  }
+  const result: Record<string, string> = {}
+  for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+    if (value === null || value === undefined || String(value) === '') continue
+    if (scope === 'global') {
+      if (key.startsWith('global-')) result[key.slice('global-'.length)] = String(value)
+    } else if (!key.startsWith('global-') && !key.startsWith('computed-') && key !== 'last-visited-at') {
+      result[key] = String(value)
+    }
+  }
+  return result
+}

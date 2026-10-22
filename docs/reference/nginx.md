@@ -27,7 +27,7 @@ On `down`: each configured property is reset to Dokku's default via `nginx:set <
 
 ## `nginx` (top-level)
 
-Sets global Nginx defaults that apply to all apps unless overridden per-app. Each key-value pair maps to a `nginx:set --global` call.
+Sets global Nginx defaults that apply to all apps unless overridden per-app. `up` reads `nginx:report --global --format json` first and runs `nginx:set --global` only for the values that differ; `diff` shows them under a `global` section.
 
 ```yaml
 nginx:
@@ -37,7 +37,7 @@ nginx:
 
 | Value | Dokku command |
 |-------|---------------|
-| map of `key: value` pairs | `nginx:set --global <key> <value>` for each entry |
+| map of `key: value` pairs | `nginx:report --global --format json` (check)<br>`nginx:set --global <key> <value>` for each entry that differs |
 | absent | no action |
 
 Value precedence follows Dokku's hierarchy: app-specific → global → Dokku default.

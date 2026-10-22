@@ -10,6 +10,14 @@ export interface Resource<T = unknown> {
   readAll?: (ctx: Context) => Promise<Map<string, T>>
   /** `deferFollowUp`: the caller will run `prune` next, which does the follow-up work (e.g. a proxy rebuild) once. */
   onChange: (ctx: Context, target: string, change: any, deferFollowUp?: boolean) => void | Promise<void>
+  /**
+   * For a resource whose server state has a different shape from the file's
+   * (certs: the installed crt vs the declared file paths): whether `current`
+   * already satisfies `desired`. Replaces the generic comparison in `up` and
+   * `diff`; onChange then gets `{ before: current, after: desired, changed: true }`.
+   * `current` undefined means unreadable and is never in sync.
+   */
+  inSync?(current: T, desired: T): boolean
   /** Skip diff, always call onChange. For resources without parseable reports. */
   forceApply?: boolean
   /**
@@ -64,6 +72,17 @@ export async function reconcile<T>(
   }
 
   const before = await resource.read(ctx, target)
+  if (resource.inSync) {
+    if (before !== undefined && resource.inSync(before, desired)) {
+      logSkip()
+    } else {
+      await resource.onChange(ctx, target, { before, after: desired, changed: true })
+      logDone()
+    }
+    if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
+    if (canPrune) await pruneFrom(before)
+    return
+  }
   if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
   if (canPrune) {
     const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)

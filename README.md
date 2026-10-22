@@ -58,6 +58,8 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `logs:` and `nginx:` (under `global`), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs.
+
 ### 3. Preview changes
 
 ```bash
@@ -113,7 +115,7 @@ args, and entries missing from a declared list), including when the whole block 
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
-`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints a one-line count per app of the leftovers it noticed in the blocks you declare; it does not look at removed whole blocks or checks. Run `dokku-compose diff` for the full list.
+`up` always unsets env keys removed from the file. For every other removal it leaves the setting in place and prints a one-line count per app of the leftovers it noticed in the blocks you declare; it does not look at removed whole blocks, and does not count checks. Run `dokku-compose diff` for the full list.
 
 **`up --prune`** resets those leftovers. Read `diff` first: every `-` it shows for the resources below is what `--prune` will reset, and there is no prompt (`diff` is the preview, the flag is the consent). Add `--dry-run` to print the reset commands without running them.
 
@@ -122,7 +124,7 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | `nginx`, `logs`, `registry`, `ps` | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
 | `scheduler` | `scheduler:set <app> selected` |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
-| `checks` | `checks:enable <app> <types>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
+| `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
 It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
@@ -152,7 +154,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Networks | Create shared Docker networks, attach to apps | [network](docs/reference/network.md) |
 | Domains | Configure domains per app or globally | [domains](docs/reference/domains.md) |
 | Port Mappings | Map external ports to container ports | [ports](docs/reference/ports.md) |
-| SSL Certificates | Add or remove SSL certs | [certs](docs/reference/certs.md) |
+| SSL Certificates | Add, replace or remove SSL certs | [certs](docs/reference/certs.md) |
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
 | Storage | Persistent bind mounts with full convergence (keys removed from the YAML are unset) | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |

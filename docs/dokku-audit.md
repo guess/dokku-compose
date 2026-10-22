@@ -57,7 +57,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `buildpacks` |  |  | 5 | 3 |
 | `builds` |  |  | 1 | 6 |
 | `caddy` |  |  | 3 | 5 |
-| `certs` | 2 | 1 | 1 | 5 |
+| `certs` | 5 |  |  | 4 |
 | `checks` | 4 | 1 |  | 1 |
 | `config` | 2 | 2 |  | 5 |
 | `cron` |  |  | 3 | 3 |
@@ -87,7 +87,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 3 |  | 4 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **66** | **20** | **93** | **176** |
+| **Total** | **69** | **19** | **92** | **175** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -99,7 +99,7 @@ one of those keys today gets a wrong or noisy result. Sizes are story points.
 
 | # | Item | Why | Size |
 |---|---|---|:-:|
-| F1 | **Settings re-applied on every `up`; a replaced cert file is invisible** | `certs:report --ssl-enabled` reads back `true`, which never equals `{certfile, keyfile}` in `reconcile`, so every `up` runs `certs:add`. `diff` goes the other way: it counts `true` as in sync, so a replaced cert file never shows as drift. Compare the file's certificate with `certs:show <app> crt` in both, and use `certs:update` for a changed one. qultr-prod declares cert files on three apps. `checks:` is `forceApply`, so `up` also runs its `checks:disable`/`skip`/`set` calls every time. | 2 |
+| F1 | ✅ **Settings re-applied on every `up`; a replaced cert file is invisible** | Fixed (LAB-749): certs read `certs:report --ssl-enabled` then `certs:show <app> crt` and compare the crt with the file in `up` and `diff`, using `certs:update` for a changed one; `checks:`, global domains, global logs and global nginx read before they write. A harness (`src/tests/in-sync.test.ts`) declares every resource and requires an in-sync server to get no command from `up`. | 2 |
 | F2 | **Datastore `version` and `image` changes ignored** | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is not applied, not warned about and not shown by `diff`. Show it as drift; apply it with `:upgrade` only behind an explicit opt-in. | 3 |
 | F3 | **Postgres backup state kept outside Dokku** | The backup config is tracked as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`, which Dokku merges into every app's environment. A change made on the server is never seen, and removing `backup:` leaves the schedule and credentials in place. Read the real state (`:backup-schedule-cat`, the 2.x `backup-*` properties), run `:backup-unschedule`/`:backup-deauth` when the block goes, add encryption, drop the env var. | 5 |
 | F4 | **Global `env:` and `docker_auth:` only ever add** | Top-level `env:` runs `config:set --global` on every `up` and never unsets a key removed from the file. `docker_auth:` runs `registry:login` on every `up` and never logs out. Track global keys with a managed-keys marker as app `env:` does; use `registry:auth-status` (new in 0.38) to skip a login that already matches, and `registry:logout` for a removed server. | 3 |
@@ -346,15 +346,15 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 
 | Command | What it does | Status | dokku-compose |
 |---|---|:-:|---|
-| `certs:add` | Add an ssl endpoint to an app. Can also import from a tarball on stdin | 🟡 | `ssl: {certfile, keyfile}`; re-added on every `up` (F1) |
+| `certs:add` | Add an ssl endpoint to an app. Can also import from a tarball on stdin | ✅ | `ssl: {certfile, keyfile}` when no cert is installed |
 | `certs:chain` | [NOT IMPLEMENTED] Print the ordered and complete chain for the give… | ⛔ | Not implemented in Dokku |
 | `certs:generate` | Generate a key and certificate signing request (and self-signed cer… | ⛔ | One-shot action |
 | `certs:key` | [NOT IMPLEMENTED] Print the correct key for the given certificate | ⛔ | Not implemented in Dokku |
 | `certs:remove` | Remove an SSL Endpoint from an app | ✅ | `ssl: false` |
 | `certs:report` | Displays an ssl report for one or more apps | ✅ | `ssl` read (`--ssl-enabled` only) |
 | `certs:rollback` | [NOT IMPLEMENTED] Rollback an SSL Endpoint for an app | ⛔ | Not implemented in Dokku |
-| `certs:show` | Show the server.crt or server.key on stdout | ⛔ | Read-only (F1 could read it to compare) |
-| `certs:update` | Update an SSL Endpoint on an app. Can also import from a tarball on… | ❌ | F1: replace a changed cert in place |
+| `certs:show` | Show the server.crt or server.key on stdout | ✅ | `ssl` read: `crt` only, compared with `certfile`; the key is never read |
+| `certs:update` | Update an SSL Endpoint on an app. Can also import from a tarball on… | ✅ | `ssl: {certfile, keyfile}` when the installed cert differs |
 | `domains:add` | Add domains to app | ✅ | `domains:` |
 | `domains:add-global` | Add global domain names | ⛔ | `domains:` (global) uses `set-global` |
 | `domains:clear` | Clear all domains for app | ✅ | `domains: []` |

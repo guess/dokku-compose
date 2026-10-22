@@ -20,8 +20,10 @@ logs:                                           # set global log defaults
 
 | Value | Dokku Command |
 |-------|---------------|
-| `{map}` | `logs:set --global <key> <value>` per entry |
+| `{map}` | `logs:report --global --format json` (check)<br>`logs:set --global <key> <value>` per entry that differs |
 | absent | no action |
+
+`up` sets only the global values that differ from the server, and `diff` shows them under a `global` section (`~ logs` for a changed value, `+ logs` when none of the declared keys is set). The values are read as JSON because Dokku's plain report prints a sink as `<type>://redacted`.
 
 ### App Log Settings (`apps.<app>.logs`)
 
@@ -40,7 +42,7 @@ apps:
 
 | Value | Dokku Command |
 |-------|---------------|
-| `{map}` | `logs:set <app> <key> <value>` per entry |
+| `{map}` | `logs:report <app> --format json` (check)<br>`logs:set <app> <key> <value>` per entry that differs |
 | absent | no action |
 
 ### Supported Properties

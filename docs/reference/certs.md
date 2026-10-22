@@ -8,7 +8,7 @@ Module: `lib/certs.sh`
 
 ### App SSL (`apps.<app>.ssl`)
 
-Add or remove SSL certificates for an app. When set to a map with `certfile` and `keyfile`, the files are tarred as `server.crt`/`server.key` and added to Dokku (skipped if SSL is already enabled). When set to `false`, the certificate is removed. When absent, no changes are made.
+Add, replace or remove SSL certificates for an app. When set to a map with `certfile` and `keyfile`, `up` reads the installed certificate with `certs:show <app> crt` and compares it with `certfile` (trailing whitespace ignored): the same certificate runs nothing, a different one runs `certs:update`, and an app with no certificate gets `certs:add`. The key is never read or printed. When set to `false`, the certificate is removed. When absent, no changes are made.
 
 ```yaml
 apps:
@@ -26,8 +26,10 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `{certfile, keyfile}` | `certs:report <app> --ssl-enabled` (check)<br>`certs:add <app>` (if not already enabled) |
+| `{certfile, keyfile}` | `certs:report <app> --ssl-enabled`, then `certs:show <app> crt` (check)<br>`certs:add <app>` (no certificate)<br>`certs:update <app>` (a different certificate) |
 | `false` | `certs:report <app> --ssl-enabled` (check)<br>`certs:remove <app>` (if currently enabled) |
 | absent | no action |
 
-Both `certfile` and `keyfile` are required. In `--dry-run` mode, file existence is not checked so you can preview without having certs locally.
+Both `certfile` and `keyfile` are required, and `certfile` must be readable where dokku-compose runs, since it is compared with the server's certificate. `certs:show` failing with "doesn't have an SSL endpoint" means no certificate is installed. A certificate that cannot be read is unknown: `diff` shows `?` and `up` stops that step with an error rather than adding a certificate over it.
+
+`diff` shows a replaced `certfile` as `~ ssl` with the server side as `(certificate installed)`; the certificate text is never printed.
