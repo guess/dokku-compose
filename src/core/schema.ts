@@ -59,6 +59,8 @@ const AppSchema = z.object({
   links: z.array(LinkSchema).optional(),
   ports: z.array(PortSchema).optional(),
   env: EnvMapSchema.optional(),
+  /** App env keys something else sets: names only; `diff` stops noting them. */
+  env_external: z.array(z.string().min(1)).optional(),
   ssl: z.union([
     z.literal(false),
     z.literal(true),

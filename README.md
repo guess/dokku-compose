@@ -58,7 +58,7 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
-When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs.
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
 
 ### 3. Preview changes
 

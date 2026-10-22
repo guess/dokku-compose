@@ -1,0 +1,12 @@
+apps:
+  myapp:
+    env:
+      APP_ENV: production
+    env_external:
+      - APP_ENV
+      - SET_BY_SCRIPT
+      - SET_BY_SCRIPT
+      - DOKKU_COMPOSE_MANAGED_KEYS
+  myapp-worker:
+    env_external:
+      - SET_BY_SCRIPT
