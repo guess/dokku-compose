@@ -52,6 +52,7 @@ export function validate(filePath: string): ValidationResult {
       for (const name of Object.keys(data.redis)) serviceNames.add(name)
     }
     for (const [appName, appCfg] of Object.entries<any>(data.apps)) {
+      errors.push(...envExternalErrors(appName, appCfg))
       if (!appCfg?.links) continue
       for (const entry of appCfg.links) {
         const link = typeof entry === 'string' ? entry : entry?.service
@@ -72,4 +73,22 @@ export function validate(filePath: string): ValidationResult {
   }
 
   return { errors, warnings }
+}
+
+/** `env_external:` names keys something else sets, so none may be one dokku-compose sets. */
+function envExternalErrors(appName: string, appCfg: any): string[] {
+  const list = appCfg?.env_external
+  if (!Array.isArray(list)) return []
+  const declared = appCfg.env && typeof appCfg.env === 'object' ? appCfg.env : {}
+  const errors: string[] = []
+  const seen = new Set<string>()
+  for (const key of list) {
+    if (typeof key !== 'string') continue
+    const where = `apps.${appName}.env_external`
+    if (key === 'DOKKU_COMPOSE_MANAGED_KEYS') errors.push(`${where}: "${key}" is dokku-compose's own marker`)
+    else if (seen.has(key)) errors.push(`${where}: "${key}" is listed twice`)
+    else if (key in declared) errors.push(`${where}: "${key}" is also in env:`)
+    seen.add(key)
+  }
+  return errors
 }

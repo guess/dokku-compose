@@ -68,7 +68,8 @@ export type LinkOptionState =
 /** One app's env, read once per run by whoever passes the cache. */
 export type EnvCache = Map<string, Promise<Record<string, unknown>>>
 
-function readEnv(ctx: Context, app: string, cache?: EnvCache): Promise<Record<string, unknown>> {
+/** An app's `config:export`, read once per cache. */
+export function readEnv(ctx: Context, app: string, cache?: EnvCache): Promise<Record<string, unknown>> {
   let read = cache?.get(app)
   if (!read) {
     read = ctx.queryStrict('config:export', '--format', 'json', app).then(out => JSON.parse(out) as Record<string, unknown>)

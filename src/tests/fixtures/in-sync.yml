@@ -121,3 +121,5 @@ apps:
 
   myapp-edge:
     ssl: true
+    env_external:
+      - SET_BY_SCRIPT

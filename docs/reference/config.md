@@ -36,6 +36,26 @@ Removing a key from `env:` and re-running `up` unsets it and drops it from the m
 
 **Limit:** only keys named in the marker are unset. dokku-compose 0.12 and earlier rewrote the marker on every run to just the keys still in the YAML, so a key removed from the YAML under those versions dropped out of the marker without being unset. Nothing can tell such an orphan from a key set by hand, so unset those once yourself (`dokku config:unset --no-restart <app> KEY`). Keys removed from the YAML under 0.13 or later are cleaned up normally.
 
+## Keys Set Elsewhere (`apps.<app>.env_external`)
+
+`diff` notes each app env key the file does not account for, by name, so a key set by hand or by a script shows up. It reads the app once with `config:export --format json <app>` (app keys only) and skips:
+
+- the marker and every key it names (the app's `env:`);
+- the variables a declared link injects (found by the service's URL host, including Dokku's alternate `DOKKU_<PLUGIN>_<COLOR>_URL`), and any value whose URL host is a postgres or redis service (`dokku-postgres-*`, `dokku-redis-*`), declared or not;
+- `GIT_REV` and `NO_VHOST`, which Dokku writes itself;
+- `DOKKU_*`, except `DOKKU_START_CMD`.
+
+A noted key whose value equals the server's global value of a key in the top-level `env:` (read from `config:export --global`) is labelled `duplicate of global`. The notes are printed as `note:` lines (summary, `--verbose`, and the `envNotes` field of the diff result): key names only, never values. They are not drift: they do not change the out-of-sync count, the in-sync status or the exit code, and `up` (with or without `--prune`) never sets or unsets these keys.
+
+```yaml
+apps:
+  myapp:
+    env_external:
+      - SET_BY_SCRIPT
+```
+
+`env_external:` lists keys that exist on the app and are made by something else, like docker-compose's `external: true`. Names only; dokku-compose never sets, unsets or reads these keys; diff stops noting them. Entries are exact names, with no globs, so a new, unexpected key is still noted. `validate` rejects a key that is also in the app's `env:`, an entry listed twice, and `DOKKU_COMPOSE_MANAGED_KEYS`, naming the app and the key.
+
 ## Failures
 
 - **A failed `config:unset`** is reported with the app and the masked command. The marker is not rewritten, so it still names the key and the next `up` retries.
@@ -64,4 +84,4 @@ Global variables are inherited by every app (app values take precedence). `up` r
 
 ## Removal
 
-A managed key removed from `env:` is unset by `up` (also when `env:` is gone), and `diff` shows it with a red `-` and counts it as drift. Keys outside `DOKKU_COMPOSE_MANAGED_KEYS` are never shown or touched.
+A managed key removed from `env:` is unset by `up` (also when `env:` is gone), and `diff` shows it with a red `-` and counts it as drift. Keys outside `DOKKU_COMPOSE_MANAGED_KEYS` are never touched; `diff` only notes them by name (see above).

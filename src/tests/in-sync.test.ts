@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
 import { loadConfig } from '../core/config.js'
-import { computeDiff, formatSummary, formatVerbose } from '../commands/diff.js'
+import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
 import { fakeContext, report, emptyAnswer, gitReport, proxyReport, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
@@ -155,6 +155,7 @@ function inSyncServer(): FakeServer {
       [`domains:report ${worker} --domains-app-enabled`]: 'false',
             [`git:report ${worker}`]: gitReport(worker, { 'Git deploy branch': 'release' }),
       [`config:get ${worker} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
+      [`config:export --format json ${worker}`]: JSON.stringify({ GIT_REV: 'abc' }),
       ...nothingSet(worker),
 
       // myapp-edge: `ssl: true` (any cert) and an installed one
@@ -162,6 +163,7 @@ function inSyncServer(): FakeServer {
       [`certs:show ${edge} crt`]: CRT,
       [`config:get ${edge} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
       [`git:report ${edge}`]: gitReport(edge, { 'Git deploy branch': 'main' }),
+      [`config:export --format json ${edge}`]: JSON.stringify({ SET_BY_SCRIPT: 'listed-value' }),
       [`checks:report ${edge}`]: report(edge, 'checks', { 'Checks disabled list': 'none', 'Checks skipped list': 'none' }),
       ...nothingSet(edge),
     },
@@ -362,6 +364,26 @@ describe('a server whose state equals the file', () => {
     const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
     expect(diff.apps.myapp['links:myapp-redis']).toMatchObject({ status: 'missing', desired: 'CACHE_URL' })
     expect(diff.inSync).toBe(false)
+  })
+
+  it('an undeclared app key the file lists in env_external is not noted; one it does not list is noted by name, still in sync', async () => {
+    const server = inSyncServer()
+    server.queries['config:export --format json myapp-edge'] = JSON.stringify({
+      SET_BY_SCRIPT: 'listed-value', HAND_SET: 'hand-value', TZ: 'UTC', GIT_REV: 'abc', DOKKU_APP_TYPE: 'dockerfile',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.envNotes).toEqual({ 'myapp-edge': [{ key: 'HAND_SET' }, { key: 'TZ', label: 'duplicate of global' }] })
+    expect(diff.inSync).toBe(true)
+    for (const shown of [formatSummary(diff), formatVerbose(diff), JSON.stringify(maskDiffResult(diff))]) {
+      expect(shown).toContain('HAND_SET')
+      expect(shown).not.toContain('SET_BY_SCRIPT')
+      expect(shown).not.toContain('hand-value')
+    }
+    expect(formatSummary(diff)).toContain('Everything in sync.')
+    expect(formatSummary(diff)).toContain('TZ (duplicate of global)')
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
+    expect(runner.dryRunLog).toEqual([])
   })
 
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.

@@ -1,4 +1,4 @@
-import { normalizeLink, linkEnvVar, readLinkOptions, resolveServicePlugin, type EnvCache } from '../modules/links.js'
+import { normalizeLink, linkEnvVar, readLinkOptions, readEnv, resolveServicePlugin, type EnvCache } from '../modules/links.js'
 import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
@@ -11,7 +11,8 @@ import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceMismatches, type ServiceMismatch } from '../modules/service-drift.js'
-import { readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
+import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
+import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
 import { readDockerAuthDrift } from '../modules/docker-auth.js'
 import type { Resource } from '../core/reconcile.js'
 import chalk from 'chalk'
@@ -42,6 +43,8 @@ interface DiffResult {
   /** Declared shared networks; only a network missing on the server is listed. */
   networks: Record<string, FeatureDiff>
   inSync: boolean
+  /** Per app: env keys on the server the file does not account for. Names only; never drift. */
+  envNotes: Record<string, EnvNote[]>
   /** Bulk or per-app reads that could not be trusted; diff falls back but flags them. */
   readWarnings: string[]
 }
@@ -80,7 +83,7 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
-  const result: DiffResult = { apps: {}, services: {}, plugins: {}, global: {}, networks: {}, inSync: true, readWarnings: [] }
+  const result: DiffResult = { apps: {}, services: {}, plugins: {}, global: {}, networks: {}, inSync: true, envNotes: {}, readWarnings: [] }
   const appNames = Object.keys(config.apps)
 
   const serverVersion = await assertDokkuSupported(ctx)
@@ -124,8 +127,22 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       })
   )
 
+  // Top-level env, read once: its drift is reported below, its values label app keys.
+  let globalEnv: Awaited<ReturnType<typeof readGlobalEnvDrift>> | undefined
+  let globalEnvValues: Record<string, string> = {}
+  let globalEnvError: unknown
+  if (config.env !== false) {
+    try {
+      globalEnvValues = await readGlobalEnv(ctx)
+      globalEnv = await readGlobalEnvDrift(ctx, config.env, globalEnvValues)
+    } catch (err) {
+      globalEnvError = err
+    }
+  }
+
   for (const [app, appConfig] of Object.entries(config.apps)) {
     const appDiff: AppDiff = {}
+    const envCache: EnvCache = new Map()
 
     for (const resource of ALL_APP_RESOURCES) {
       if (resource.key.startsWith('_')) continue
@@ -271,7 +288,6 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
     // Declared links: missing, or linked under a different variable or querystring.
     if (appConfig.links && appExists.get(app)) {
-      const envCache: EnvCache = new Map()
       for (const entry of appConfig.links) {
         const link = normalizeLink(entry)
         const resolved = resolveServicePlugin(link.service, config)
@@ -288,6 +304,28 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         } else if (opts.state === 'unreadable') {
           result.readWarnings.push(`could not read the link options of '${link.service}' for app '${app}' (not counted as drift): ${opts.reason}`)
         }
+      }
+    }
+
+    // App env keys nothing in the file accounts for: a note, never drift.
+    if (appExists.get(app)) {
+      try {
+        const links = (appConfig.links ?? []).flatMap(entry => {
+          const link = normalizeLink(entry)
+          const resolved = resolveServicePlugin(link.service, config)
+          return resolved ? [{ plugin: resolved.plugin, service: link.service }] : []
+        })
+        const notes = undeclaredEnvKeys({
+          env: await readEnv(ctx, app, envCache),
+          declared: appConfig.env ? Object.keys(appConfig.env) : [],
+          links,
+          external: appConfig.env_external ?? [],
+          globalFile: config.env || {},
+          globalServer: globalEnvValues,
+        })
+        if (notes.length > 0) result.envNotes[app] = notes
+      } catch (err) {
+        result.readWarnings.push(`could not read the env of app '${app}' to note keys the file does not declare: ${err instanceof Error ? err.message : String(err)}`)
       }
     }
 
@@ -327,23 +365,22 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
   // Top-level env: by key name only; values are never shown (they are often secrets).
   // No env: block counts as {}: marked keys show as removed.
-  if (config.env !== false) {
-    try {
-      const { changed, removed, markerOutdated } = await readGlobalEnvDrift(ctx, config.env)
-      if (changed.length > 0 || removed.length > 0 || markerOutdated) {
-        result.global.env = {
-          status: changed.length === 0 && removed.length > 0 ? 'extra' : 'changed',
-          desired: Object.fromEntries(changed.map(k => [k, '****'])),
-          removed,
-          note: changed.length === 0 && removed.length === 0 ? `${GLOBAL_MANAGED_KEYS_VAR} not written yet` : undefined,
-        }
-        result.inSync = false
+  if (globalEnv) {
+    const { changed, removed, markerOutdated } = globalEnv
+    if (changed.length > 0 || removed.length > 0 || markerOutdated) {
+      result.global.env = {
+        status: changed.length === 0 && removed.length > 0 ? 'extra' : 'changed',
+        desired: Object.fromEntries(changed.map(k => [k, '****'])),
+        removed,
+        note: changed.length === 0 && removed.length === 0 ? `${GLOBAL_MANAGED_KEYS_VAR} not written yet` : undefined,
       }
-    } catch (err) {
-      result.global.env = { status: 'unknown', desired: Object.keys(config.env ?? {}) }
-      result.readWarnings.push(`could not read global 'env': ${err instanceof Error ? err.message : String(err)}`)
       result.inSync = false
     }
+  } else if (config.env !== false) {
+    const err = globalEnvError
+    result.global.env = { status: 'unknown', desired: Object.keys(config.env ?? {}) }
+    result.readWarnings.push(`could not read global 'env': ${err instanceof Error ? err.message : String(err)}`)
+    result.inSync = false
   }
 
   // Top-level docker_auth: servers whose login is missing or differs (never a password)
@@ -425,7 +462,7 @@ export function maskDiffResult(diff: DiffResult): DiffResult {
     global: Object.fromEntries(Object.entries(diff.global).map(([k, d]) => [k, {
       ...d, desired: maskSensitiveData(d.desired), current: maskSensitiveData(d.current),
     }])),
-    networks: diff.networks, inSync: diff.inSync, readWarnings: diff.readWarnings,
+    networks: diff.networks, inSync: diff.inSync, envNotes: diff.envNotes, readWarnings: diff.readWarnings,
   }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
@@ -473,6 +510,8 @@ export function formatSummary(diff: DiffResult): string {
         lines.push(`    ${sym} ${feature}: ${formatFeatureSummary(d)}`)
       }
     }
+    const notes = diff.envNotes[app]
+    if (notes) lines.push(`    note: env not in the file (up leaves these): ${notes.map(showNote).join(', ')}`)
   }
 
   if (diff.dokku) {
@@ -527,6 +566,10 @@ export function formatSummary(diff: DiffResult): string {
   return lines.join('\n')
 }
 
+function showNote(n: EnvNote): string {
+  return n.label ? `${n.key} (${n.label})` : n.key
+}
+
 function formatFeatureSummary(d: FeatureDiff): string {
   const gone = d.removed?.length ? `not in the file: ${d.removed.join(', ')}` : ''
   if (d.status === 'extra') return `${gone}${d.note ? ` (${d.note})` : ''}`
@@ -577,6 +620,11 @@ export function formatVerbose(diff: DiffResult): string {
       for (const line of desiredLines) lines.push(chalk.green(`+ ${line}`))
       for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r} (not in the file)`))
     }
+  }
+
+  for (const [app, notes] of Object.entries(diff.envNotes)) {
+    lines.push(`@@ app: ${app} / env not in the file (note; up leaves these) @@`)
+    for (const n of notes) lines.push(`  note: ${showNote(n)}`)
   }
 
   if (diff.dokku) {

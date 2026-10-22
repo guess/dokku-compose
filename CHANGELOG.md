@@ -4,6 +4,7 @@
 
 ### Added
 
+- **`diff` notes app env keys the file does not declare, and `env_external:` names the ones set elsewhere.** Each app's `config:export` is checked for keys outside its `env:`, skipping the managed marker, link-injected variables (a declared link's, or any `dokku-postgres-*`/`dokku-redis-*` URL), `GIT_REV`, `NO_VHOST` and `DOKKU_*` (except `DOKKU_START_CMD`). A key equal to the top-level `env:` value on the server is labelled `duplicate of global`. Notes print key names only, never values, and do not change the in-sync status or exit code; `up` never touches these keys. `apps.<app>.env_external: [NAME, ...]` (exact names, no globs) hides listed keys from the notes; `validate` rejects one also in `env:`, a duplicate entry and `DOKKU_COMPOSE_MANAGED_KEYS`.
 - **`up` lists the apps that need a restart.** Env, storage, deploy and run Docker options, links and network changes (`networks`, `network`) only reach a running container when it restarts, so `up` ends with `dokku ps:restart <app>  # <reasons>` for each app it changed (`would need` on `--dry-run`, also after a partial failure). Settings only a rebuild applies (build args and options, `networks`, `attach_post_create`, `initial_network`) print `dokku ps:rebuild <app>` instead. A global `env:` change lists the apps the run processes. Nothing is restarted and there is no `--restart` flag. Changes Dokku applies live (ports, domains, nginx, proxy, logs, checks) are not listed. See the README's `up` section for the evidence table.
 
 ### Fixed

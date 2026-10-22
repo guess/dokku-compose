@@ -34,4 +34,13 @@ describe('validate', () => {
     const result = validate(path.join(FIXTURES, 'invalid_ports.yml'))
     expect(result.errors.some(e => e.includes('Port must be') || e.includes('invalid port') || e.includes('scheme'))).toBe(true)
   })
+
+  it('rejects an env_external key also in env:, a duplicate entry and the managed marker, naming app and key', () => {
+    const result = validate(path.join(FIXTURES, 'invalid_env_external.yml'))
+    expect(result.errors).toEqual([
+      'apps.myapp.env_external: "APP_ENV" is also in env:',
+      'apps.myapp.env_external: "SET_BY_SCRIPT" is listed twice',
+      'apps.myapp.env_external: "DOKKU_COMPOSE_MANAGED_KEYS" is dokku-compose\'s own marker',
+    ])
+  })
 })

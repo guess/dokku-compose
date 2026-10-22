@@ -81,6 +81,7 @@ export function emptyAnswer(...args: string[]): string | undefined {
   if (/^domains:report \S+ --domains-app-enabled$/.test(key)) return 'true'
   if (key === 'logs:report --global --format json') return logsGlobalJson()
   if (key === 'config:export --global --format json') return '{}'
+  if (/^config:export --format json \S+$/.test(key)) return '{}'
   if (key === 'nginx:report --global --format json') return nginxGlobalJson()
   if (/^logs:report \S+ --format json$/.test(key)) return logsAppJson()
   if (/^checks:report \S+$/.test(key)) return '       Checks disabled list: none\n       Checks skipped list: none\n'

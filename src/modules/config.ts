@@ -23,8 +23,17 @@ interface GlobalEnvPlan {
   markerOutdated: boolean
 }
 
-async function planGlobalEnv(ctx: Context, env: Record<string, string | number | boolean>): Promise<GlobalEnvPlan> {
-  const current = parseConfigJson(await ctx.queryStrict('config:export', '--global', '--format', 'json'), '--global')
+/** `config:export --global`: one read, so `diff` can share it. */
+export async function readGlobalEnv(ctx: Context): Promise<Record<string, string>> {
+  return parseConfigJson(await ctx.queryStrict('config:export', '--global', '--format', 'json'), '--global')
+}
+
+async function planGlobalEnv(
+  ctx: Context,
+  env: Record<string, string | number | boolean>,
+  read?: Record<string, string>
+): Promise<GlobalEnvPlan> {
+  const current = read ?? await readGlobalEnv(ctx)
   const desired = Object.fromEntries(Object.entries(env).map(([k, v]) => [k, String(v)]))
   // A box with no marker has nothing dokku-compose may remove.
   const managed = (current[GLOBAL_MANAGED_KEYS_VAR] ?? '').split(',').filter(Boolean)
@@ -60,9 +69,10 @@ export async function ensureGlobalConfig(
 /** For `diff`: the names (never values) of global keys `up` would set or unset. */
 export async function readGlobalEnvDrift(
   ctx: Context,
-  env: Record<string, string | number | boolean> | undefined
+  env: Record<string, string | number | boolean> | undefined,
+  current?: Record<string, string>
 ): Promise<{ changed: string[]; removed: string[]; markerOutdated: boolean }> {
-  const { toSet, removed, markerOutdated } = await planGlobalEnv(ctx, env ?? {})
+  const { toSet, removed, markerOutdated } = await planGlobalEnv(ctx, env ?? {}, current)
   return { changed: Object.keys(toSet), removed, markerOutdated }
 }
 
