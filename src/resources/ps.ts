@@ -11,11 +11,11 @@ export const PS_KEYS = [
 ] as const
 
 /**
- * `ps:report` prints `restore` as `true` when it was never set, so that value is the
- * default, not a setting: it is read (a declared `restore: true` stays in sync) but
- * never counted as a removal.
+ * `restore` is Dokku-managed state: it prints `true` when unset and `ps:stop` writes
+ * `false`. It is read (a declared value is compared) but never a removal, so `--prune`
+ * does not reset it.
  */
-const PS_DEFAULTS: Partial<Record<(typeof PS_KEYS)[number], string>> = { restore: 'true' }
+const DOKKU_MANAGED = new Set<string>(['restore'])
 
 /**
  * Parse `dokku ps:scale --format json <app>`:
@@ -85,7 +85,7 @@ export const Ps: Resource<Record<string, string | number | boolean>> = {
   key: 'ps',
   additive: true,
   removals: (current, desired) =>
-    PS_KEYS.filter(k => current?.[k] !== undefined && String(current[k]) !== PS_DEFAULTS[k] && !(desired && k in desired)),
+    PS_KEYS.filter(k => current?.[k] !== undefined && !DOKKU_MANAGED.has(k) && !(desired && k in desired)),
   prune: async (ctx, target, removed) => {
     for (const key of removed) await ctx.run('ps:set', target, key)
   },

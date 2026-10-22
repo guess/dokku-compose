@@ -144,9 +144,9 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 
 | Resource | Reset command |
 |----------|---------------|
-| `nginx`, `logs`, `registry`, `ps`, `git` | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
+| `nginx`, `logs`, `registry`, `ps`, `git` (not Dokku-written keys: `ps` `restore`, git `deploy-branch` and `source-image`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
 | `scheduler` | `scheduler:set <app> selected` or `shell` |
-| `proxy` properties | `proxy:set <app> <key>` with no value (`type`, `proxy-port`, `proxy-ssl-port`) |
+| `proxy` properties | `proxy:set <app> type` with no value (`proxy-port` and `proxy-ssl-port` are written by Dokku) |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
 | `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
 | `build.selected`, `build.skip_cleanup` | `builder:set <app> selected` / `skip-cleanup` with no value |

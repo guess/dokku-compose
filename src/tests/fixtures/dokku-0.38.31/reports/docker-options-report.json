@@ -1,0 +1,11 @@
+{
+  "build": "<set>",
+  "build-list": "<set>",
+  "deploy": "<set>",
+  "deploy-list": "<set>",
+  "docker-options-build": "<set>",
+  "docker-options-deploy": "<set>",
+  "docker-options-run": "<set>",
+  "run": "<set>",
+  "run-list": "<set>"
+}

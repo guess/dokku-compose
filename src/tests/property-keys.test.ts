@@ -16,10 +16,34 @@ import { GIT_KEYS, Git } from '../resources/git.js'
 import { CHECKS_KEYS } from '../resources/checks.js'
 import { gitReport } from './fake-server.js'
 
-const fixture = JSON.parse(readFileSync(new URL('./fixtures/dokku-0.38.31/settable-keys.json', import.meta.url), 'utf8'))
+// Real `<ns>:report <app> --format json` key sets from a Dokku 0.38.31 app (values neutral).
+const reportKeys = (ns: string): string[] =>
+  Object.keys(JSON.parse(readFileSync(new URL(`./fixtures/dokku-0.38.31/reports/${ns}-report.json`, import.meta.url), 'utf8')))
+
+// Report lines that are not `<ns>:set` properties: read-only state, or set by another command.
+const REPORT_ONLY: Record<string, RegExp> = {
+  git: /^(last-updated-at|sha)$/,
+  nginx: /^last-visited-at$/,
+  proxy: /^enabled$/,
+  ps: /^(can-scale|deployed|processes|running|status-.*)$/,
+  network: /^web-listeners$/,
+  builder: /^detected$/,
+  checks: /^(disabled|skipped)-list$/,
+  registry: /^(auth-servers|tag-version)$/,
+}
+
+/** App-scope settable keys: the report's bare keys, not computed-/global-/<ns>- ones, nor report-only ones. */
+function settable(ns: string): string[] {
+  const all = reportKeys(ns)
+  // Dokku also prints each key again with the `<ns>-` prefix (the legacy form); the bare one is the key.
+  const isLegacy = (k: string) => k.startsWith(`${ns}-`) && all.includes(k.slice(ns.length + 1))
+  return all.filter(k => !/^(computed|global)-/.test(k) && !isLegacy(k) && !REPORT_ONLY[ns]?.test(k))
+}
+/** Global-scope keys: the report's `global-` keys. */
+const globalKeys = (ns: string) => reportKeys(ns).filter(k => k.startsWith('global-')).map(k => k.slice(7))
 const sorted = (keys: readonly string[]) => [...keys].sort()
 
-describe('property lists equal the keys Dokku 0.38.31 accepts', () => {
+describe('property lists equal the keys a real Dokku 0.38.31 reports as settable', () => {
   it.each([
     ['nginx', NGINX_KEYS],
     ['logs', LOGS_KEYS],
@@ -32,19 +56,17 @@ describe('property lists equal the keys Dokku 0.38.31 accepts', () => {
     ['registry', REGISTRY_KEYS],
     ['checks', CHECKS_KEYS],
   ] as const)('%s (app scope)', (ns, list) => {
-    expect(sorted(list)).toEqual(sorted(fixture[ns].app))
+    expect(sorted(list)).toEqual(sorted(settable(ns)))
   })
 
   it('the global logs list adds the two global-only keys', () => {
-    expect(sorted(LOGS_GLOBAL_KEYS)).toEqual(sorted(fixture.logs.global))
+    expect(sorted(LOGS_GLOBAL_KEYS)).toEqual(sorted(globalKeys('logs')))
   })
 
   it('a report-only key is in no list', () => {
     expect(REGISTRY_KEYS).not.toContain('auth-servers')
     expect(BUILDER_KEYS).not.toContain('detected')
-    for (const ns of Object.keys(fixture).filter(k => fixture[k].reportOnly)) {
-      expect(fixture[ns].app).not.toEqual(expect.arrayContaining(fixture[ns].reportOnly))
-    }
+    expect(GIT_KEYS).not.toContain('sha')
   })
 })
 
@@ -67,7 +89,7 @@ describe('validate: the schema takes exactly what Dokku takes', () => {
       proxy: { type: 'caddy', proxy_port: 80, proxy_ssl_port: '443' },
       scheduler: { selected: 'docker-local', shell: '/bin/sh' },
       build: { selected: 'dockerfile', skip_cleanup: true },
-      git: { keep_git_dir: true, rev_env_var: 'REV', source_image: 'img', archive_max_files: 5, archive_max_size: '10' },
+      git: { keep_git_dir: true, rev_env_var: 'REV', source_image: 'img' },
       checks: { 'wait-to-retire': 30 },
     }
     expect(() => parseConfig(withApp({ myapp: app }, { logs: { 'vector-image': 'v', 'vector-networks': 'n' } }))).not.toThrow()
@@ -86,6 +108,11 @@ describe('validate: the schema takes exactly what Dokku takes', () => {
     expect(() => parseConfig(withApp({ myapp: { logs: { 'vector-image': 'v' } } }))).toThrow(/vector-image/)
   })
 
+  it('rejects a per-app git archive limit, which Dokku reads only globally', () => {
+    expect(() => parseConfig(withApp({ myapp: { git: { archive_max_files: 5 } } }))).toThrow(/global git setting/)
+    expect(() => parseConfig(withApp({ myapp: { git: { archive_max_size: '10' } } }))).toThrow(/global git setting/)
+  })
+
   it('still takes the string form of scheduler', () => {
     expect(parseConfig(withApp({ myapp: { scheduler: 'k3s' } })).apps.myapp.scheduler).toBe('k3s')
   })
@@ -98,13 +125,10 @@ describe('new keys are read, set and pruned', () => {
     expect(ctx.commands).toEqual([['registry:set', 'myapp', 'server']])
   })
 
-  it('ps: restore reported as its default true is not a removal; a changed one is', async () => {
-    const dflt = ctxWith({ 'ps:report myapp --format json': JSON.stringify({ restore: 'true', 'start-cmd': '' }) })
-    await reconcile(Ps, dflt, 'myapp', undefined, undefined, true)
-    expect(dflt.commands).toEqual([])
+  it('ps: restore is Dokku-managed (ps:stop writes false), so --prune never resets it', async () => {
     const off = ctxWith({ 'ps:report myapp --format json': JSON.stringify({ restore: 'false', 'start-cmd': 'node x', 'skip-deploy': 'true' }) })
     await reconcile(Ps, off, 'myapp', { 'skip-deploy': true }, undefined, true)
-    expect(off.commands).toEqual([['ps:set', 'myapp', 'restore'], ['ps:set', 'myapp', 'start-cmd']])
+    expect(off.commands).toEqual([['ps:set', 'myapp', 'start-cmd']])
   })
 
   it('ps: a declared restore: true is in sync when the server prints the default', async () => {
@@ -126,10 +150,13 @@ describe('new keys are read, set and pruned', () => {
     const report = '       Proxy enabled: true\n       Proxy type: caddy\n       Proxy proxy port: 8080\n       Proxy proxy ssl port: 8443\n'
     const ctx = ctxWith({ 'proxy:report myapp': report })
     await reconcile(ProxyProps, ctx, 'myapp', { type: 'caddy', proxy_port: 80 }, undefined, true)
-    expect(ctx.commands).toEqual([
-      ['proxy:set', 'myapp', 'proxy-port', '80'],
-      ['proxy:set', 'myapp', 'proxy-ssl-port'],
-    ])
+    expect(ctx.commands).toEqual([['proxy:set', 'myapp', 'proxy-port', '80']])
+  })
+
+  it('proxy: ports Dokku writes on each nginx build are never removals; a removed type is', async () => {
+    const ctx = ctxWith({ 'proxy:report myapp': '       Proxy enabled: true\n       Proxy type: caddy\n       Proxy proxy port: 33059\n       Proxy proxy ssl port: 8443\n' })
+    await reconcile(ProxyProps, ctx, 'myapp', undefined, undefined, true)
+    expect(ctx.commands).toEqual([['proxy:set', 'myapp', 'type']])
   })
 
   it('scheduler: shell is set and pruned beside selected', async () => {
@@ -157,21 +184,17 @@ describe('new keys are read, set and pruned', () => {
     ])
   })
 
-  it('git: the five new keys are set; an unset rev-env-var (printed as GIT_REV) and the computed limits are not removals', async () => {
-    const set = ctxWith({ 'git:report myapp': gitReport('myapp') })
-    await reconcile(Git, set, 'myapp', {
-      keep_git_dir: true, rev_env_var: 'REV', source_image: 'img', archive_max_files: 5, archive_max_size: '10',
-    })
+  it('git: the new keys are set; Dokku-written deploy-branch, source-image and the default rev-env-var are never removals', async () => {
+    const set = ctxWith({ 'git:report myapp': gitReport('myapp', { 'Git source image': '' }) })
+    await reconcile(Git, set, 'myapp', { keep_git_dir: true, source_image: 'img', rev_env_var: 'REV' })
     expect(set.commands).toEqual([
-      ['git:set', 'myapp', 'keep-git-dir', 'true'], ['git:set', 'myapp', 'source-image', 'img'],
-      ['git:set', 'myapp', 'rev-env-var', 'REV'], ['git:set', 'myapp', 'archive-max-files', '5'],
-      ['git:set', 'myapp', 'archive-max-size', '10'],
+      ['git:set', 'myapp', 'keep-git-dir', 'true'], ['git:set', 'myapp', 'source-image', 'img'], ['git:set', 'myapp', 'rev-env-var', 'REV'],
     ])
-    const quiet = ctxWith({ 'git:report myapp': gitReport('myapp') })
-    await reconcile(Git, quiet, 'myapp', undefined, undefined, true)
-    expect(quiet.commands).toEqual([])
-    const stale = ctxWith({ 'git:report myapp': gitReport('myapp', { 'Git keep git dir': 'true', 'Git source image': 'img' }) })
-    await reconcile(Git, stale, 'myapp', { archive_max_files: 10000 }, undefined, true)
-    expect(stale.commands).toEqual([['git:set', 'myapp', 'keep-git-dir'], ['git:set', 'myapp', 'source-image']])
+    const written = ctxWith({ 'git:report myapp': gitReport('myapp', { 'Git deploy branch': 'main', 'Git source image': 'myapp:latest' }) })
+    await reconcile(Git, written, 'myapp', undefined, undefined, true)
+    expect(written.commands).toEqual([])
+    const stale = ctxWith({ 'git:report myapp': gitReport('myapp', { 'Git keep git dir': 'true' }) })
+    await reconcile(Git, stale, 'myapp', { deploy_branch: 'main' }, undefined, true)
+    expect(stale.commands).toEqual([['git:set', 'myapp', 'deploy-branch', 'main'], ['git:set', 'myapp', 'keep-git-dir']])
   })
 })

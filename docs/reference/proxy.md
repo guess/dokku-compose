@@ -67,4 +67,4 @@ apps:
 
 ## Removal
 
-`proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal. A `type`, `proxy_port` or `proxy_ssl_port` set on the server but absent from the file is a removal; `up --prune` resets it with `proxy:set <app> <key>` and no value.
+`proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal. A `type` set on the server but absent from the file is a removal; `up --prune` resets it with `proxy:set <app> type`. `proxy-port` and `proxy-ssl-port` are written by Dokku on each nginx build, so they are compared only when declared and are never a removal.

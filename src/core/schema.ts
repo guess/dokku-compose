@@ -38,8 +38,10 @@ const GitSchema = z.object({
   keep_git_dir: z.union([z.string(), z.boolean()]).optional(),
   rev_env_var: z.string().optional(),
   source_image: z.string().optional(),
-  archive_max_files: StringOrNumber.optional(),
-  archive_max_size: StringOrNumber.optional(),
+  // Dokku reads `archive-max-files` and `archive-max-size` only from the global setting
+  // (`git:set --global`), which dokku-compose does not manage yet; a per-app value never applies.
+  archive_max_files: z.any().refine(v => v === undefined, { message: 'archive_max_files is read only from the global git setting, which dokku-compose does not manage; run `dokku git:set --global archive-max-files <n>`' }),
+  archive_max_size: z.any().refine(v => v === undefined, { message: 'archive_max_size is read only from the global git setting, which dokku-compose does not manage; run `dokku git:set --global archive-max-size <n>`' }),
 }).strict()
 
 const LinkSchema = z.union([

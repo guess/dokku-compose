@@ -36,7 +36,7 @@ export const Checks: Resource<ChecksConfig> = {
   prune: async (ctx, target, removed, current, desired) => {
     const cur = current as Record<string, string>
     const split = (v?: string) => (v ?? '').split(',').map(t => t.trim()).filter(Boolean)
-    const declared = new Set(desired && desired !== false ? [...(desired.disabled ?? []), ...(desired.skipped ?? [])] : [])
+    const declared = new Set(desired ? [...(desired.disabled ?? []), ...(desired.skipped ?? [])] : [])
     const stale = new Set(removed.filter(k => k === 'disabled' || k === 'skipped').flatMap(k => split(cur[k])))
     // `checks:enable` clears a type's disabled AND skipped state, so a type the file
     // declares in either list cannot be pruned without changing declared state.

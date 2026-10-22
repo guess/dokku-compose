@@ -6,7 +6,7 @@ import * as fs from 'fs'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, gitReport, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, gitReport, proxyReport, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -16,12 +16,12 @@ const SINK = 'console://?encoding[codec]=json'
 function nothingSet(name: string): Record<string, string> {
   return {
     [`network:report ${name}`]: report(name, 'network', {}),
-    [`proxy:report ${name}`]: report(name, 'proxy', { 'Proxy enabled': 'true' }),
+    [`proxy:report ${name}`]: proxyReport(name),
     [`nginx:report ${name}`]: report(name, 'nginx', {}),
     [`logs:report ${name} --format json`]: logsAppJson({ 'global-max-size': '50m', 'logs-global-max-size': '50m', 'computed-max-size': '50m' }),
     [`registry:report ${name}`]: report(name, 'registry', {}),
     [`scheduler:report ${name}`]: report(name, 'scheduler', {}),
-    [`ps:report ${name} --format json`]: JSON.stringify({ 'restart-policy': '' }),
+    [`ps:report ${name} --format json`]: JSON.stringify({ 'restart-policy': '', restore: 'false' }),
     [`builder:report ${name}`]: report(name, 'builder', {}),
     [`builder-dockerfile:report ${name}`]: report(name, 'builder-dockerfile', {}),
     [`app-json:report ${name}`]: report(name, 'app-json', {}),
@@ -90,7 +90,7 @@ function inSyncServer(): FakeServer {
         'Network tld': 'internal',
       }),
       [`proxy:report ${app} --proxy-enabled`]: 'true',
-      [`proxy:report ${app}`]: report(app, 'proxy', { 'Proxy enabled': 'true' }),
+      [`proxy:report ${app}`]: proxyReport(app),
       [`ports:report ${app} --ports-map`]: 'http:80:5000 https:443:5000',
       [`certs:report ${app} --ssl-enabled`]: 'true',
       [`certs:show ${app} crt`]: CRT,
@@ -114,7 +114,7 @@ function inSyncServer(): FakeServer {
       [`registry:report ${app}`]: report(app, 'registry', { 'Registry server': 'registry.example.com' }),
       [`scheduler:report ${app}`]: report(app, 'scheduler', { 'Scheduler selected': 'docker-local' }),
       [`ps:report ${app} --format json`]: JSON.stringify({
-        'restart-policy': 'on-failure:10', 'stop-timeout-seconds': '60', 'procfile-path': '', deployed: 'true',
+        'restart-policy': 'on-failure:10', 'stop-timeout-seconds': '60', 'procfile-path': '', deployed: 'true', restore: 'false',
       }),
       [`ps:scale --format json ${app}`]: JSON.stringify([
         { process_type: 'web', quantity: 2 }, { process_type: 'worker', quantity: 1 },

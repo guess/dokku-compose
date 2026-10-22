@@ -47,7 +47,7 @@ apps:
 | A property on the server is not listed | none (not shown or reset yet) |
 | `ps` absent | none |
 
-Only the seven properties `ps:set` accepts in Dokku 0.38.31 are accepted: `dockerfile-start-cmd`, `procfile-path`, `restart-policy`, `restore`, `skip-deploy`, `start-cmd` and `stop-timeout-seconds`; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. `restore` prints `true` when unset, so that value counts as the default, not a setting: `restore: true` stays in sync and an unset one is never a removal.
+Only the seven properties `ps:set` accepts in Dokku 0.38.31 are accepted: `dockerfile-start-cmd`, `procfile-path`, `restart-policy`, `restore`, `skip-deploy`, `start-cmd` and `stop-timeout-seconds`; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. `restore` is Dokku-managed state (it prints `true` when unset, and `ps:stop` writes `false`): a declared value is compared, but an undeclared one is never a removal, so `--prune` does not reset it.
 
 ## Removal
 

@@ -116,7 +116,7 @@ git:initialize	X	Done by deploys
 git:load-image	X	Deploy trigger
 git:public-key	X	Read-only
 git:report	R	`git` read
-git:set	P	`git.*` (all 6 keys); no global (F10)
+git:set	P	`git.*`: `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image`; per-app `archive-max-*` not declarable (Dokku reads them globally only), no global (F10)
 git:status	X	Read-only (hidden)
 git:sync	X	Deploy trigger
 git:unlock	X	Recovery action (hidden)

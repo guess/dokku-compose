@@ -33,8 +33,15 @@ export function gitReport(app: string, rows: Record<string, string> = {}): strin
     'Git computed deploy branch': rows['Git deploy branch'] || 'master',
     'Git computed keep git dir': 'false',
     'Git rev env var': 'GIT_REV',
+    // Written by Dokku on every `git:from-image`, never by the compose file.
+    'Git source image': 'myapp:latest',
     ...rows,
   })
+}
+
+/** `proxy:report <app>` as Dokku prints it after an nginx build, which writes the proxy port. */
+export function proxyReport(app: string): string {
+  return report(app, 'proxy', { 'Proxy enabled': 'true', 'Proxy proxy port': '33059' })
 }
 
 /**

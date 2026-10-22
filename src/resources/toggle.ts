@@ -43,8 +43,10 @@ function proxyPropsFromReport(report: Record<string, string>): ProxyPropsConfig 
 export const ProxyProps: Resource<ProxyPropsConfig> = {
   key: 'proxy_props',
   additive: true,
+  // Dokku writes `proxy-port` and `proxy-ssl-port` itself on every nginx build, so they are
+  // compared only when declared and are never removals; only `type` is the user's to remove.
   removals: (current, desired) =>
-    PROXY_PROP_KEYS.filter(k => current?.[k] !== undefined && !(desired && k in desired)),
+    (['type'] as const).filter(k => current?.[k] !== undefined && !(desired && k in desired)),
   prune: async (ctx, target, removed) => {
     for (const key of removed) await ctx.run('proxy:set', target, key.replaceAll('_', '-'))
   },
