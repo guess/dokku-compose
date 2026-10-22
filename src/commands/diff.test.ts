@@ -275,7 +275,7 @@ describe('formatVerbose', () => {
 
   it('reports plugin version drift and leaves in-sync plugins out', async () => {
     const ctx = makeCtx({
-      'plugin:list': '  postgres 1.0.0 enabled x\n  redis 1.2.0 enabled y\n',
+      'plugin:list --format json': JSON.stringify([{ name: 'postgres', version: '1.0.0' }, { name: 'redis', version: '1.2.0' }]),
     })
     const cfg: Config = {
       apps: {},
@@ -293,11 +293,18 @@ describe('formatVerbose', () => {
   })
 
   it('shows scale drift but not a process type removed from the file', async () => {
-    const table = '-----> web   1\n-----> worker   0\n'
-    const ctx = makeCtx({ 'ps:scale api': table })
+    const table = JSON.stringify([{ process_type: 'web', quantity: 1 }, { process_type: 'worker', quantity: 0 }])
+    const ctx = makeCtx({ 'ps:scale --format json api': table })
     const drift = await computeDiff(ctx, { apps: { api: { scale: { web: 1, worker: 1 } } } })
     expect(drift.apps.api.scale?.status).toBe('changed')
-    const same = await computeDiff(makeCtx({ 'ps:scale api': table }), { apps: { api: { scale: { web: 1 } } } })
+    const same = await computeDiff(makeCtx({ 'ps:scale --format json api': table }), { apps: { api: { scale: { web: 1 } } } })
     expect(same.apps.api.scale?.status).toBe('in-sync')
+  })
+
+  it('shows an uncomparable plugin pin as unknown without failing the check', async () => {
+    const ctx = makeCtx({ 'plugin:list --format json': JSON.stringify([{ name: 'p', version: '1.0.0' }]) })
+    const diff = await computeDiff(ctx, { apps: {}, plugins: { p: { url: 'https://example.com/p.git', version: '1.0' } } })
+    expect(diff.plugins.p.status).toBe('unknown')
+    expect(diff.inSync).toBe(true)
   })
 })

@@ -3,6 +3,7 @@ import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { reconcile } from '../core/reconcile.js'
 import { Scale, Ps, parseScale } from './ps.js'
+import { computeAdditiveChange } from '../core/change.js'
 
 function makeCtx(results: Record<string, string>) {
   const runner = createRunner({ dryRun: false })
@@ -11,22 +12,19 @@ function makeCtx(results: Record<string, string>) {
   return createContext(runner)
 }
 
-const TABLE = `-----> Scaling for chatwoot
------> proctype           qty
------> --------           ---
------> web                1
------> worker             0
-`
+const TABLE = JSON.stringify([
+  { process_type: 'release', quantity: 0 },
+  { process_type: 'web', quantity: 1 },
+  { process_type: 'worker', quantity: 0 },
+])
 
-describe('parseScale (assumed ps:scale format)', () => {
-  it('parses the table form', () => {
-    expect(parseScale(TABLE)).toEqual({ web: '1', worker: '0' })
+describe('parseScale', () => {
+  it('parses ps:scale --format json', () => {
+    expect(parseScale(TABLE)).toEqual({ release: '0', web: '1', worker: '0' })
   })
-  it('parses proc: count lines', () => {
-    expect(parseScale('web: 2\nworker: 3\n')).toEqual({ web: '2', worker: '3' })
-  })
-  it('returns empty for empty output', () => {
+  it('returns empty for empty or invalid output', () => {
     expect(parseScale('')).toEqual({})
+    expect(parseScale('not json')).toEqual({})
   })
 })
 
@@ -50,24 +48,42 @@ describe('Scale resource', () => {
   })
 
   it('applies the scale to a never-deployed app with no scale output', async () => {
-    const ctx = makeCtx({ 'ps:scale': '' })
+    const ctx = makeCtx({ 'ps:scale': '[]' })
     await reconcile(Scale, ctx, 'new', { web: 1, worker: 1 } as any)
     expect(ctx.commands).toEqual([['ps:scale', '--skip-deploy', 'new', 'web=1', 'worker=1']])
   })
 })
 
 describe('Ps resource', () => {
-  const report = '=====> myapp ps information\n       Deployed:                     true\n       Ps stop timeout seconds:      30\n       Computed stop timeout seconds: 30\n'
+  const report = JSON.stringify({
+    deployed: 'true', 'restart-policy': 'on-failure:10', 'stop-timeout-seconds': '30',
+    'procfile-path': '', 'computed-stop-timeout-seconds': '30', 'status-web-1': 'running',
+  })
+
+  it('reads only settable, non-empty keys', async () => {
+    const ctx = makeCtx({ 'ps:report': report })
+    expect(await Ps.read(ctx, 'myapp')).toEqual({ 'restart-policy': 'on-failure:10', 'stop-timeout-seconds': '30' })
+  })
 
   it('sets a drifted property with ps:set', async () => {
     const ctx = makeCtx({ 'ps:report': report })
-    await reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 60 } as any)
+    await reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 60 })
     expect(ctx.commands).toEqual([['ps:set', 'myapp', 'stop-timeout-seconds', '60']])
   })
 
-  it('is a no-op when the property matches', async () => {
+  it('is a no-op when the properties match', async () => {
     const ctx = makeCtx({ 'ps:report': report })
-    await reconcile(Ps, ctx, 'myapp', { 'stop-timeout-seconds': 30 } as any)
+    await reconcile(Ps, ctx, 'myapp', { 'restart-policy': 'on-failure:10', 'stop-timeout-seconds': 30 })
     expect(ctx.commands).toEqual([])
+  })
+})
+
+describe('additive change with unreadable current state', () => {
+  it('an undefined current state is drift, not in sync', () => {
+    expect(computeAdditiveChange(undefined, { web: 1 }).changed).toBe(true)
+    expect(computeAdditiveChange(null, { web: 1 }).changed).toBe(true)
+  })
+  it('keys only on the server are not drift', () => {
+    expect(computeAdditiveChange({ web: '1', release: '0' }, { web: 1 }).changed).toBe(false)
   })
 })

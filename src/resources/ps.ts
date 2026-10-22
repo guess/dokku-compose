@@ -1,22 +1,47 @@
 import type { Resource } from '../core/reconcile.js'
 import type { MapChange } from '../core/change.js'
 import type { Context } from '../core/context.js'
-import { parseReport, parseBulkReport } from './parsers.js'
 
 // All Dokku command strings and output parsers for process scale and ps
-// properties live in this file. The `ps:scale <app>` output format is assumed
-// (see parseScale) and has not been checked against a live box.
+// properties live in this file.
+
+/** ps properties dokku-compose can set (`ps:set`); the schema rejects any other key. */
+export const PS_KEYS = ['procfile-path', 'restart-policy', 'stop-timeout-seconds'] as const
 
 /**
- * Parse `dokku ps:scale <app>` output into { proc: count }.
- * Accepts rows like `web: 1`, `web   1` and `-----> web   1` (the table form).
- * Header and separator rows have no numeric count and are skipped.
+ * Parse `dokku ps:scale --format json <app>`:
+ * [{"process_type":"web","quantity":1}, ...] into { proc: count }.
  */
 export function parseScale(raw: string): Record<string, string> {
   const result: Record<string, string> = {}
-  for (const line of raw.split('\n')) {
-    const m = line.replace(/^\s*(-+>\s*)?/, '').match(/^([A-Za-z0-9_-]+)\s*:?\s+(\d+)\s*$/)
-    if (m) result[m[1]] = m[2]
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return result
+  }
+  if (!Array.isArray(parsed)) return result
+  for (const e of parsed) {
+    if (e && typeof e.process_type === 'string' && e.quantity !== undefined) {
+      result[e.process_type] = String(e.quantity)
+    }
+  }
+  return result
+}
+
+/** Parse `dokku ps:report <app> --format json`, keeping only settable, non-empty keys. */
+export function parsePsReport(raw: string): Record<string, string> {
+  const result: Record<string, string> = {}
+  let parsed: any
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return result
+  }
+  if (!parsed || typeof parsed !== 'object') return result
+  for (const key of PS_KEYS) {
+    const v = parsed[key]
+    if (v !== undefined && v !== null && String(v) !== '') result[key] = String(v)
   }
   return result
 }
@@ -31,7 +56,7 @@ export const Scale: Resource<Record<string, string | number>> = {
   additive: true,
 
   async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
-    return parseScale(await ctx.query('ps:scale', target))
+    return parseScale(await ctx.query('ps:scale', '--format', 'json', target))
   },
 
   async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {
@@ -42,17 +67,16 @@ export const Scale: Resource<Record<string, string | number>> = {
   },
 }
 
-/** ps properties (e.g. stop-timeout-seconds), read from `ps:report`. */
-export const Ps: Resource<Record<string, string>> = {
+/**
+ * ps properties, read per app from `ps:report --format json`. Not additive: a
+ * listed-elsewhere key set on the server shows as drift, though removal is not
+ * applied yet.
+ */
+export const Ps: Resource<Record<string, string | number>> = {
   key: 'ps',
-  additive: true,
 
-  async read(ctx: Context, target: string): Promise<Record<string, string>> {
-    return parseReport(await ctx.query('ps:report', target), 'ps')
-  },
-
-  async readAll(ctx: Context): Promise<Map<string, Record<string, string>>> {
-    return parseBulkReport(await ctx.query('ps:report'), 'ps')
+  async read(ctx: Context, target: string): Promise<Record<string, string | number>> {
+    return parsePsReport(await ctx.query('ps:report', target, '--format', 'json'))
   },
 
   async onChange(ctx: Context, target: string, change: MapChange): Promise<void> {

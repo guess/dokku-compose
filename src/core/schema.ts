@@ -46,7 +46,11 @@ const AppSchema = z.object({
   registry: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   scheduler: z.string().optional(),
   scale: z.record(z.string(), z.number().int().min(0)).optional(),
-  ps: z.record(z.string(), z.union([z.string(), z.number()])).optional(),
+  ps: z.object({
+    'procfile-path': z.union([z.string(), z.number()]).optional(),
+    'restart-policy': z.union([z.string(), z.number()]).optional(),
+    'stop-timeout-seconds': z.union([z.string(), z.number()]).optional(),
+  }).strict().optional(),
   checks: ChecksSchema.optional(),
   build: z.object({
     dockerfile: z.string().optional(),

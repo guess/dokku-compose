@@ -27,13 +27,13 @@ describe('runExport', () => {
     await runExport(runner, {})
     // Should call bulk reports without app arg
     const bulkCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length === 1 && c[0] !== 'apps:report'
+      c => c[0].endsWith(':report') && c.length === 1 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
     )
     // Should have bulk calls for: nginx, logs, registry, scheduler, proxy, ports, domains, storage, certs, network, git
     expect(bulkCalls.length).toBeGreaterThanOrEqual(10)
-    // Should NOT have per-app report calls (except config which has no readAll)
+    // Should NOT have per-app report calls (except config and ps, which have no readAll; ps reads per-app JSON)
     const perAppReportCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length >= 2 && c[0] !== 'apps:report'
+      c => c[0].endsWith(':report') && c.length >= 2 && c[0] !== 'apps:report' && c[0] !== 'ps:report'
     )
     expect(perAppReportCalls).toEqual([])
   })

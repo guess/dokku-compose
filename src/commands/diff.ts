@@ -1,6 +1,6 @@
 import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
-import { computeChange, hasAdditions } from '../core/change.js'
+import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
@@ -153,8 +153,9 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         continue
       }
 
-      const change = computeChange(current as any, desired as any)
-      if (resource.additive) change.changed = hasAdditions(change)
+      const change = resource.additive
+        ? computeAdditiveChange(current, desired)
+        : computeChange(current as any, desired as any)
 
       if (!change.changed) {
         appDiff[resource.key] = { status: 'in-sync', desired, current }
@@ -180,7 +181,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
   // Compare plugin pins
   if (config.plugins) {
-    const plans = planPlugins(await ctx.query('plugin:list'), config.plugins)
+    const plans = planPlugins(await ctx.query('plugin:list', '--format', 'json'), config.plugins)
     for (const plan of plans) {
       if (plan.action === 'ok') continue
       const status: DiffStatus = plan.action === 'install' ? 'missing'
@@ -189,7 +190,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         : plan.action === 'unknown' ? 'versions cannot be compared; up leaves it'
         : undefined
       result.plugins[plan.name] = { status, desired: plan.desired, current: plan.installed, note }
-      result.inSync = false
+      // An uncomparable pin is shown but is not drift: up leaves it, so it must not fail a check.
+      if (plan.action !== 'unknown') result.inSync = false
     }
   }
 
@@ -261,7 +263,7 @@ export function formatSummary(diff: DiffResult): string {
     .flatMap(a => Object.values(a))
     .filter(d => d.status !== 'in-sync').length +
     Object.values(diff.services).filter(d => d.status !== 'in-sync').length +
-    Object.keys(diff.plugins).length
+    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length
 
   if (diff.readWarnings.length > 0) {
     lines.push('')

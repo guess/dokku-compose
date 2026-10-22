@@ -19,10 +19,9 @@ describe('ensurePlugins', () => {
 
   it('skips plugin already installed', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(
-      '  postgres             1.46.2 enabled    dokku postgres service plugin\n' +
-      '  redis                1.42.2 enabled    dokku redis service plugin'
-    )
+    runner.query = vi.fn().mockResolvedValue(JSON.stringify([
+      { name: 'postgres', version: '1.46.2' }, { name: 'redis', version: '1.42.2' },
+    ]))
     runner.run = vi.fn()
     const ctx = createContext(runner)
     await ensurePlugins(ctx, {
@@ -34,7 +33,7 @@ describe('ensurePlugins', () => {
 
 describe('ensurePlugins version pins', () => {
   const url = 'https://github.com/dokku/dokku-postgres.git'
-  const list = (v: string) => `  postgres             ${v} enabled    dokku postgres service plugin\n`
+  const list = (v: string, committish = '') => JSON.stringify([{ name: 'postgres', version: v, enabled: true, core: false, committish }])
 
   function setup(listOut: string) {
     const runner = createRunner({ dryRun: false })
@@ -88,13 +87,37 @@ describe('ensurePlugins version pins', () => {
 describe('planPlugins', () => {
   const url = 'https://example.com/p.git'
   it('classifies each case', () => {
-    const out = 'a 1.0.0 enabled x\nb 2.0.0 disabled y\nc deadbeef enabled z\nd 1.0.0 enabled w\n'
+    const out = JSON.stringify([
+      { name: 'a', version: '1.0.0' }, { name: 'b', version: '2.0.0' },
+      { name: 'c', version: '1.0.0', committish: 'aaaaaaaa' }, { name: 'd', version: '1.0.0' },
+    ])
     const plans = planPlugins(out, {
-      a: { url, version: '1.2.0' }, b: { url, version: '1.0.0' }, c: { url, version: '1.0.0' },
+      a: { url, version: '1.2.0' }, b: { url, version: '1.0.0' }, c: { url, version: 'bbbbbbb' },
       d: { url }, e: { url, version: '1.0.0' },
     })
     expect(plans.map(p => [p.name, p.action])).toEqual([
       ['a', 'update'], ['b', 'newer'], ['c', 'unknown'], ['d', 'ok'], ['e', 'install'],
     ])
+  })
+
+  it('treats a core plugin and a version-less entry as installed', () => {
+    const out = JSON.stringify([
+      { name: 'core1', version: '0.38.31', core: true, source_url: '', committish: '' },
+      { name: 'nover', version: '', committish: '' },
+    ])
+    const plans = planPlugins(out, { core1: { url }, nover: { url } })
+    expect(plans.map(p => p.action)).toEqual(['ok', 'ok'])
+  })
+
+  it('compares a sha pin with the installed commit prefix', () => {
+    const sha = '9b549f8' + '0'.repeat(33)
+    const out = JSON.stringify([{ name: 'a', version: '2.4.0', committish: sha }])
+    expect(planPlugins(out, { a: { url, version: '9b549f8' } })[0].action).toBe('ok')
+    expect(planPlugins(out, { a: { url, version: '1234567' } })[0].action).toBe('unknown')
+  })
+
+  it('never equates 1.2 with 1.2.0', () => {
+    const out = JSON.stringify([{ name: 'a', version: '1.2.0' }])
+    expect(planPlugins(out, { a: { url, version: '1.2' } })[0].action).toBe('unknown')
   })
 })

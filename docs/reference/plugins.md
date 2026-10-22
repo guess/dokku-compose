@@ -8,7 +8,7 @@ Module: `src/modules/plugins.ts`
 
 ### Plugin Declaration (`plugins.<name>`)
 
-Declare third-party Dokku plugins to install. Plugins are keyed by name: the key becomes the `--name` argument to `plugin:install`, so the installed plugin name always matches the YAML key. `plugin:list` is read once per `up` and `diff`.
+Declare third-party Dokku plugins to install. Plugins are keyed by name: the key becomes the `--name` argument to `plugin:install`, so the installed plugin name always matches the YAML key. `plugin:list --format json` is read once per `up` and `diff`.
 
 ```yaml
 plugins:
@@ -34,7 +34,7 @@ plugins:
 
 **`url`** (required) is the Git URL of the plugin repository.
 
-**`version`** (optional) pins the plugin. Updates are forward only: dokku-compose never downgrades, so lowering a pin does nothing to a running box. Versions are compared as `major.minor.patch` numbers after removing a leading `v`. Anything else (a commit SHA, a branch name) matches only when it is the identical string, otherwise it is reported as unknown and never updated.
+**`version`** (optional) pins the plugin. Updates are forward only: dokku-compose never downgrades, so lowering a pin does nothing to a running box. Versions are compared as `major.minor.patch` numbers after removing a leading `v`; `1.2` never equals `1.2.0`. A pin of 7 to 40 hex characters is treated as a commit and compared with the start of the installed plugin's commit (`plugin:list --format json` `committish`); equal means in sync. Any other pin that does not compare is shown as unknown in `diff` (it does not make `diff` exit non-zero) and is never updated. A plugin that is installed but reports no version counts as installed.
 
 `plugin:list` reports the version in the plugin's `plugin.toml`, not the git commit. A matching pin therefore means the same version string, not necessarily the same commit. Plugins are never uninstalled.
 

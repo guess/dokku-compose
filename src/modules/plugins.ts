@@ -1,19 +1,35 @@
 import type { Context } from '../core/context.js'
 import type { PluginConfig } from '../core/schema.js'
-import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
+import { logAction, logDone, logWarn } from '../core/logger.js'
 
 // All plugin command strings and the plugin:list parser live in this file.
-// The plugin:list line format is assumed, not checked against a live box:
-//   "  postgres             1.41.0 enabled    dokku postgres service plugin"
-// i.e. name, version, enabled|disabled, description. The version is the one in
-// the plugin's plugin.toml, not the git commit.
+// Installed plugins are read from `plugin:list --format json`: an array of
+// {name, version, enabled, core, committish, ...}. `version` is the one in the
+// plugin's plugin.toml, not the git commit; `committish` is the checked-out
+// commit (empty for core plugins).
 
-/** Parse `plugin:list` into { name: version }. Lines without enabled/disabled are ignored. */
-export function parsePluginList(raw: string): Map<string, string> {
-  const result = new Map<string, string>()
-  for (const line of raw.split('\n')) {
-    const m = line.match(/^\s*(\S+)\s+(\S+)\s+(?:enabled|disabled)\b/)
-    if (m) result.set(m[1], m[2])
+export interface InstalledPlugin {
+  version: string
+  committish: string
+}
+
+/** Parse `plugin:list --format json` into name -> installed info. A plugin without a version is still installed. */
+export function parsePluginList(raw: string): Map<string, InstalledPlugin> {
+  const result = new Map<string, InstalledPlugin>()
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return result
+  }
+  if (!Array.isArray(parsed)) return result
+  for (const p of parsed) {
+    if (p && typeof p.name === 'string') {
+      result.set(p.name, {
+        version: typeof p.version === 'string' ? p.version : '',
+        committish: typeof p.committish === 'string' ? p.committish : '',
+      })
+    }
   }
   return result
 }
@@ -43,16 +59,26 @@ export interface PluginPlan {
   desired?: string
 }
 
+const SHA = /^[0-9a-f]{7,40}$/i
+
 export function planPlugins(listOutput: string, plugins: Record<string, PluginConfig>): PluginPlan[] {
   const installed = parsePluginList(listOutput)
   return Object.entries(plugins).map(([name, config]) => {
     const current = installed.get(name)
     const desired = config.version
     if (current === undefined) return { name, action: 'install', desired }
-    if (desired === undefined) return { name, action: 'ok', installed: current }
-    const cmp = compareVersions(current, desired)
+    const installedVersion = current.version || current.committish.slice(0, 7) || undefined
+    if (desired === undefined) return { name, action: 'ok', installed: installedVersion }
+    // A sha pin is compared with the installed commit.
+    if (SHA.test(desired) && current.committish) {
+      if (current.committish.toLowerCase().startsWith(desired.toLowerCase())) {
+        return { name, action: 'ok', installed: installedVersion, desired }
+      }
+    }
+    if (!current.version) return { name, action: 'unknown', installed: installedVersion, desired }
+    const cmp = compareVersions(current.version, desired)
     const action: PluginAction = cmp === undefined ? 'unknown' : cmp < 0 ? 'update' : cmp > 0 ? 'newer' : 'ok'
-    return { name, action, installed: current, desired }
+    return { name, action, installed: installedVersion, desired }
   })
 }
 
@@ -60,18 +86,19 @@ export async function ensurePlugins(
   ctx: Context,
   plugins: Record<string, PluginConfig>
 ): Promise<void> {
-  const plans = planPlugins(await ctx.query('plugin:list'), plugins)
+  const plans = planPlugins(await ctx.query('plugin:list', '--format', 'json'), plugins)
 
   for (const plan of plans) {
     const config = plugins[plan.name]
-    logAction('plugins', `Installing ${plan.name}`)
     switch (plan.action) {
       case 'install':
+        logAction('plugins', `Installing ${plan.name}`)
         await ctx.run('plugin:install', config.url,
           ...(config.version ? ['--committish', config.version] : []), '--name', plan.name)
         logDone()
         break
       case 'update':
+        logAction('plugins', `Updating ${plan.name}`)
         await ctx.run('plugin:update', plan.name, config.version!)
         logDone()
         break
@@ -82,7 +109,7 @@ export async function ensurePlugins(
         logWarn('plugins', `${plan.name} is ${plan.installed} and the declared ${plan.desired} cannot be compared; leaving it`)
         break
       default:
-        logSkip()
+        break
     }
   }
 }

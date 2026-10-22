@@ -60,8 +60,12 @@ export function computeChange(before: unknown, after: unknown): Change | ListCha
   return { before, after, changed: before !== after } satisfies Change
 }
 
-/** For additive resources: true only when a desired key is new or differs. */
-export function hasAdditions(change: Change): boolean {
-  const c = change as unknown as { added?: object; modified?: object }
-  return Object.keys(c.added ?? {}).length > 0 || Object.keys(c.modified ?? {}).length > 0
+/**
+ * Change for an additive resource: keys only on the server are ignored, and an
+ * unreadable (undefined/null) current state counts as empty, never as in sync.
+ */
+export function computeAdditiveChange(before: unknown, after: unknown): MapChange {
+  const change = computeChange((before ?? {}) as Record<string, string>, after as Record<string, string>)
+  change.changed = Object.keys(change.added).length > 0 || Object.keys(change.modified).length > 0
+  return change
 }

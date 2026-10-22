@@ -1,6 +1,6 @@
 // src/core/reconcile.ts
 import type { Context } from './context.js'
-import { computeChange, hasAdditions } from './change.js'
+import { computeChange, computeAdditiveChange } from './change.js'
 import { logAction, logDone, logSkip } from './logger.js'
 
 export interface Resource<T = unknown> {
@@ -34,8 +34,7 @@ export async function reconcile<T>(
   }
 
   const before = await resource.read(ctx, target)
-  const change = computeChange(before, desired)
-  if (resource.additive) change.changed = hasAdditions(change)
+  const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
   if (!change.changed) {
     logSkip()
     return

@@ -12,7 +12,7 @@ How many processes of each type the app runs. Applied with `--skip-deploy`, so `
 
 ```yaml
 apps:
-  chatwoot:
+  myapp:
     scale:
       web: 1       # process type: count
       worker: 1
@@ -25,7 +25,7 @@ apps:
 | A type on the server is not listed | none (left as it is) |
 | `scale` absent | none |
 
-`diff` shows a differing or unset listed type; a type that is only on the server is not drift. The current scale is read from `ps:scale <app>`.
+`diff` shows a differing or unset listed type; a type that is only on the server is not drift. The current scale is read from `ps:scale --format json <app>`.
 
 ### ps properties (`apps.<app>.ps`)
 
@@ -33,7 +33,7 @@ Per-app process properties.
 
 ```yaml
 apps:
-  strates:
+  myapp:
     ps:
       stop-timeout-seconds: 60
 ```
@@ -42,7 +42,7 @@ apps:
 |-------|---------------|
 | Property differs from `ps:report` | `ps:set <app> <key> <value>` |
 | Property matches | none |
-| A property on the server is not listed | none (left as it is) |
+| A property on the server is not listed | none (not reset yet) |
 | `ps` absent | none |
 
-Current values are read from `ps:report <app>`; keys are the report labels lowercased and hyphenated without the `Ps` prefix (`Ps stop timeout seconds` is `stop-timeout-seconds`). Properties are never reset when removed from the file.
+Only `procfile-path`, `restart-policy` and `stop-timeout-seconds` are accepted; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. A property set on the server but missing from the file shows in `diff` but is not reset yet; removal handling comes with `--prune` in a later release.
