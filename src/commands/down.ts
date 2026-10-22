@@ -4,6 +4,7 @@ import { destroyApp } from '../modules/apps.js'
 import { destroyPostgres } from '../modules/postgres.js'
 import { destroyRedis } from '../modules/redis.js'
 import { destroyAppLinks } from '../modules/links.js'
+import { assertDokkuSupported } from '../modules/version.js'
 import { logAction, logDone, logSkip, logError } from '../core/logger.js'
 
 export interface DownOptions {
@@ -32,6 +33,8 @@ export async function runDown(
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
+
+  await assertDokkuSupported(ctx)
 
   // Phase 1: Per-app teardown. Same default-continue / --fail-fast pattern as `up`.
   const failures: { app: string; error: unknown }[] = []

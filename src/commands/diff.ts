@@ -4,7 +4,7 @@ import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
-import { ensureDokkuVersion } from '../modules/version.js'
+import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import chalk from 'chalk'
 
 type DiffStatus = 'in-sync' | 'changed' | 'missing' | 'extra' | 'unknown'
@@ -26,6 +26,8 @@ interface DiffResult {
   apps: Record<string, AppDiff>
   services: Record<string, { status: DiffStatus }>
   plugins: Record<string, FeatureDiff>
+  /** Set when the server's Dokku version differs from the file's `dokku.version`. */
+  dokku?: { file: string; server: string }
   inSync: boolean
   /** Bulk or per-app reads that could not be trusted; diff falls back but flags them. */
   readWarnings: string[]
@@ -72,7 +74,12 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   const result: DiffResult = { apps: {}, services: {}, plugins: {}, inSync: true, readWarnings: [] }
   const appNames = Object.keys(config.apps)
 
-  await ensureDokkuVersion(ctx, config.dokku?.version)
+  const serverVersion = await assertDokkuSupported(ctx)
+  const fileVersion = config.dokku?.version
+  if (fileVersion && compareToFile(serverVersion, fileVersion) !== 'equal') {
+    result.dokku = { file: fileVersion, server: serverVersion }
+    result.inSync = false
+  }
 
   // An app that does not exist on the server yet cannot have any of its
   // resources read — every resource report for it is naturally empty. That
@@ -279,7 +286,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 }
 
 export function maskDiffResult(diff: DiffResult): DiffResult {
-  const masked: DiffResult = { apps: {}, services: diff.services, plugins: diff.plugins, inSync: diff.inSync, readWarnings: diff.readWarnings }
+  const masked: DiffResult = { apps: {}, services: diff.services, plugins: diff.plugins, dokku: diff.dokku, inSync: diff.inSync, readWarnings: diff.readWarnings }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
     for (const [feature, d] of Object.entries(appDiff)) {
@@ -316,6 +323,11 @@ export function formatSummary(diff: DiffResult): string {
     }
   }
 
+  if (diff.dokku) {
+    lines.push(`  dokku`)
+    lines.push(`    ${chalk.yellow('~')} version: ${diff.dokku.file} (file) → ${diff.dokku.server} (server)`)
+  }
+
   for (const [name, d] of Object.entries(diff.plugins)) {
     const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
     const detail = d.status === 'missing' ? `not installed (want ${d.desired ?? 'any'})` : `${d.current} → ${d.desired}`
@@ -334,7 +346,8 @@ export function formatSummary(diff: DiffResult): string {
     .flatMap(a => Object.values(a))
     .filter(d => d.status !== 'in-sync').length +
     Object.values(diff.services).filter(d => d.status !== 'in-sync').length +
-    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length
+    Object.values(diff.plugins).filter(d => d.status !== 'unknown').length +
+    (diff.dokku ? 1 : 0)
 
   if (diff.readWarnings.length > 0) {
     lines.push('')
@@ -401,6 +414,12 @@ export function formatVerbose(diff: DiffResult): string {
       for (const line of desiredLines) lines.push(chalk.green(`+ ${line}`))
       for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r} (not in the file)`))
     }
+  }
+
+  if (diff.dokku) {
+    lines.push(`@@ dokku version @@`)
+    lines.push(chalk.red(`- ${diff.dokku.server} (server)`))
+    lines.push(chalk.green(`+ ${diff.dokku.file} (file)`))
   }
 
   for (const [name, d] of Object.entries(diff.plugins)) {

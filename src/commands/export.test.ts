@@ -17,13 +17,13 @@ describe('runExport', () => {
   it('includes dokku version from version command', async () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.34.5'
+      if (args[0] === 'version') return 'dokku version 0.38.31'
       return ''
     })
     runner.check = vi.fn().mockResolvedValue(false)
     stubStrict(runner)
     const result = await runExport(runner, {})
-    expect(result.dokku).toEqual({ version: '0.34.5' })
+    expect(result.dokku).toEqual({ version: '0.38.31' })
   })
 
   it('uses bulk report queries (no app arg) for resources', async () => {
@@ -32,7 +32,7 @@ describe('runExport', () => {
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
       queryCalls.push(args)
       if (args[0] === 'apps:list') return 'myapp'
-      if (args[0] === 'version') return 'dokku version 0.34.5'
+      if (args[0] === 'version') return 'dokku version 0.38.31'
       return ''
     })
     runner.check = vi.fn().mockResolvedValue(false)
@@ -53,7 +53,7 @@ describe('runExport', () => {
 
   it('respects appFilter', async () => {
     const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.check = vi.fn().mockResolvedValue(false)
     stubStrict(runner)
     const result = await runExport(runner, { appFilter: ['myapp'] })
@@ -64,7 +64,7 @@ describe('runExport', () => {
   it('populates app config from bulk data', async () => {
     const runner = createRunner({ dryRun: false })
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.34.5'
+      if (args[0] === 'version') return 'dokku version 0.38.31'
       if (args[0] === 'apps:list') return 'myapp'
       if (args[0] === 'network:list') return ''
       if (args[0] === 'nginx:report') return (

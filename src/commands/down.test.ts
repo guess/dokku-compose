@@ -11,7 +11,7 @@ describe('runDown', () => {
   it('destroys app from simple.yml', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)  // everything exists
-    runner.query = vi.fn().mockResolvedValue('')    // no linked apps for service check
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')    // no linked apps for service check
     runner.run = vi.fn()
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
@@ -22,7 +22,7 @@ describe('runDown', () => {
   it('destroys app before services (correct order)', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.run = vi.fn()
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
@@ -38,7 +38,7 @@ describe('runDown', () => {
   it('continues to the next app when one fails to destroy, then throws a summary', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
       if (args[0] === 'apps:destroy' && args[1] === 'funqtion') {
         throw new DokkuCommandError(args, 1, 'app has a running deploy')
@@ -63,7 +63,7 @@ describe('runDown', () => {
   it('--fail-fast stops at the first failing app', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(true)
-    runner.query = vi.fn().mockResolvedValue('')
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
       if (args[0] === 'apps:destroy' && args[1] === 'funqtion') {
         throw new DokkuCommandError(args, 1, 'boom')
