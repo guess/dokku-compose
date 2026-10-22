@@ -47,6 +47,10 @@ function inSyncServer(): FakeServer {
       'postgres:exists myapp-db': true,
       'redis:exists myapp-redis': true,
       'postgres:linked myapp-db myapp': true,
+      'postgres:exists myapp-reports': true,
+      'postgres:linked myapp-reports myapp': true,
+      'postgres:linked myapp-reports myapp-worker': false,
+      'postgres:linked myapp-reports myapp-edge': false,
       'redis:linked myapp-redis myapp': true,
       'postgres:linked myapp-db myapp-worker': false,
       'redis:linked myapp-redis myapp-worker': false,
@@ -115,7 +119,8 @@ function inSyncServer(): FakeServer {
       ]),
       [`config:get ${app} DOKKU_COMPOSE_MANAGED_KEYS`]: 'APP_ENV',
       [`config:export --format json ${app}`]: JSON.stringify({
-        APP_ENV: 'production', DOKKU_COMPOSE_MANAGED_KEYS: 'APP_ENV', DATABASE_URL: 'postgres://u:p@h/db',
+        APP_ENV: 'production', DOKKU_COMPOSE_MANAGED_KEYS: 'APP_ENV', DATABASE_URL: 'postgres://u:p@dokku-postgres-myapp-db:5432/db', CACHE_URL: 'redis://:p@dokku-redis-myapp-redis:6379?timeout=5',
+        DOKKU_POSTGRES_AQUA_URL: 'postgres://u:p@dokku-postgres-myapp-reports:5432/db',
       }),
       [`builder:report ${app}`]: report(app, 'builder', { 'Builder build dir': 'apps/myapp' }),
       [`builder-dockerfile:report ${app}`]: report(app, 'builder-dockerfile', {
@@ -331,7 +336,32 @@ describe('a server whose state equals the file', () => {
     expect(runner.dryRunLog).toEqual(['config:unset --global TZ FEATURE_X DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS'])
   })
 
+  it('a link with alias and querystring that matches the server runs no command; a different querystring relinks', async () => {
+    const server = inSyncServer()
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual([])
+    server.queries['config:export --format json myapp'] = JSON.stringify({
+      APP_ENV: 'production', DOKKU_COMPOSE_MANAGED_KEYS: 'APP_ENV', DATABASE_URL: 'postgres://u:p@dokku-postgres-myapp-db:5432/db', CACHE_URL: 'redis://:p@dokku-redis-myapp-redis:6379?timeout=9', DOKKU_POSTGRES_AQUA_URL: 'postgres://u:p@dokku-postgres-myapp-reports:5432/db',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps.myapp['links:myapp-redis']).toMatchObject({ status: 'changed', current: 'CACHE_URL?timeout=9', desired: 'CACHE_URL?timeout=5' })
+    const second = fakeContext(server)
+    await runUp(second.ctx, loadConfig(FIXTURE), [])
+    expect(second.runner.dryRunLog).toEqual([
+      'redis:unlink myapp-redis myapp --no-restart',
+      'redis:link myapp-redis myapp --no-restart --alias CACHE --querystring timeout=5',
+    ])
+  })
+
+  it('a declared link that is not linked shows as missing in diff', async () => {
+    const server = inSyncServer()
+    server.checks['redis:linked myapp-redis myapp'] = false
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps.myapp['links:myapp-redis']).toMatchObject({ status: 'missing', desired: 'CACHE_URL' })
+    expect(diff.inSync).toBe(false)
+  })
+
   // Gaps owned by other issues. Each becomes a real assertion when its issue lands.
   it.todo('LAB-757: postgres backup: is read from the server (no hash env var), and an unchanged schedule runs no write')
-  it.todo('LAB-753: links: options (alias, env_var, querystring) are declared and compared')
 })

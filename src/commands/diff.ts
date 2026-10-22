@@ -1,3 +1,4 @@
+import { normalizeLink, linkEnvVar, readLinkOptions, resolveServicePlugin, type EnvCache } from '../modules/links.js'
 import type { Context } from '../core/context.js'
 import type { Config, AppConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
@@ -259,6 +260,28 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       if (linked.length > 0) {
         appDiff['links'] = { status: 'extra', current: linked, removed: linked, note: 'no links: in the file; up will unlink these' }
         result.inSync = false
+      }
+    }
+
+    // Declared links: missing, or linked under a different variable or querystring.
+    if (appConfig.links && appExists.get(app)) {
+      const envCache: EnvCache = new Map()
+      for (const entry of appConfig.links) {
+        const link = normalizeLink(entry)
+        const resolved = resolveServicePlugin(link.service, config)
+        if (!resolved) continue
+        if (!(await ctx.check(`${resolved.plugin}:linked`, link.service, app))) {
+          appDiff[`links:${link.service}`] = { status: 'missing', desired: linkEnvVar(resolved.plugin, link), current: undefined }
+          result.inSync = false
+          continue
+        }
+        const opts = await readLinkOptions(ctx, app, resolved.plugin, link, envCache)
+        if (opts.state === 'differs') {
+          appDiff[`links:${link.service}`] = { status: 'changed', desired: opts.desired, current: opts.current, note: 'up unlinks and relinks it' }
+          result.inSync = false
+        } else if (opts.state === 'unreadable') {
+          result.readWarnings.push(`could not read the link options of '${link.service}' for app '${app}' (not counted as drift): ${opts.reason}`)
+        }
       }
     }
 

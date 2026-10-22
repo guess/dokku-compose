@@ -20,6 +20,16 @@ describe('validate', () => {
     expect(result.errors.some(e => e.includes('not defined in postgres or redis'))).toBe(true)
   })
 
+  it('rejects alias together with env_var', () => {
+    const result = validate(path.join(FIXTURES, 'invalid_link_options.yml'))
+    expect(result.errors.some(e => e.includes('cannot be combined'))).toBe(true)
+  })
+
+  it('rejects an unknown key in a link', () => {
+    const result = validate(path.join(FIXTURES, 'invalid_link_key.yml'))
+    expect(result.errors.some(e => e.includes('aliass'))).toBe(true)
+  })
+
   it('errors on invalid port format', () => {
     const result = validate(path.join(FIXTURES, 'invalid_ports.yml'))
     expect(result.errors.some(e => e.includes('Port must be') || e.includes('invalid port') || e.includes('scheme'))).toBe(true)

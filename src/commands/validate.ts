@@ -29,7 +29,14 @@ export function validate(filePath: string): ValidationResult {
   if (!result.success) {
     for (const issue of result.error.issues) {
       const issuePath = issue.path.join('.')
-      errors.push(`${issuePath}: ${issue.message}`)
+      // A union failure hides why its object branch failed (an unknown key, say): show that branch's reasons.
+      const branches = issue.code === 'invalid_union' ? (issue as any).errors as any[][] | undefined : undefined
+      const reasons = branches?.filter(b => !b.every(i => i.code === 'invalid_type' && i.path.length === 0)).flat()
+      if (reasons && reasons.length > 0) {
+        for (const r of reasons) errors.push(`${[issuePath, ...r.path].filter(x => x !== '').join('.')}: ${r.message}`)
+      } else {
+        errors.push(`${issuePath}: ${issue.message}`)
+      }
     }
     // Continue to cross-field checks using raw data
   }
@@ -46,8 +53,9 @@ export function validate(filePath: string): ValidationResult {
     }
     for (const [appName, appCfg] of Object.entries<any>(data.apps)) {
       if (!appCfg?.links) continue
-      for (const link of appCfg.links) {
-        if (!serviceNames.has(link)) {
+      for (const entry of appCfg.links) {
+        const link = typeof entry === 'string' ? entry : entry?.service
+        if (typeof link === 'string' && !serviceNames.has(link)) {
           errors.push(`apps.${appName}.links: service "${link}" not defined in postgres or redis`)
         }
       }

@@ -27,6 +27,7 @@
 ### Added
 
 - **`diff` shows a datastore `version` or `image` change** (`~ version`, `~ image`) for `postgres:` and `redis:` services, read from `<plugin>:info <svc> --format json`, and exits non-zero. `up` warns once per service with both values of each field and runs no `:upgrade`; a service that declares neither field never drifts.
+- **`links:` entries take options.** An entry is a service name or `{ service, alias?, env_var?, querystring? }`, passed to `:link` as `--alias`, `--env-var` and `--querystring`, so a second database can live in its own variable. `validate` rejects unknown keys and `alias` with `env_var`. `diff` finds each link's variable by its URL host and shows a differing name or querystring (also for a plain entry) as `~ links:<service>`, and a declared service that is not linked as missing; `up` unlinks then links it. An unreadable env is a warning, not drift. `export` writes the object form for non-default links.
 - **`diff` shows global `domains:`, `logs:` and `nginx:` drift** under a `global` section (log sinks masked), and a declared network missing on the server under `networks:`.
 - **`diff --verbose` prints `Everything in sync.`** when nothing differs.
 

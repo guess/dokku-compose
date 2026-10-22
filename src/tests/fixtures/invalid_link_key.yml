@@ -1,0 +1,7 @@
+postgres:
+  myapp-db: {}
+apps:
+  myapp:
+    links:
+      - service: myapp-db
+        aliass: BLUE
