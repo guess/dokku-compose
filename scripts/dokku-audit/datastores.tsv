@@ -13,7 +13,7 @@ mount	N	F8	N	F8
 unmount	N	F8	N	F8
 connect	X	Interactive	X	Interactive
 enter	X	Interactive	X	Interactive
-expose	N	F8 (low: qlustr avoids it on Docker 29)	N	F8
+expose	N	F8 (low: one production setup avoids it on Docker 29)	N	F8
 unexpose	N	F8	N	F8
 reexpose	X	Maintenance	X	Maintenance
 promote	X	One-shot action	X	One-shot action

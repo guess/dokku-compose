@@ -107,7 +107,7 @@ domains:reset	X	One-shot action
 domains:set	Y	`domains:`
 domains:set-global	Y	Top-level `domains:`
 git:allow-host	N	A3
-git:auth	N	A3 (qlustr runs it in `setup/lib.sh`)
+git:auth	N	A3 (a production setup runs it in its setup script)
 git:auth-status	N	A3: makes `git:auth` idempotent
 git:from-archive	X	Deploy trigger
 git:from-image	X	Deploy trigger

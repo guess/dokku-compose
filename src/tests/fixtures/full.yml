@@ -15,44 +15,44 @@ docker_auth:
 
 networks:
   - studio-net
-  - qultr-net
+  - backend-net
 
 postgres:
-  funqtion-postgres:
+  myapp-db:
     version: "17-3.5"
     image: postgis/postgis
   studio-postgres: {}
-  qultr-postgres: {}
+  otherapp-db: {}
 
 redis:
-  funqtion-redis:
+  myapp-redis:
     version: "7.2-alpine"
   studio-redis: {}
-  qultr-redis: {}
+  otherapp-redis: {}
 
 apps:
-  funqtion:
+  myapp:
     domains:
-      - funqtion.example.com
-      - api.funqtion.co
+      - myapp.example.com
+      - api.myapp.example
     build:
       dockerfile: docker/prod/api/Dockerfile
       app_json: docker/prod/api/app.json
-      context: apps/funqtion-api
+      context: apps/myapp-api
       args:
         SENTRY_AUTH_TOKEN: "test-token"
     ports:
       - "https:4001:4000"
     ssl:
-      certfile: certs/funqtion.co/server.crt
-      keyfile: certs/funqtion.co/server.key
+      certfile: certs/myapp.example/server.crt
+      keyfile: certs/myapp.example/server.key
     links:
-      - funqtion-postgres
-      - funqtion-redis
+      - myapp-db
+      - myapp-redis
     checks:
       wait-to-retire: 60
     storage:
-      - "/var/lib/dokku/data/storage/funqtion/uploads:/app/uploads"
+      - "/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"
     registry:
       push-on-release: true
       server: registry.example.com
@@ -65,8 +65,8 @@ apps:
     ports:
       - "https:4002:4000"
     ssl:
-      certfile: certs/strates.io/server.crt
-      keyfile: certs/strates.io/server.key
+      certfile: certs/example.com/server.crt
+      keyfile: certs/example.com/server.key
     links:
       - studio-postgres
       - studio-redis
@@ -75,17 +75,17 @@ apps:
     networks:
       - studio-net
 
-  qultr:
+  otherapp:
     build:
-      context: apps/qultr-api
+      context: apps/otherapp-api
     ports:
       - "https:4003:4000"
     ssl:
-      certfile: certs/qultr.dev/server.crt
-      keyfile: certs/qultr.dev/server.key
+      certfile: certs/otherapp.example/server.crt
+      keyfile: certs/otherapp.example/server.key
     links:
-      - qultr-postgres
-      - qultr-redis
+      - otherapp-db
+      - otherapp-redis
     nginx:
       client-max-body-size: "15m"
     scheduler: docker-local
@@ -93,15 +93,15 @@ apps:
       deploy:
         - "--shm-size 256m"
     networks:
-      - qultr-net
+      - backend-net
 
-  qultr-sandbox:
+  otherapp-sandbox:
     build:
       dockerfile: docker/prod/sandbox/Dockerfile
-      context: apps/qultr-sandbox
+      context: apps/otherapp-sandbox
     ports:
       - "http:4004:4000"
     proxy:
       enabled: false
     networks:
-      - qultr-net
+      - backend-net

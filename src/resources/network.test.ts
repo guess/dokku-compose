@@ -65,9 +65,9 @@ describe('NetworkProps', () => {
       '       Network bind all interfaces:          false',
       '       Network initial network:',
       '       Network tld:',
-      '=====> qultr network information',
+      '=====> myapp network information',
       '       Network attach post create:',
-      '       Network attach post deploy:           qultr-net',
+      '       Network attach post deploy:           backend-net',
       '       Network bind all interfaces:          true',
       '       Network initial network:',
       '       Network tld:                          internal',
@@ -75,7 +75,7 @@ describe('NetworkProps', () => {
     const ctx = makeCtx(bulk)
     const result = await NetworkProps.readAll!(ctx)
     expect(result.get('studio')).toEqual({ attach_post_create: ['studio-net'] })
-    expect(result.get('qultr')).toEqual({ bind_all_interfaces: true, tld: 'internal' })
+    expect(result.get('myapp')).toEqual({ bind_all_interfaces: true, tld: 'internal' })
   })
 
   it('returns empty config when nothing is set', async () => {

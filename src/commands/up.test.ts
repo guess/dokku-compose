@@ -80,8 +80,8 @@ describe('runUp', () => {
     stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
-    await runUp(ctx, config, ['funqtion'])
-    expect(runner.run).toHaveBeenCalledWith('apps:create', 'funqtion')
+    await runUp(ctx, config, ['myapp'])
+    expect(runner.run).toHaveBeenCalledWith('apps:create', 'myapp')
     expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'studio')
   })
 
@@ -94,7 +94,7 @@ describe('runUp', () => {
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
       // The first app's app-create fails; everything else succeeds.
-      if (args[0] === 'apps:create' && args[1] === 'funqtion') {
+      if (args[0] === 'apps:create' && args[1] === 'myapp') {
         throw new DokkuCommandError(args, 1, 'app already exists under a different owner')
       }
     })
@@ -104,14 +104,14 @@ describe('runUp', () => {
 
     let thrown: unknown
     try {
-      await runUp(ctx, config, ['funqtion', 'studio'])
+      await runUp(ctx, config, ['myapp', 'studio'])
     } catch (e) {
       thrown = e
     }
 
     expect(thrown).toBeInstanceOf(UpFailedError)
-    expect((thrown as UpFailedError).failures.map(f => f.app)).toEqual(['funqtion'])
-    // studio still got processed even though funqtion failed
+    expect((thrown as UpFailedError).failures.map(f => f.app)).toEqual(['myapp'])
+    // studio still got processed even though myapp failed
     expect(runner.run).toHaveBeenCalledWith('apps:create', 'studio')
   })
 
@@ -128,10 +128,10 @@ describe('runUp', () => {
     stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
-    config.apps.funqtion.domains = ['a.example.com']
-    config.apps.funqtion.env = { MY_KEY: 'v' }
+    config.apps.myapp.domains = ['a.example.com']
+    config.apps.myapp.env = { MY_KEY: 'v' }
 
-    await expect(runUp(ctx, config, ['funqtion'])).rejects.toBeInstanceOf(UpFailedError)
+    await expect(runUp(ctx, config, ['myapp'])).rejects.toBeInstanceOf(UpFailedError)
     const sets = (runner.run as any).mock.calls.filter((c: string[]) => c[0] === 'config:set')
     expect(sets.some((c: string[]) => c.includes('MY_KEY=v'))).toBe(true)
   })
@@ -149,9 +149,9 @@ describe('runUp', () => {
     stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
-    config.apps.funqtion.env = { MY_KEY: 'v' }
-    await expect(runUp(ctx, config, ['funqtion'])).rejects.toBeInstanceOf(UpFailedError)
-    const calls = (runner.run as any).mock.calls.filter((c: string[]) => c[1] === 'funqtion' || c.includes('funqtion'))
+    config.apps.myapp.env = { MY_KEY: 'v' }
+    await expect(runUp(ctx, config, ['myapp'])).rejects.toBeInstanceOf(UpFailedError)
+    const calls = (runner.run as any).mock.calls.filter((c: string[]) => c[1] === 'myapp' || c.includes('myapp'))
     expect(calls.map((c: string[]) => c[0])).toEqual(['apps:create'])
   })
 
@@ -163,7 +163,7 @@ describe('runUp', () => {
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'apps:create' && args[1] === 'funqtion') {
+      if (args[0] === 'apps:create' && args[1] === 'myapp') {
         throw new DokkuCommandError(args, 1, 'boom')
       }
     })
@@ -173,7 +173,7 @@ describe('runUp', () => {
 
     let thrown: unknown
     try {
-      await runUp(ctx, config, ['funqtion', 'studio'], { failFast: true })
+      await runUp(ctx, config, ['myapp', 'studio'], { failFast: true })
     } catch (e) {
       thrown = e
     }
@@ -199,8 +199,8 @@ describe('runUp', () => {
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'full.yml'))
 
-    await expect(runUp(ctx, config, ['funqtion'])).rejects.toThrow(DokkuCommandError)
-    expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'funqtion')
+    await expect(runUp(ctx, config, ['myapp'])).rejects.toThrow(DokkuCommandError)
+    expect(runner.run).not.toHaveBeenCalledWith('apps:create', 'myapp')
   })
 })
 
