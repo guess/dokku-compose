@@ -2,10 +2,11 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createRunner, DokkuCommandError } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { reconcile } from '../core/reconcile.js'
-import { runUp, UpFailedError } from './up.js'
+import { runUp, UpFailedError, markGlobalEnvRestart, printRestartSummary } from './up.js'
 import { emptyAnswer } from '../tests/fake-server.js'
 import { Config as Env } from '../resources/config.js'
 import { Storage, Ports, Domains } from '../resources/lists.js'
+import { Builder } from '../resources/builder.js'
 import { DockerOptions } from '../resources/docker-options.js'
 import { Networks, NetworkProps } from '../resources/network.js'
 import { Nginx } from '../resources/properties.js'
@@ -57,20 +58,33 @@ describe('restart record, per resource', () => {
     }
   })
 
-  it('a build docker option does not mark the app (a restart does not rebuild)', async () => {
+  it('a build docker option needs a rebuild, not a restart', async () => {
     const { ctx } = makeCtx()
     await reconcile(DockerOptions, ctx, 'myapp', { build: ['--network host'] })
     expect(ctx.commands.length).toBe(1)
     expect(ctx.restarts.size).toBe(0)
+    expect(ctx.rebuilds.get('myapp')).toEqual(['build options'])
   })
 
-  it('attach-post-deploy and network properties mark the app', async () => {
+  it('build args need a rebuild', async () => {
+    const { ctx } = makeCtx()
+    await reconcile(Builder, ctx, 'myapp', { args: { K: 'v' } })
+    expect(ctx.rebuilds.get('myapp')).toEqual(['build args'])
+    expect(ctx.restarts.size).toBe(0)
+  })
+
+  it('attach and initial-network need a rebuild (network.md:210); tld needs a restart', async () => {
     const a = makeCtx()
     await reconcile(Networks, a.ctx, 'myapp', ['net1'])
-    expect(a.ctx.restarts.get('myapp')).toEqual(['network'])
+    expect(a.ctx.rebuilds.get('myapp')).toEqual(['networks'])
     const b = makeCtx()
-    await reconcile(NetworkProps, b.ctx, 'myapp', { tld: 'internal' })
-    expect(b.ctx.restarts.get('myapp')).toEqual(['network'])
+    await reconcile(NetworkProps, b.ctx, 'myapp', { attach_post_create: ['n'], initial_network: 'n' })
+    expect(b.ctx.rebuilds.get('myapp')).toEqual(['network'])
+    expect(b.ctx.restarts.size).toBe(0)
+    const c = makeCtx()
+    await reconcile(NetworkProps, c.ctx, 'myapp', { tld: 'internal' })
+    expect(c.ctx.restarts.get('myapp')).toEqual(['network'])
+    expect(c.ctx.rebuilds.size).toBe(0)
   })
 
   it('link and unlink mark the app', async () => {
@@ -109,24 +123,41 @@ describe('runUp restart summary', () => {
     const lines = capture()
     const { ctx } = makeCtx()
     await runUp(ctx, cfg({ a: { env: { X: '1' } }, b: { ports: ['http:80:5000'] } }), [])
-    expect(lines).toContain('\n# Apps that need a restart:')
+    expect(lines).toContain('\n# Apps that need a restart or rebuild:')
     expect(lines.filter(l => l.startsWith('dokku ps:restart'))).toEqual(['dokku ps:restart a  # env'])
     expect(ctx.commands.some(c => c[0] === 'ps:restart')).toBe(false)
   })
 
-  it('a global env change lists every app in the file', async () => {
+  it('markGlobalEnvRestart lists the apps given, nothing else', async () => {
+    const lines = capture()
+    const { ctx } = makeCtx()
+    markGlobalEnvRestart(ctx, ['a', 'b'])
+    printRestartSummary(ctx)
+    expect(lines.filter(l => l.startsWith('dokku ps:restart')))
+      .toEqual(['dokku ps:restart a  # global env', 'dokku ps:restart b  # global env'])
+  })
+
+  it('an unchanged run with a global env declared prints no list', async () => {
     const lines = capture()
     const { ctx } = makeCtx()
     await runUp(ctx, cfg({ a: {}, b: {} }, { env: { G: '1' } }), [])
-    expect(lines.filter(l => l.startsWith('dokku ps:restart')))
-      .toEqual(['dokku ps:restart a  # global env', 'dokku ps:restart b  # global env'])
+    expect(lines.filter(l => /restart|rebuild/.test(l))).toEqual([])
+  })
+
+  it('an app needing both shows only the rebuild line, after the restart lines', async () => {
+    const lines = capture()
+    const { ctx } = makeCtx()
+    ctx.needsRestart('a', 'env'); ctx.needsRebuild('a', 'build args'); ctx.needsRestart('b', 'env')
+    printRestartSummary(ctx)
+    expect(lines.filter(l => l.startsWith('dokku ps:')))
+      .toEqual(['dokku ps:restart b  # env', 'dokku ps:rebuild a  # build args'])
   })
 
   it('a dry run says "would need"', async () => {
     const lines = capture()
     const { ctx } = makeCtx({ dryRun: true })
     await runUp(ctx, cfg({ a: { env: { X: '1' } } }), [], { dryRun: true })
-    expect(lines).toContain('\n# Apps that would need a restart:')
+    expect(lines).toContain('\n# Apps that would need a restart or rebuild:')
   })
 
   it('prints nothing when no change needs a restart', async () => {

@@ -20,9 +20,10 @@ export const Networks: Resource<string[]> = {
   },
   onChange: async (ctx, target, { after }: ListChange) => {
     await ctx.run('network:set', target, 'attach-post-deploy', ...after)
-    // Dokku: "A change in these values will require an app deploy or rebuild"
-    // (docs/networking/network.md, v0.38.31); the attach runs when containers start.
-    ctx.needsRestart(target, 'network')
+    // docs/networking/network.md:210 (v0.38.31): "A change in these values will
+    // require an app deploy or rebuild" (attach-post-create, attach-post-deploy,
+    // initial-network). A restart is not named, so print a rebuild.
+    ctx.needsRebuild(target, 'networks')
   },
 }
 
@@ -43,7 +44,8 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
   prune: async (ctx, target, removed) => {
     for (const key of removed) {
       await ctx.run('network:set', target, key.replaceAll('_', '-'))
-      ctx.needsRestart(target, 'network')
+      if (key === 'attach_post_create' || key === 'initial_network') ctx.needsRebuild(target, 'network')
+      else ctx.needsRestart(target, 'network')
     }
   },
   read: async (ctx, target) => {
@@ -79,11 +81,11 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
       const nets = Array.isArray(after.attach_post_create)
         ? after.attach_post_create : [after.attach_post_create]
       await ctx.run('network:set', target, 'attach-post-create', ...nets)
-      ctx.needsRestart(target, 'network')
+      ctx.needsRebuild(target, 'network')
     }
     if (after.initial_network !== undefined && after.initial_network !== false) {
       await ctx.run('network:set', target, 'initial-network', after.initial_network)
-      ctx.needsRestart(target, 'network')
+      ctx.needsRebuild(target, 'network')
     }
     if (after.bind_all_interfaces !== undefined) {
       await ctx.run('network:set', target, 'bind-all-interfaces', String(after.bind_all_interfaces))

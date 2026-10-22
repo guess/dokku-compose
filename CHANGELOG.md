@@ -4,7 +4,7 @@
 
 ### Added
 
-- **`up` lists the apps that need a restart.** Env, storage, deploy and run Docker options, links and network changes (`networks`, `network`) only reach a running container when it restarts, so `up` ends with `dokku ps:restart <app>  # <reasons>` for each app it changed (`would need` on `--dry-run`, also after a partial failure). A global `env:` change lists every app in the file. Nothing is restarted and there is no `--restart` flag. Changes Dokku applies live (ports, domains, nginx, proxy, logs, checks) and build options are not listed. See the README's `up` section for the evidence table.
+- **`up` lists the apps that need a restart.** Env, storage, deploy and run Docker options, links and network changes (`networks`, `network`) only reach a running container when it restarts, so `up` ends with `dokku ps:restart <app>  # <reasons>` for each app it changed (`would need` on `--dry-run`, also after a partial failure). Settings only a rebuild applies (build args and options, `networks`, `attach_post_create`, `initial_network`) print `dokku ps:rebuild <app>` instead. A global `env:` change lists the apps the run processes. Nothing is restarted and there is no `--restart` flag. Changes Dokku applies live (ports, domains, nginx, proxy, logs, checks) are not listed. See the README's `up` section for the evidence table.
 
 ### Fixed
 

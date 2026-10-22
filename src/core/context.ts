@@ -19,6 +19,13 @@ export interface Context {
    * summary `up` prints at the end comes from this record.
    */
   needsRestart(app: string, reason: string): void
+  /**
+   * Like `needsRestart`, for a change only a rebuild applies (`dokku ps:rebuild <app>`,
+   * which also restarts). Build settings and network attach settings.
+   */
+  needsRebuild(app: string, reason: string): void
+  /** App -> reasons recorded by `needsRebuild` */
+  rebuilds: Map<string, string[]>
   /** App -> reasons recorded by `needsRestart`, in the order apps were first marked */
   restarts: Map<string, string[]>
   /** The underlying runner (for backward compat during migration) */
@@ -31,11 +38,19 @@ export function createContext(runner: Runner): Context {
   const cache = new Map<string, Promise<string>>()
   const commands: string[][] = []
   const restarts = new Map<string, string[]>()
+  const rebuilds = new Map<string, string[]>()
 
   return {
     commands,
     runner,
     restarts,
+    rebuilds,
+
+    needsRebuild(app: string, reason: string): void {
+      const reasons = rebuilds.get(app) ?? []
+      if (!reasons.includes(reason)) reasons.push(reason)
+      rebuilds.set(app, reasons)
+    },
 
     needsRestart(app: string, reason: string): void {
       const reasons = restarts.get(app) ?? []

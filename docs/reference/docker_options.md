@@ -6,7 +6,7 @@ Module: `lib/docker_options.sh`
 
 ## YAML Keys
 
-Dokku applies deploy and run options only to containers created afterwards, so `up` lists an app whose deploy or run options changed as needing `dokku ps:restart <app>`. Build options need a rebuild instead and are not listed.
+Dokku applies deploy and run options only to containers created afterwards, so `up` lists an app whose deploy or run options changed as needing `dokku ps:restart <app>`. Build options need `dokku ps:rebuild <app>` instead, which `up` lists.
 
 ### Per-Phase Options (`docker_options.<phase>`)
 

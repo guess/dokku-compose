@@ -82,7 +82,10 @@ export const Builder: Resource<BuildConfig> = {
     const stale = new Set(removed.map(l => l.slice('args.'.length)))
     // Same query `read` made, so this is the cached report. Remove every stale occurrence, by exact option text.
     const options = parseBuildOptions(await readBuildList(ctx, target)).filter(o => stale.has(o.key))
-    for (const o of options) await ctx.run('docker-options:remove', target, 'build', o.raw)
+    for (const o of options) {
+      await ctx.run('docker-options:remove', target, 'build', o.raw)
+      ctx.needsRebuild(target, 'build args')
+    }
     for (const k of stale) {
       if (!options.some(o => o.key === k)) logWarn(target, `build arg '${k}' not found as an exact docker option; left as is`)
     }
@@ -105,14 +108,15 @@ export const Builder: Resource<BuildConfig> = {
 
   async onChange(ctx: Context, target: string, { after }: { after: BuildConfig }): Promise<void> {
     if (after.dockerfile)
-      await ctx.run('builder-dockerfile:set', target, 'dockerfile-path', after.dockerfile)
+      { await ctx.run('builder-dockerfile:set', target, 'dockerfile-path', after.dockerfile); ctx.needsRebuild(target, 'build') }
     if (after.app_json)
-      await ctx.run('app-json:set', target, 'appjson-path', after.app_json)
+      { await ctx.run('app-json:set', target, 'appjson-path', after.app_json); ctx.needsRebuild(target, 'build') }
     if (after.context)
-      await ctx.run('builder:set', target, 'build-dir', after.context)
+      { await ctx.run('builder:set', target, 'build-dir', after.context); ctx.needsRebuild(target, 'build') }
     if (after.args) {
       for (const [key, value] of Object.entries(after.args)) {
         await ctx.run('docker-options:add', target, 'build', `--build-arg ${quoteShellArg(`${key}=${value}`)}`)
+        ctx.needsRebuild(target, 'build args')
       }
     }
   },
