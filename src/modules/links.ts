@@ -31,10 +31,12 @@ export async function ensureAppLinks(
     if (isDesired && !isLinked) {
       logAction(app, `Linking ${serviceName}`)
       await ctx.run(`${plugin}:link`, serviceName, app, '--no-restart')
+      ctx.needsRestart(app, 'links')
       logDone()
     } else if (!isDesired && isLinked) {
       logAction(app, `Unlinking ${serviceName}`)
       await ctx.run(`${plugin}:unlink`, serviceName, app, '--no-restart')
+      ctx.needsRestart(app, 'links')
       logDone()
     }
   }

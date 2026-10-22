@@ -32,6 +32,7 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
       // If this throws, the marker is untouched and still names the keys,
       // so the next run retries.
       await ctx.run('config:unset', '--no-restart', target, ...removed)
+      ctx.needsRestart(target, 'env')
     }
     const allDesiredKeys = Object.keys(change.after)
     if (allDesiredKeys.length === 0) {
@@ -47,6 +48,7 @@ export const Config: Resource<Record<string, string | number | boolean>> = {
         ...pairs,
         `${MANAGED_KEYS_VAR}=${allDesiredKeys.join(',')}`
       )
+      ctx.needsRestart(target, 'env')
     }
   },
 }

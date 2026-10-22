@@ -52,15 +52,27 @@ export const DockerOptions: Resource<DockerOpts> = {
     return result
   },
 
+  // Dokku: options "only apply to containers created after the options have been
+  // modified" (docs/advanced-usage/docker-options.md, v0.38.31), so deploy and
+  // run options need a restart. Build options are read only by a build, which
+  // a restart does not run, so they need `ps:rebuild`.
   async onChange(ctx: Context, target: string, { before, after }: { before: DockerOpts; after: DockerOpts }): Promise<void> {
     for (const phase of PHASES) {
       const prev = new Set(before[phase] ?? [])
       const desired = new Set(after[phase] ?? [])
       for (const opt of desired) {
-        if (!prev.has(opt)) await ctx.run('docker-options:add', target, phase, opt)
+        if (!prev.has(opt)) {
+          await ctx.run('docker-options:add', target, phase, opt)
+          if (phase === 'build') ctx.needsRebuild(target, 'build options')
+          else ctx.needsRestart(target, 'docker_options')
+        }
       }
       for (const opt of prev) {
-        if (!desired.has(opt)) await ctx.run('docker-options:remove', target, phase, opt)
+        if (!desired.has(opt)) {
+          await ctx.run('docker-options:remove', target, phase, opt)
+          if (phase === 'build') ctx.needsRebuild(target, 'build options')
+          else ctx.needsRestart(target, 'docker_options')
+        }
       }
     }
   },

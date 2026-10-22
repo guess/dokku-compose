@@ -20,6 +20,10 @@ export const Networks: Resource<string[]> = {
   },
   onChange: async (ctx, target, { after }: ListChange) => {
     await ctx.run('network:set', target, 'attach-post-deploy', ...after)
+    // docs/networking/network.md:210 (v0.38.31): "A change in these values will
+    // require an app deploy or rebuild" (attach-post-create, attach-post-deploy,
+    // initial-network). A restart is not named, so print a rebuild.
+    ctx.needsRebuild(target, 'networks')
   },
 }
 
@@ -38,7 +42,11 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
       .filter(k => !(desired && k in desired)),
   // Dokku's property names are hyphenated; the schema's are underscored.
   prune: async (ctx, target, removed) => {
-    for (const key of removed) await ctx.run('network:set', target, key.replaceAll('_', '-'))
+    for (const key of removed) {
+      await ctx.run('network:set', target, key.replaceAll('_', '-'))
+      if (key === 'attach_post_create' || key === 'initial_network') ctx.needsRebuild(target, 'network')
+      else ctx.needsRestart(target, 'network')
+    }
   },
   read: async (ctx, target) => {
     const raw = await ctx.query('network:report', target)
@@ -73,15 +81,19 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
       const nets = Array.isArray(after.attach_post_create)
         ? after.attach_post_create : [after.attach_post_create]
       await ctx.run('network:set', target, 'attach-post-create', ...nets)
+      ctx.needsRebuild(target, 'network')
     }
     if (after.initial_network !== undefined && after.initial_network !== false) {
       await ctx.run('network:set', target, 'initial-network', after.initial_network)
+      ctx.needsRebuild(target, 'network')
     }
     if (after.bind_all_interfaces !== undefined) {
       await ctx.run('network:set', target, 'bind-all-interfaces', String(after.bind_all_interfaces))
+      ctx.needsRestart(target, 'network')
     }
     if (after.tld !== undefined && after.tld !== false) {
       await ctx.run('network:set', target, 'tld', after.tld)
+      ctx.needsRestart(target, 'network')
     }
   },
 }

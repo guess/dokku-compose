@@ -14,7 +14,7 @@ On each `up`, for an app:
 2. **Unset** marked keys that are no longer in `env:`.
 3. **Set** the keys in `env:` and rewrite the marker to exactly those keys.
 
-All commands use `--no-restart`. Values containing `${VAR}` are interpolated from your shell environment when the file is loaded; there is no key prefix.
+All commands use `--no-restart`, so the app needs `dokku ps:restart <app>`; `up` lists it at the end (the top-level `env:` lists every app). Values containing `${VAR}` are interpolated from your shell environment when the file is loaded; there is no key prefix.
 
 ## App Environment (`apps.<app>.env`)
 

@@ -33,6 +33,27 @@ export interface RunUpOptions {
   failFast?: boolean
   /** Reset settings the file no longer declares (nginx, logs, registry, scheduler, ps, network, checks, build args). */
   prune?: boolean
+  /** The run is a dry run: the restart summary says "would need". */
+  dryRun?: boolean
+}
+
+/**
+ * Mark every app this run processes as needing a restart for a global env
+ * change. Call it only when a global key was actually set or unset (global env
+ * is read when a container starts); an unchanged run must not call it.
+ */
+export function markGlobalEnvRestart(ctx: Context, apps: string[], reason = 'global env'): void {
+  for (const app of apps) ctx.needsRestart(app, reason)
+}
+
+/** Print the apps whose applied changes need `dokku ps:restart`. Nothing is restarted (no --restart flag by design). */
+export function printRestartSummary(ctx: Context, dryRun = false): void {
+  // A rebuild restarts the app, so an app needing both shows only the rebuild line.
+  const restarts = [...ctx.restarts].filter(([app]) => !ctx.rebuilds.has(app))
+  if (restarts.length === 0 && ctx.rebuilds.size === 0) return
+  console.log(`\n# Apps that ${dryRun ? 'would need' : 'need'} a restart or rebuild:`)
+  for (const [app, reasons] of restarts) console.log(`dokku ps:restart ${app}  # ${reasons.join(', ')}`)
+  for (const [app, reasons] of ctx.rebuilds) console.log(`dokku ps:rebuild ${app}  # ${reasons.join(', ')}`)
 }
 
 /** Thrown by runUp when one or more apps failed during the per-app phase. */
@@ -120,6 +141,20 @@ export async function runUp(
   appFilter: string[],
   opts: RunUpOptions = {}
 ): Promise<void> {
+  try {
+    await runUpPhases(ctx, config, appFilter, opts)
+  } finally {
+    // Also after a partial failure: applied changes still wait for a restart.
+    printRestartSummary(ctx, opts.dryRun)
+  }
+}
+
+async function runUpPhases(
+  ctx: Context,
+  config: Config,
+  appFilter: string[],
+  opts: RunUpOptions
+): Promise<void> {
   const apps = appFilter.length > 0
     ? appFilter
     : Object.keys(config.apps)
@@ -136,6 +171,9 @@ export async function runUp(
 
   // Phase 2: Global config
   if (config.domains !== undefined) await ensureGlobalDomains(ctx, config.domains)
+  // Global env is not marked here: ensureGlobalConfig sets without reading, so it
+  // cannot tell a change from a no-op. Whoever makes it read-first calls
+  // markGlobalEnvRestart(ctx, apps) when a key actually changes.
   if (config.env !== undefined) await ensureGlobalConfig(ctx, config.env)
   if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
   if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)

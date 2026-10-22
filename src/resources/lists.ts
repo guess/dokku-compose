@@ -24,7 +24,9 @@ export const Ports: Resource<string[]> = {
     return result
   },
   onChange: async (ctx, target, change: ListChange) => {
-    // Ports uses replace-all semantics
+    // Ports uses replace-all semantics. Live, never a restart: ports:set fires
+    // post-proxy-ports-update, whose nginx-vhosts trigger rebuilds the nginx
+    // config (plugins/nginx-vhosts/post-proxy-ports-update, v0.38.31).
     await ctx.run('ports:set', target, ...change.after)
   },
 }
@@ -73,7 +75,15 @@ export const Storage: Resource<string[]> = {
     return result
   },
   onChange: async (ctx, target, { added, removed }: ListChange) => {
-    for (const m of removed) await ctx.run('storage:unmount', target, m)
-    for (const m of added) await ctx.run('storage:mount', target, m)
+    // Dokku: "Once persistent storage is mounted/unmounted, the app requires a restart"
+    // (docs/advanced-usage/persistent-storage.md, v0.38.31).
+    for (const m of removed) {
+      await ctx.run('storage:unmount', target, m)
+      ctx.needsRestart(target, 'storage')
+    }
+    for (const m of added) {
+      await ctx.run('storage:mount', target, m)
+      ctx.needsRestart(target, 'storage')
+    }
   },
 }
