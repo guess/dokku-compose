@@ -1,6 +1,7 @@
 import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { reconcile } from '../core/reconcile.js'
+import type { Resource } from '../core/reconcile.js'
 import { Apps } from '../resources/lifecycle.js'
 import { Domains, Ports, Storage } from '../resources/lists.js'
 import { Nginx, Logs, Registry, Scheduler } from '../resources/properties.js'
@@ -24,7 +25,7 @@ import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
 import { ensureGlobalLogs } from '../modules/logs.js'
 import { ensureGlobalNginx } from '../modules/nginx.js'
-import { logError } from '../core/logger.js'
+import { logError, logWarn } from '../core/logger.js'
 import type { AppConfig } from '../core/schema.js'
 
 export interface RunUpOptions {
@@ -100,7 +101,31 @@ async function processApp(
   await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
 
+  await hintUnpruned(ctx, app, appConfig)
+
   if (errors.length > 0) throw new AppStepsError(errors)
+}
+
+/**
+ * Resources whose settings that left the file stay on the box (env keys are
+ * always unset; domains, storage, ports, networks and docker options are
+ * pruned within a declared block). One line per app points at `diff`.
+ */
+const UNPRUNED: Resource<any>[] = [Nginx, Logs, Registry, Scheduler, Ps, NetworkProps, Builder, Checks]
+
+async function hintUnpruned(ctx: Context, app: string, appConfig: AppConfig): Promise<void> {
+  let count = 0
+  for (const resource of UNPRUNED) {
+    try {
+      const desired = resource.key === 'proxy' ? appConfig.proxy?.enabled : (appConfig as any)[resource.key]
+      count += resource.removals!(await resource.read(ctx, app), desired).length
+    } catch {
+      // The hint is best effort: a failed read is not a failed run.
+    }
+  }
+  if (count > 0) {
+    logWarn(app, `${count} setting(s) no longer in the compose file were left on the server; run 'dokku-compose diff' to see them`)
+  }
 }
 
 export async function runUp(

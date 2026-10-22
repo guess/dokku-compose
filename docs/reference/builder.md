@@ -73,3 +73,7 @@ apps:
 |-------|---------------|
 | `{map}` | `docker-options:add <app> build --build-arg KEY=VALUE` (per entry) |
 | absent | no action |
+
+## Removal
+
+A build arg (a `--build-arg KEY=...` build docker option) whose KEY is not in `build.args` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it.

@@ -38,3 +38,7 @@ On `down --force`, declared mounts are unmounted before the app is destroyed:
 | Phase | Dokku Command |
 |-------|---------------|
 | down | `storage:unmount <app> <mount>` for each declared mount |
+
+## Removal
+
+`up` already removes a storage mount on the server that is missing from a declared `storage` list, and `diff` shows it with a red `-`. A `storage` key gone from the file is left alone.

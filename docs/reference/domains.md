@@ -49,3 +49,7 @@ domains: false                  # disable + clear global domains
 | `[list]` | `domains:enable --all`<br>`domains:set-global <domains...>` |
 | `false` | `domains:disable --all`<br>`domains:clear-global` |
 | absent | no action |
+
+## Removal
+
+`up` already removes a domain on the server that is missing from a declared `domains` list, and `diff` shows it with a red `-`. A `domains` key gone from the file is left alone.

@@ -14,6 +14,8 @@ interface FeatureDiff {
   desired?: unknown
   current?: unknown
   note?: string
+  /** Settings on the server that the file no longer declares (shown as `-`). */
+  removed?: string[]
 }
 
 interface AppDiff {
@@ -50,6 +52,14 @@ function diffSslStatus(desired: unknown, current: unknown): DiffStatus | undefin
   if (current === true) return 'in-sync'
   if (current === false || current === null) return 'missing'
   return undefined
+}
+
+/** Whether a change holds anything besides entries only on the server. */
+function hasAdditionsOrChanges(change: object): boolean {
+  const c = change as { changed: boolean; added?: unknown; modified?: Record<string, string> }
+  if (c.added === undefined) return c.changed  // scalar change
+  const added = Array.isArray(c.added) ? c.added.length : Object.keys(c.added as object).length
+  return added > 0 || Object.keys(c.modified ?? {}).length > 0
 }
 
 function isEmptyValue(value: unknown): boolean {
@@ -103,7 +113,6 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
     for (const resource of ALL_APP_RESOURCES) {
       if (resource.key.startsWith('_')) continue
-      if (resource.forceApply) continue  // can't diff forceApply resources
 
       // Map schema field to resource key
       let desired: unknown
@@ -112,7 +121,10 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       } else {
         desired = (appConfig as any)[resource.key]
       }
-      if (desired === undefined) continue
+      // A block gone from the file can still leave settings on the box.
+      const checkRemovalsOnly = desired === undefined
+      if (checkRemovalsOnly && (!resource.removals || !appExists.get(app))) continue
+      if (resource.forceApply && !resource.removals) continue  // can't diff forceApply resources
 
       // The app itself does not exist yet: every desired resource on it is
       // simply missing, never "unknown" — there is nothing unreadable about
@@ -126,6 +138,23 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       const bulk = prefetched.get(resource.key)
       let current: unknown
       let bulkUnreadable = false
+
+      if (checkRemovalsOnly) {
+        // Nothing is declared, so a failed read must not fail the whole diff.
+        try {
+          current = bulk ? bulk.get(app) : await resource.read(ctx, app)
+          if (bulk === null || current === undefined) current = await resource.read(ctx, app)
+        } catch (err) {
+          result.readWarnings.push(`could not read '${resource.key}' for app '${app}' to look for removed settings: ${err instanceof Error ? err.message : String(err)}`)
+          continue
+        }
+        const removed = resource.removals!(current as any, undefined)
+        if (removed.length > 0) {
+          appDiff[resource.key] = { status: 'extra', current, removed }
+          result.inSync = false
+        }
+        continue
+      }
 
       if (bulk === null) {
         bulkUnreadable = true
@@ -153,12 +182,34 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         continue
       }
 
+      let removed: string[] = resource.removals
+        ? resource.removals(current as any, desired as any)
+        : []
+
+      if (resource.forceApply) {
+        // Applied unconditionally, so only its removals can be diffed.
+        if (removed.length > 0) {
+          appDiff[resource.key] = { status: 'extra', desired, current, removed }
+          result.inSync = false
+        }
+        continue
+      }
+
       const change = resource.additive
         ? computeAdditiveChange(current, desired)
         : computeChange(current as any, desired as any)
 
-      if (!change.changed) {
+      // Resources without a settings allowlist: list entries only on the server
+      // (which `up` prunes within a declared block).
+      if (!resource.removals && Array.isArray(current) && 'removed' in change) {
+        removed = (change as { removed: string[] }).removed
+      }
+      if (!change.changed && removed.length === 0) {
         appDiff[resource.key] = { status: 'in-sync', desired, current }
+      } else if (removed.length > 0 && !hasAdditionsOrChanges(change)) {
+        // What the file declares matches; the box has more.
+        appDiff[resource.key] = { status: 'extra', desired, current, removed }
+        result.inSync = false
       } else if (bulkUnreadable && isEmptyValue(current)) {
         // The bulk report failed AND the per-app fallback also came back
         // empty — we cannot tell "genuinely unset" from "read failed" here,
@@ -172,6 +223,23 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.inSync = false
       } else {
         appDiff[resource.key] = { status: 'changed', desired, current }
+        result.inSync = false
+      }
+      if (removed.length > 0 && appDiff[resource.key].status !== 'extra') {
+        appDiff[resource.key].removed = removed
+      }
+    }
+
+    // `up` unlinks every service an app does not list under `links:`.
+    if (appConfig.links === undefined && appExists.get(app)) {
+      const linked: string[] = []
+      for (const [plugin, services] of [['postgres', config.postgres], ['redis', config.redis]] as const) {
+        for (const svc of Object.keys(services ?? {})) {
+          if (await ctx.check(`${plugin}:linked`, svc, app)) linked.push(svc)
+        }
+      }
+      if (linked.length > 0) {
+        appDiff['links'] = { status: 'extra', current: linked, removed: linked, note: 'no links: in the file; up will unlink these' }
         result.inSync = false
       }
     }
@@ -219,6 +287,8 @@ export function maskDiffResult(diff: DiffResult): DiffResult {
         status: d.status,
         desired: maskSensitiveData(d.desired),
         current: maskSensitiveData(d.current),
+        ...(d.removed ? { removed: d.removed } : {}),
+        ...(d.note ? { note: d.note } : {}),
       }
     }
     masked.apps[app] = maskedAppDiff
@@ -239,6 +309,7 @@ export function formatSummary(diff: DiffResult): string {
       for (const [feature, d] of changes) {
         const sym = d.status === 'missing' ? chalk.green('+')
           : d.status === 'unknown' ? chalk.red('?')
+          : d.status === 'extra' ? chalk.red('-')
           : chalk.yellow('~')
         lines.push(`    ${sym} ${feature}: ${formatFeatureSummary(d)}`)
       }
@@ -282,6 +353,13 @@ export function formatSummary(diff: DiffResult): string {
 }
 
 function formatFeatureSummary(d: FeatureDiff): string {
+  const gone = d.removed?.length ? `not in the file: ${d.removed.join(', ')}` : ''
+  if (d.status === 'extra') return `${gone}${d.note ? ` (${d.note})` : ''}`
+  const base = formatChange(d)
+  return gone ? `${base}; ${gone}` : base
+}
+
+function formatChange(d: FeatureDiff): string {
   if (d.status === 'unknown') return '(could not read server state — not reported as missing)'
   if (d.status === 'missing') return '(not set on server)'
   if (Array.isArray(d.desired) && Array.isArray(d.current)) {
@@ -305,12 +383,18 @@ export function formatVerbose(diff: DiffResult): string {
         lines.push(chalk.red(`  ? could not read server state — not reported as missing`))
         continue
       }
+      if (d.status === 'extra') {
+        for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r}`))
+        if (d.note) lines.push(`  (${d.note})`)
+        continue
+      }
       const currentLines = d.current !== undefined
         ? JSON.stringify(d.current, null, 2).split('\n')
         : []
       const desiredLines = JSON.stringify(d.desired, null, 2).split('\n')
       for (const line of currentLines) lines.push(chalk.red(`- ${line}`))
       for (const line of desiredLines) lines.push(chalk.green(`+ ${line}`))
+      for (const r of d.removed ?? []) lines.push(chalk.red(`- ${r} (not in the file)`))
     }
   }
 

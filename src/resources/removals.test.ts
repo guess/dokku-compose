@@ -1,0 +1,160 @@
+// Settings that left the compose file, per resource. Each resource reports only
+// its settable keys; read-only report lines must never come back as removals.
+import { describe, it, expect, vi } from 'vitest'
+import { createRunner } from '../core/dokku.js'
+import { createContext } from '../core/context.js'
+import { Nginx, Logs, Registry, Scheduler } from './properties.js'
+import { Ps } from './ps.js'
+import { NetworkProps } from './network.js'
+import { Builder } from './builder.js'
+import { Checks } from './checks.js'
+import { Proxy } from './toggle.js'
+import { Config } from './config.js'
+import { DockerOptions } from './docker-options.js'
+
+function makeCtx(results: Record<string, string>) {
+  const runner = createRunner({ dryRun: false })
+  const read = async (...args: string[]) => results[args.join(' ')] ?? ''
+  runner.query = vi.fn(read)
+  runner.queryStrict = vi.fn(read)
+  runner.run = vi.fn()
+  return createContext(runner)
+}
+
+describe('nginx / logs / registry removals', () => {
+  const nginxReport = [
+    '=====> myapp nginx information',
+    '       Nginx client max body size:   50m',
+    '       Nginx proxy read timeout:     60s',
+    '       Nginx computed client max body size: 50m',
+    '       Nginx global hsts:            true',
+    '       Nginx some read only line:    yes',
+  ].join('\n')
+
+  it('nginx: a settable key set on the box and absent from the file is removed; computed/global/unknown lines never', async () => {
+    const ctx = makeCtx({ 'nginx:report myapp': nginxReport })
+    const current = await Nginx.read(ctx, 'myapp')
+    expect(Nginx.removals!(current, { 'client-max-body-size': '50m' })).toEqual(['proxy-read-timeout'])
+    expect(Nginx.removals!(current, undefined)).toEqual(['client-max-body-size', 'proxy-read-timeout'])
+  })
+
+  it('nginx: a block that lists every box key has no removals', async () => {
+    const current = await Nginx.read(makeCtx({ 'nginx:report myapp': nginxReport }), 'myapp')
+    expect(Nginx.removals!(current, { 'client-max-body-size': '1m', 'proxy-read-timeout': '1s' })).toEqual([])
+  })
+
+  it('logs: only settable keys', async () => {
+    const ctx = makeCtx({
+      'logs:report myapp': '       Logs max size:  10m\n       Logs computed max size: 10m\n       Logs vector sink: console://\n       Logs read only: x\n',
+    })
+    const current = await Logs.read(ctx, 'myapp')
+    expect(Logs.removals!(current, { 'max-size': '10m' })).toEqual(['vector-sink'])
+  })
+
+  it('registry: only settable keys', async () => {
+    const ctx = makeCtx({
+      'registry:report myapp': '       Registry server: ghcr.io\n       Registry global server: docker.io\n       Registry tag version: 12\n',
+    })
+    const current = await Registry.read(ctx, 'myapp')
+    expect(Registry.removals!(current, undefined)).toEqual(['server'])
+  })
+
+  it('nginx: keys only on the box do not make the block "changed" for up', async () => {
+    const { computeAdditiveChange } = await import('../core/change.js')
+    expect(Nginx.additive).toBe(true)
+    expect(computeAdditiveChange({ 'proxy-read-timeout': '60s' }, {}).changed).toBe(false)
+  })
+})
+
+describe('scheduler removals', () => {
+  it('a selected scheduler absent from the file is removed; an unset one (computed/global only) is not', async () => {
+    const set = makeCtx({ 'scheduler:report myapp': '       Scheduler selected: docker-local\n' })
+    expect(Scheduler.removals!(await Scheduler.read(set, 'myapp'), undefined)).toEqual(['scheduler'])
+    const unset = makeCtx({ 'scheduler:report myapp': '       Scheduler computed selected: docker-local\n       Scheduler global selected: docker-local\n       Scheduler selected:\n' })
+    expect(Scheduler.removals!(await Scheduler.read(unset, 'myapp'), undefined)).toEqual([])
+  })
+
+  it('a declared scheduler is never a removal', () => {
+    expect(Scheduler.removals!('docker-local', 'k3s')).toEqual([])
+  })
+})
+
+describe('ps removals', () => {
+  const report = JSON.stringify({
+    'restart-policy': 'on-failure:5',
+    'stop-timeout-seconds': '30',
+    'computed-restart-policy': 'on-failure:5',
+    'global-restart-policy': 'on-failure:10',
+    deployed: 'true',
+    running: 'true',
+    'status-web-1': 'running',
+  })
+
+  it('reports allowlisted keys missing from the file, never computed/global/read-only keys', async () => {
+    const current = await Ps.read(makeCtx({ 'ps:report myapp --format json': report }), 'myapp')
+    expect(Ps.removals!(current, { 'restart-policy': 'always' })).toEqual(['stop-timeout-seconds'])
+    expect(Ps.removals!(current, undefined)).toEqual(['restart-policy', 'stop-timeout-seconds'])
+  })
+})
+
+describe('network properties removals', () => {
+  it('reports settable keys only; other report lines never', async () => {
+    const ctx = makeCtx({
+      'network:report myapp':
+        '       Network attach post create: net-a\n       Network tld: internal\n       Network web listeners: 172.17.0.2:5000\n       Network computed tld: internal\n       Network bind all interfaces: false\n',
+    })
+    const current = await NetworkProps.read(ctx, 'myapp')
+    expect(NetworkProps.removals!(current, { tld: 'internal' })).toEqual(['attach_post_create'])
+    expect(NetworkProps.removals!(current, undefined)).toEqual(['attach_post_create', 'tld'])
+  })
+})
+
+describe('build args removals', () => {
+  const reports = {
+    'builder:report myapp': '       Builder build dir: apps/x\n       Builder detected: dockerfile\n',
+    'docker-options:report myapp': '       Docker options build: --build-arg A=1 --build-arg B=2 --link x:y\n       Docker options deploy: --shm-size 1g\n',
+  }
+
+  it('a --build-arg whose KEY is not in build.args is removed; other build options never', async () => {
+    const current = await Builder.read(makeCtx(reports), 'myapp')
+    expect(Builder.removals!(current, { args: { A: '1' } })).toEqual(['args.B'])
+    expect(Builder.removals!(current, undefined)).toEqual(['args.A', 'args.B'])
+    expect(Builder.removals!(current, { dockerfile: 'Dockerfile' })).toEqual(['args.A', 'args.B'])
+  })
+})
+
+describe('checks removals', () => {
+  it('reports per-process lists and tunables set on the box; "none", "_all_" and computed lines never', async () => {
+    const ctx = makeCtx({
+      'checks:report myapp':
+        '       Checks disabled list: web\n       Checks skipped list: none\n       Checks wait: 10\n       Checks computed wait: 5\n       Checks global wait: 5\n',
+    })
+    const current = await Checks.read(ctx, 'myapp')
+    expect(current).toEqual({ disabled: 'web', wait: '10' })
+    expect(Checks.removals!(current, { disabled: ['web'] })).toEqual(['wait'])
+    expect(Checks.removals!(current, undefined)).toEqual(['disabled', 'wait'])
+    expect(Checks.removals!(current, false)).toEqual([])
+    const all = await Checks.read(makeCtx({ 'checks:report myapp': '       Checks disabled list: _all_\n' }), 'myapp')
+    expect(Checks.removals!(all, undefined)).toEqual([])
+  })
+})
+
+describe('proxy removals', () => {
+  it('has none: "Proxy enabled" is read-only report state, never a removal', async () => {
+    expect(Proxy.removals).toBeUndefined()
+    expect(await Proxy.read(makeCtx({ 'proxy:report myapp --proxy-enabled': 'true' }), 'myapp')).toBe(true)
+  })
+})
+
+describe('env and docker options removals', () => {
+  it('env: managed keys gone from the file, including when env: is absent', () => {
+    expect(Config.removals!({ A: '1', B: '2' }, { A: '1' })).toEqual(['B'])
+    expect(Config.removals!({ A: '1' }, undefined)).toEqual(['A'])
+  })
+
+  it('docker options: entries only on the box inside a declared block; a missing block is not shown', () => {
+    expect(DockerOptions.removals!({ deploy: ['--a', '--b'], run: ['--r'] }, { deploy: ['--a'] }))
+      .toEqual(['deploy: --b', 'run: --r'])
+    expect(DockerOptions.removals!({ deploy: ['--a'] }, undefined)).toEqual([])
+  })
+})

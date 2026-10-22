@@ -84,3 +84,7 @@ apps:
 | `[list]` | `checks:report <app> --checks-skipped-list` (check)<br>`checks:skip <app> <types>` (if changed) |
 | `false` | `checks:report <app> --checks-skipped-list` (check)<br>`checks:enable <app>` (if any currently skipped) |
 | absent | no action |
+
+## Removal
+
+A `disabled` or `skipped` list, or a `wait`, `timeout` or `attempts` value, set on the server but absent from `apps.<app>.checks` is a removal (`checks: false` has none). `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and prints one line per app pointing at `diff`; `--prune` (coming next) will remove it.
