@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-10-24
+
+### Fixed
+
+- **`up --dry-run` stopped at a new backup schedule** with `Backup schedule for <service> was not installed after backup-schedule ran`. The check that a schedule landed read the server after a command the dry-run never ran; a dry-run now plans the schedule and skips the check, and a real `up` still checks it.
+
 ## [0.14.1] - 2026-10-24
 
 ### Fixed

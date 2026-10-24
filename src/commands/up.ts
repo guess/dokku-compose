@@ -192,6 +192,7 @@ async function runUpPhases(
   if (config.postgres) {
     await ensurePostgresBackups(ctx, config.postgres, {
       prune: opts.prune,
+      dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdPostgres : undefined,
     })
   }

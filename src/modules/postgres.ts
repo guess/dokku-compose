@@ -44,11 +44,12 @@ export async function ensurePostgres(
  * Only `backup: false` removes a backup; an absent block leaves it alone.
  * `dryRunCreated` names services this --dry-run only planned to create: they
  * cannot be read, and a new service has no backup, so every step is planned.
+ * `dryRun` skips the check that a new schedule landed, since nothing ran.
  */
 export async function ensurePostgresBackups(
   ctx: Context,
   services: Record<string, PostgresConfig>,
-  opts: { prune?: boolean; dryRunCreated?: Set<string> } = {}
+  opts: { prune?: boolean; dryRun?: boolean; dryRunCreated?: Set<string> } = {}
 ): Promise<void> {
   for (const [name, config] of Object.entries(services)) {
     const backup = config.backup
@@ -113,9 +114,11 @@ export async function ensurePostgresBackups(
     if (fields.has('backup.schedule')) {
       await ctx.run('postgres:backup-schedule', name, schedule, bucket)
       // Check the schedule landed: a silent failure would otherwise leave no backups.
-      const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
-      if (!parseBackupSchedule(cronOutput)) {
-        throw new Error(`Backup schedule for ${name} was not installed after backup-schedule ran`)
+      if (!opts.dryRun) {
+        const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
+        if (!parseBackupSchedule(cronOutput)) {
+          throw new Error(`Backup schedule for ${name} was not installed after backup-schedule ran`)
+        }
       }
     } else if (fields.has('backup.bucket')) {
       await ctx.run('postgres:set', name, 'backup-bucket', bucket)
