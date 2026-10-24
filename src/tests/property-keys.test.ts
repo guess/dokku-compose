@@ -113,6 +113,10 @@ describe('validate: the schema takes exactly what Dokku takes', () => {
     expect(() => parseConfig(withApp({ myapp: { git: { archive_max_size: '10' } } }))).toThrow(/global git setting/)
   })
 
+  it('accepts a git block without the archive limits', () => {
+    expect(() => parseConfig(withApp({ myapp: { git: { deploy_branch: 'main' } } }))).not.toThrow()
+  })
+
   it('still takes the string form of scheduler', () => {
     expect(parseConfig(withApp({ myapp: { scheduler: 'k3s' } })).apps.myapp.scheduler).toBe('k3s')
   })

@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-10-24
+
+### Fixed
+
+- **0.14.0 failed to load any compose file on a fresh npm install** with `git.archive_max_files` / `archive_max_size` "expected nonoptional". zod 4.6 made the `z.any().refine` guard on those keys required; they are optional again and still rejected when set. The locked zod is now 4.6.7, the version npm installs, so the tests run on it.
+
 ## [0.14.0] - 2026-10-22
 
 ### Breaking
