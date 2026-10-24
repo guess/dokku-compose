@@ -123,6 +123,12 @@ describe('ensurePostgresBackups', () => {
     await expect(ensurePostgresBackups(ctx, { 'api-db': { backup } })).rejects.toThrow('was not installed')
   })
 
+  it('a dry-run plans a new schedule without checking that it landed', async () => {
+    const { ctx, runner } = server({ ...configured, 'backup-schedule': '', 'backup-bucket': '' }, { 'postgres:backup-schedule-cat api-db': '' })
+    await ensurePostgresBackups(ctx, { 'api-db': { backup } }, { dryRun: true })
+    expect(runner.dryRunLog).toEqual(["postgres:backup-schedule api-db '0 * * * *' db-backups/api-db"])
+  })
+
   it('backup: false unschedules, then deauths', async () => {
     const { ctx, runner } = server(configured)
     await ensurePostgresBackups(ctx, { 'api-db': { backup: false } })
