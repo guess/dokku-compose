@@ -87,27 +87,36 @@ export const NetworkProps: Resource<NetworkPropsConfig> = {
     }
     return result
   },
-  onChange: async (ctx, target, { after }: Change<NetworkPropsConfig>) => {
-    if (after.attach_post_create !== undefined && after.attach_post_create !== false) {
-      const nets = Array.isArray(after.attach_post_create)
-        ? after.attach_post_create : [after.attach_post_create]
-      await ctx.run('network:set', target, 'attach-post-create', ...nets)
-      ctx.needsRebuild(target, 'network')
-    }
-    if (after.initial_network !== undefined && after.initial_network !== false) {
-      await ctx.run('network:set', target, 'initial-network', after.initial_network)
-      ctx.needsRebuild(target, 'network')
-    }
-    if (after.bind_all_interfaces !== undefined) {
-      await ctx.run('network:set', target, 'bind-all-interfaces', String(after.bind_all_interfaces))
-      ctx.needsRestart(target, 'network')
-    }
-    if (after.static_web_listener !== undefined && after.static_web_listener !== false) {
-      await ctx.run('network:set', target, 'static-web-listener', after.static_web_listener)
-    }
-    if (after.tld !== undefined && after.tld !== false) {
-      await ctx.run('network:set', target, 'tld', after.tld)
-      ctx.needsRestart(target, 'network')
+  // `false` clears a property, so it is in sync when the server has no value; a
+  // declared value must match what the server reports.
+  inSync: (current, desired) =>
+    (Object.keys(desired) as (keyof NetworkPropsConfig)[]).every(k => propInSync(current, desired, k)),
+  onChange: async (ctx, target, { before, after }: Change<NetworkPropsConfig>) => {
+    const todo = (k: keyof NetworkPropsConfig) => after[k] !== undefined && !propInSync(before, after, k)
+    for (const [key, restart] of [
+      ['attach_post_create', false], ['initial_network', false], ['bind_all_interfaces', true],
+      ['static_web_listener', null], ['tld', true],
+    ] as const) {
+      if (!todo(key)) continue
+      const value = after[key]
+      const args = value === false && key !== 'bind_all_interfaces' ? []
+        : Array.isArray(value) ? value : [String(value)]
+      await ctx.run('network:set', target, key.replaceAll('_', '-'), ...args)
+      if (restart === false) ctx.needsRebuild(target, 'network')
+      else if (restart) ctx.needsRestart(target, 'network')
     }
   },
+}
+
+/** One declared key against the server. `false` (clear) matches an unset key; bind_all_interfaces: false matches unless the server reports true. */
+function propInSync(current: NetworkPropsConfig | undefined, desired: NetworkPropsConfig, key: keyof NetworkPropsConfig): boolean {
+  const want = desired[key]
+  const have = current?.[key]
+  if (want === undefined) return true
+  if (key === 'bind_all_interfaces') return (want === true) === (have === true)
+  if (want === false) return have === undefined
+  if (have === undefined || have === false) return false
+  const w = Array.isArray(want) ? want : [want as string]
+  const h = Array.isArray(have) ? have : [have as string]
+  return w.length === h.length && w.every(v => h.includes(v))
 }

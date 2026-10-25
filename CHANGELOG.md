@@ -5,6 +5,7 @@
 ### Fixed
 
 - **`up --prune` never reset git properties.** A `keep_git_dir` removed from the file stayed on the server, and plain `up` did not count it among the leftovers it reports, although 0.14.0 said `--prune` covers git. `up --prune` now runs `git:set <app> keep-git-dir` with no value, and `up` counts it. `deploy-branch`, `source-image` and `rev-env-var` are written by Dokku and are still never reset.
+- **`false` on a `network` property did nothing.** `attach_post_create`, `initial_network`, `static_web_listener` and `tld` accept `false`, but `up` ran no command for it. `false` now clears the property (`network:set <app> <property>` with no value) when the server has one, does nothing when it is already unset, and `diff` shows the difference. `up` also stops re-setting declared `network` keys that already match.
 
 ## [0.14.2] - 2026-10-24
 

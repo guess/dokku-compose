@@ -45,18 +45,18 @@ apps:
 
 Map for additional `network:set` properties beyond `attach-post-deploy`. Each sub-key corresponds to one Dokku network property. Only declared keys are compared with `network:report <app>`, and `network:set` runs only for those that differ.
 
-`false` is accepted for `attach_post_create`, `initial_network`, `static_web_listener` and `tld` but runs no command; to reset a property, remove the key and run `up --prune` (see Removal).
+`false` clears `attach_post_create`, `initial_network`, `static_web_listener` and `tld`: `network:set <app> <property>` with no value, run only when `network:report` shows a value. When the property is already unset nothing runs and `diff` is in sync. A key left out is not touched (remove it and run `up --prune` to reset it, see Removal).
 
 ```yaml
 apps:
   myapp:
     network:
-      attach_post_create:        # list = set; absent = no action
+      attach_post_create:        # list = set; false = clear; absent = no action
         - init-net
-      initial_network: custom-bridge  # string = set; absent = no action
+      initial_network: custom-bridge  # string = set; false = clear; absent = no action
       bind_all_interfaces: true  # true = bind 0.0.0.0; false = bind internal; absent = no action
-      static_web_listener: 127.0.0.1:5000  # string = set; absent = no action
-      tld: internal              # string = set; absent = no action
+      static_web_listener: 127.0.0.1:5000  # string = set; false = clear; absent = no action
+      tld: internal              # string = set; false = clear; absent = no action
 ```
 
 ### `attach_post_create`
@@ -65,7 +65,8 @@ Attach to networks after the container is created but before it starts. Useful f
 
 | Value | Dokku command |
 |-------|---------------|
-| list of names | `network:set <app> attach-post-create <space-separated list>` |
+| list of names | `network:set <app> attach-post-create <space-separated list>` (if different) |
+| `false` | `network:set <app> attach-post-create` (clear, if the server has a value) |
 | absent | no action |
 
 ### `initial_network`
@@ -74,7 +75,8 @@ Attach to a network at container creation time. This is the very first network a
 
 | Value | Dokku command |
 |-------|---------------|
-| network name | `network:set <app> initial-network <name>` |
+| network name | `network:set <app> initial-network <name>` (if different) |
+| `false` | `network:set <app> initial-network` (clear, if the server has a value) |
 | absent | no action |
 
 ### `bind_all_interfaces`
@@ -91,7 +93,8 @@ Controls whether the app container binds to all network interfaces (`0.0.0.0`) o
 
 | Value | Dokku command |
 |-------|---------------|
-| `host:port` string | `network:set <app> static-web-listener <value>` |
+| `host:port` string | `network:set <app> static-web-listener <value>` (if different) |
+| `false` | `network:set <app> static-web-listener` (clear, if the server has a value) |
 | absent | no action |
 
 ### `tld`
@@ -100,7 +103,8 @@ Appended to internal network aliases (e.g., `svc.cluster.local`). Useful when mu
 
 | Value | Dokku command |
 |-------|---------------|
-| suffix string | `network:set <app> tld <suffix>` |
+| suffix string | `network:set <app> tld <suffix>` (if different) |
+| `false` | `network:set <app> tld` (clear, if the server has a value) |
 | absent | no action |
 
 ## Down behaviour

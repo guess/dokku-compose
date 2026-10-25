@@ -211,6 +211,24 @@ describe('a server whose state equals the file', () => {
     expect(runner.dryRunLog).toEqual([])
   })
 
+  it('a network property declared false but set on the server shows in diff, and up clears exactly it', async () => {
+    const server = inSyncServer()
+    server.queries['network:report myapp'] = report('myapp', 'network', {
+      'Network attach post create': 'backend-net',
+      'Network attach post deploy': 'backend-net',
+      'Network bind all interfaces': 'true',
+      'Network initial network': 'bridge',
+      'Network static web listener': '127.0.0.1:5000',
+      'Network tld': 'internal',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps['myapp'].network).toMatchObject({ status: 'changed' })
+    expect(diff.inSync).toBe(false)
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual(['network:set myapp static-web-listener'])
+  })
+
   it('a global domain that differs shows in diff, and up sets exactly that', async () => {
     const server = inSyncServer()
     server.queries['domains:report --global --domains-global-vhosts'] = 'old.example.com'

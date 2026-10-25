@@ -134,3 +134,76 @@ describe('NetworkProps --prune', () => {
     expect(ctx.commands).toEqual([])
   })
 })
+
+describe('NetworkProps false clears', () => {
+  const SET = [
+    '=====> myapp network information',
+    '       Network attach post create: net-a',
+    '       Network attach post deploy:',
+    '       Network bind all interfaces: false',
+    '       Network initial network: net-c',
+    '       Network static web listener: 127.0.0.1:5000',
+    '       Network tld: internal',
+  ].join('\n')
+  const UNSET = [
+    '=====> myapp network information',
+    '       Network attach post create:',
+    '       Network attach post deploy:',
+    '       Network bind all interfaces: false',
+    '       Network initial network:',
+    '       Network static web listener:',
+    '       Network tld:',
+  ].join('\n')
+  function ctxFor(report: string) {
+    const runner = createRunner({ dryRun: false })
+    runner.query = vi.fn(async () => report)
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+  const ALL_FALSE = { attach_post_create: false, initial_network: false, static_web_listener: false, tld: false } as const
+
+  it.each([
+    ['attach_post_create', 'attach-post-create'],
+    ['initial_network', 'initial-network'],
+    ['static_web_listener', 'static-web-listener'],
+    ['tld', 'tld'],
+  ])('%s: false runs network:set with no value when the server has one', async (key, dokkuKey) => {
+    const ctx = ctxFor(SET)
+    await reconcile(NetworkProps, ctx, 'myapp', { [key]: false } as any)
+    expect(ctx.commands).toEqual([['network:set', 'myapp', dokkuKey]])
+  })
+
+  it('false runs nothing when the server has no value', async () => {
+    const ctx = ctxFor(UNSET)
+    await reconcile(NetworkProps, ctx, 'myapp', ALL_FALSE)
+    expect(ctx.commands).toEqual([])
+  })
+
+  it('false clears every set key at once', async () => {
+    const ctx = ctxFor(SET)
+    await reconcile(NetworkProps, ctx, 'myapp', ALL_FALSE)
+    expect(ctx.commands).toEqual([
+      ['network:set', 'myapp', 'attach-post-create'],
+      ['network:set', 'myapp', 'initial-network'],
+      ['network:set', 'myapp', 'static-web-listener'],
+      ['network:set', 'myapp', 'tld'],
+    ])
+  })
+
+  it('does not rewrite a declared key that already matches', async () => {
+    const ctx = ctxFor(SET)
+    await reconcile(NetworkProps, ctx, 'myapp', { tld: 'internal', initial_network: false })
+    expect(ctx.commands).toEqual([['network:set', 'myapp', 'initial-network']])
+  })
+
+  it('inSync: false matches unset and differs from a set value', () => {
+    expect(NetworkProps.inSync!({}, { tld: false })).toBe(true)
+    expect(NetworkProps.inSync!({ tld: 'internal' }, { tld: false })).toBe(false)
+    expect(NetworkProps.inSync!({ tld: 'internal' }, { tld: 'internal' })).toBe(true)
+  })
+
+  it('read reports a cleared key as absent, so export never invents false', async () => {
+    const ctx = ctxFor(UNSET)
+    expect(await NetworkProps.read(ctx, 'myapp')).toEqual({})
+  })
+})
