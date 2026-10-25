@@ -72,6 +72,26 @@ apps:
 | `[list]` | `checks:report <app>` (check)<br>`checks:skip <app> <type,type>` (types not yet skipped) |
 | absent | no action |
 
+### Global Wait To Retire (`checks.wait-to-retire`, top-level)
+
+Sets Dokku's global `wait-to-retire`, used by every app without its own value. It is the only checks property Dokku accepts with `--global`, so the top-level `checks:` block takes only that key; `false`, `disabled` and `skipped` are per-app and are rejected at the top level by `validate`. `up` reads `checks:report --global --format json` and runs `checks:set --global` only when the value differs; `diff` shows it under `global`.
+
+```yaml
+checks:
+  wait-to-retire: 60      # checks:set --global wait-to-retire 60
+```
+
+| Value | Dokku Commands |
+|-------|----------------|
+| `wait-to-retire: <seconds>` | `checks:report --global --format json` (check)<br>`checks:set --global wait-to-retire <value>` (if changed) |
+| absent | no action |
+
+The new value applies on each app's next deploy; `up` lists no restart. `export` writes the server's global value as this block. A read or `--global` command that fails aborts the whole run, as every global step does.
+
 ## Removal
 
 A `disabled` or `skipped` list, or a `wait-to-retire` value, set on the server but absent from `apps.<app>.checks` is a removal (`checks: false` has none). `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and does not count it in its leftover line; `dokku-compose diff` shows it. `up --prune` removes a stale `disabled`/`skipped` list with `checks:enable <app> <type,type>`, only for types the file declares in neither list (`checks:enable` clears both states, so a declared type is left with a warning naming the command to run by hand) and `wait-to-retire` with `checks:set <app> wait-to-retire`, also for a removed block.
+
+### Top-level
+
+A global `wait-to-retire` set on the server but absent from a top-level `checks:` block that the file declares (for example `checks: {}`) is a removal: `diff` shows it with a red `-` under `global`, `up` leaves it, and `up --prune` resets it with `checks:set --global wait-to-retire`. A file with no top-level `checks:` block never touches the global value.

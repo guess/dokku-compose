@@ -48,6 +48,10 @@ apps:
 | `proxy_ssl_port: <port>` | `proxy:report <app>` (check)<br>`proxy:set <app> proxy-ssl-port <port>` (if changed) |
 | absent | no action |
 
+### No top-level `proxy:`
+
+There is no top-level `proxy:` key. Dokku accepts `proxy:set --global` for `type`, `proxy-port` and `proxy-ssl-port`, but dokku-compose runs the nginx proxy only: a global `type` would move every app to another proxy, and Dokku writes each app's ports itself on every nginx build. Set them per app above, or run `dokku proxy:set --global` by hand.
+
 ## Removal
 
 `proxy.enabled` has no unset: when the key is absent `up` and `diff` leave the server's proxy state alone, and the `Proxy enabled` report line is never shown as a removal. A `type` set on the server but absent from the file is a removal; `up --prune` resets it with `proxy:set <app> type`. `proxy-port` and `proxy-ssl-port` are written by Dokku on each nginx build, so they are compared only when declared and are never a removal.

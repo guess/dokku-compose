@@ -59,7 +59,9 @@ bun run build
 **Modules** (`src/modules/`): host-level and service features that are not per-app resources, with `ensure*()`, `destroy*()`, `export*()` and read helpers as each needs:
 
 - `apps.ts` — App listing for `export` (`exportApps`) and app destroy for `down`
-- `domains.ts`, `logs.ts`, `nginx.ts`, `config.ts` — Global domains, logs, nginx properties and env
+- `domains.ts`, `config.ts` — Global domains and env
+- `global.ts` — Global (`--global`) properties of nginx, logs, scheduler, registry, checks, ps, build, network and git: key tables, read, apply, prune, restart marks
+- `logs.ts`, `nginx.ts` — Per-app helpers and the exports of their global steps
 - `docker-auth.ts` — Host registry logins
 - `postgres.ts`, `redis.ts` — Service creation, Postgres backups, export
 - `service-drift.ts` — Service version and backup drift for `diff`
@@ -79,7 +81,7 @@ bun run build
 - `export.ts` — Query server state → emit YAML
 - `diff.ts` — Compare local YAML vs server state (summary + verbose modes)
 
-**Execution flow for `up`:** Version check → Plugins and Docker auth → Global config (domains, env, logs, nginx) → Networks → Volumes → Postgres → Redis → Postgres backups → Per-app (create → domains → networks → network properties → proxy → proxy properties → ports → links → certs → storage (skipped when an entry it mounts failed in Volumes) → nginx → checks → logs → registry → scheduler → ps → scale → env vars → builder → git → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead). With `--prune`, the nginx, logs, registry, scheduler, ps, network, proxy-property, checks, build and git resources also reset the settings the file no longer declares (`Resource.prune`, run after the normal apply; a block absent from the file is read once to find them).
+**Execution flow for `up`:** Version check → Plugins and Docker auth → Global config (domains → env → logs → nginx → scheduler → registry → checks → ps → build → git; each top-level block is Dokku's own `--global` setting, and a block absent from the file is never touched) → Networks (create the `networks:` list, then the global `network` properties) → Volumes → Postgres → Redis → Postgres backups → Per-app (create → domains → networks → network properties → proxy → proxy properties → ports → links → certs → storage (skipped when an entry it mounts failed in Volumes) → nginx → checks → logs → registry → scheduler → ps → scale → env vars → builder → git → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead). With `--prune`, the nginx, logs, registry, scheduler, ps, network, proxy-property, checks, build and git resources also reset the settings the file no longer declares (`Resource.prune`, run after the normal apply; a block absent from the file is read once to find them).
 
 **Version check:** every server command (`up`, `diff`, `down`, `export`, `ps`) calls `assertDokkuSupported` (`src/modules/version.ts`) first: below `MIN_DOKKU_VERSION` (0.38.29, the first Dokku with `registry:auth-status`) it throws before any other Dokku call. `dokku.version` in the file is a hard minimum for `up` (`enforceFileVersion`); `diff` reports any difference as a drift line and a newer server only makes `up` log a notice.
 

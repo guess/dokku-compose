@@ -49,6 +49,28 @@ apps:
 
 Only the seven properties `ps:set` accepts in Dokku 0.38.31 are accepted: `dockerfile-start-cmd`, `procfile-path`, `restart-policy`, `restore`, `skip-deploy`, `start-cmd` and `stop-timeout-seconds`; any other key fails validation. Current values are read from `ps:report <app> --format json`, ignoring empty values. `restore` is Dokku-managed state (it prints `true` when unset, and `ps:stop` writes `false`): a declared value is compared, but an undeclared one is never a removal, so `--prune` does not reset it.
 
+### Global ps properties (`ps`, top-level)
+
+Sets Dokku's global process defaults, which every app without its own value inherits. Dokku accepts four `ps` keys with `--global`: `procfile-path`, `restart-policy`, `skip-deploy` and `stop-timeout-seconds`. `restore`, `start-cmd` and `dockerfile-start-cmd` are per-app only and are rejected at the top level by `validate`. There is no global `scale`. `up` reads `ps:report --global --format json` and runs `ps:set --global` only for the entries that differ; `diff` shows them under `global`. The values apply when an app's containers next start; `up` lists no restart for them.
+
+```yaml
+ps:
+  restart-policy: "on-failure:5"   # ps:set --global restart-policy on-failure:5
+  stop-timeout-seconds: 60         # ps:set --global stop-timeout-seconds 60
+```
+
+| State | Dokku Command |
+|-------|---------------|
+| Property differs from `ps:report --global` | `ps:set --global <key> <value>` |
+| Property matches | none |
+| `ps` absent | none |
+
+`export` writes the server's global values as this block. A read or `--global` command that fails aborts the whole run, as every global step does.
+
 ## Removal
 
 A `ps` property (any of the seven above except `restore`) set on the server but absent from `apps.<app>.ps` is a removal. `diff` shows it with a red `-` and counts it as drift, including when the whole block is gone from the file. `up` leaves it on the server and, for a block the file declares, includes it in a one-line count of leftovers it noticed; `dokku-compose diff` gives the full list, including removed blocks. `up --prune` resets it with `ps:set <app> <key>` and no value, also for a removed block. It never changes `scale`. `ps` read-only report fields (deployed, running, status, `computed-*`, `global-*`) are never shown. A process type only on the server is never shown or touched.
+
+### Top-level
+
+A global `ps` key set on the server but absent from a top-level `ps:` block that the file declares is a removal: `diff` shows it with a red `-` under `global`, `up` leaves it, and `up --prune` resets it with `ps:set --global <key>` and no value. A file with no top-level `ps:` block never touches the global values.

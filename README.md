@@ -58,7 +58,7 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
-When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks and storage entries (`volumes:`) missing or different on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `env:`, `nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:` and `git:` (under `global`; log sinks are masked), shared networks and storage entries (`volumes:`) missing or different on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
 
 ### 3. Preview changes
 
@@ -100,11 +100,16 @@ dokku ps:restart worker  # env, storage
 | `docker_options` deploy and run | yes | docker-options docs: applies "only to containers created after" the change |
 | `links` link or unlink | yes | applied with `--no-restart` |
 | `network` `tld`, `bind_all_interfaces` | yes | read when containers start |
+| top-level `network:` `tld`, `bind_all_interfaces` | yes, every app the run processes | as above |
 | `networks`, `network` `attach_post_create`, `initial_network` | rebuild: `dokku ps:rebuild <app>` | network docs (network.md:210): "A change in these values will require an app deploy or rebuild" |
+| top-level `network:` `attach_post_create`, `attach_post_deploy`, `initial_network` | rebuild, every app the run processes | as above |
 | `docker_options` build, `build.args`, `build.dockerfile`, `app_json`, `context` | rebuild | read by a build, which a restart does not run |
+| top-level `build:` `selected`, `context`, `dockerfile`, `app_json` | rebuild, every app the run processes | as above |
 | `ports` | no | `ports:set` fires `post-proxy-ports-update`, which rebuilds the nginx config |
-| `domains`, `nginx`, `proxy`, `certs`, `logs`, `checks`, `registry`, `scheduler` | no | applied live or read at deploy |
-| `scale`, `ps` | no | `--skip-deploy`: takes effect on the next deploy |
+| `domains`, `nginx`, `proxy`, `certs`, `logs`, `checks`, `registry`, `scheduler`, `git`, and their top-level blocks | no | applied live or read at deploy |
+| `scale`, `ps`, top-level `ps:` | no | `--skip-deploy`: takes effect on the next deploy |
+
+A top-level (global) change also reaches apps that are not in the file or that the run filtered out. The summary lists only the apps the run processes, so restart or rebuild the others yourself.
 
 ## Commands
 
@@ -136,7 +141,7 @@ dokku ps:restart worker  # env, storage
 
 `diff` marks with a red `-` every setting the server still has that the file no longer declares
 (managed env keys, nginx, logs, registry, scheduler, checks, `ps`, network, proxy and git
-properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. Only
+properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. A key set globally on the server that a declared top-level block (`nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:`, `git:`) no longer lists is shown too, under `global`; a top-level block that is absent from the file is never read, so settings made outside the file stay. Only
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
@@ -147,20 +152,25 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | Resource | Reset command |
 |----------|---------------|
 | `nginx`, `logs`, `registry`, `ps` (not the Dokku-written `ps` key `restore`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
+| top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network`, `git` (only the keys of a block the file declares) | `<plugin>:set --global <key>` with no value (`builder:set`, `builder-dockerfile:set` and `app-json:set` for `build`; `network` never clears `attach_post_deploy`) |
 | `scheduler` | `scheduler:set <app> selected` or `shell` |
 | `proxy` properties | `proxy:set <app> type` with no value (`proxy-port` and `proxy-ssl-port` are written by Dokku) |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
 | `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
 | `build.selected`, `build.skip_cleanup` | `builder:set <app> selected` / `skip-cleanup` with no value |
-| `git` (only `keep_git_dir`; `deploy_branch`, `source_image` and `rev_env_var` are written by Dokku and never reset) | `git:set <app> keep-git-dir` with no value |
+| `git` (`keep_git_dir`, and a `deploy_branch` equal to the top-level `git:` one that the app does not declare, which is a copy; `source_image`, `rev_env_var` and any other `deploy_branch` are never reset) | `git:set <app> keep-git-dir` / `deploy-branch` with no value |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
-It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service, network or storage entry, never uninstalls a plugin, never changes `scale`, never clears a `chown` or `mode` removed from a `volumes:` entry, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
+It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service, network or storage entry, never uninstalls a plugin, never changes `scale`, never clears a `chown` or `mode` removed from a `volumes:` entry, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy.enabled` is not a removal (`type` is). `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
+
+### Order of a run
+
+`up` applies the host and global settings first, then each app. The global part runs in this order: version check, plugins and Docker auth, global `domains`, `env`, `logs`, `nginx`, `scheduler`, `registry`, `checks`, `ps`, `build` and `git`, then the shared `networks` are created, the global `network` properties are set and the `volumes:` entries are created, then services. Every app is processed after all of that, so a per-app value, or a `--prune` that clears one, always meets the final global value. The top-level blocks are Dokku's own `--global` settings: Dokku does the inheritance, and a block that is absent from the file is never touched.
 
 ### Errors
 
 A failing Dokku command (mutation) is never reported as a success. On `up` and `down`, a
-global-phase failure (plugins, docker auth, global config, networks, services) aborts the whole
+global-phase failure (plugins, docker auth, global config such as the top-level settings, networks, services) aborts the whole
 run immediately. A per-app failure is printed with the command and Dokku's error output, and by
 default the run continues to the next app, exiting non-zero at the end with a summary of which
 apps failed; pass `--fail-fast` to stop at the first failure instead. `diff` never reports a
@@ -177,22 +187,22 @@ All features are idempotent — running `up` twice produces no changes.
 | Apps | Create and destroy Dokku apps | [apps](docs/reference/apps.md) |
 | Dokku Version | Stop when the server runs Dokku older than 0.38.32; `dokku.version` in the file is a hard minimum for `up` | [dokku](docs/reference/dokku.md) |
 | Environment Variables | Set config vars per app or globally, with full convergence (keys removed from the YAML are unset) | [config](docs/reference/config.md) |
-| Build | Dockerfile path, build context, app.json, build args | [builder](docs/reference/builder.md) |
+| Build | Dockerfile path, build context, app.json, builder selection per app or globally, build args | [builder](docs/reference/builder.md) |
 | Docker Options | Custom Docker options per phase (build/deploy/run) | [docker_options](docs/reference/docker_options.md) |
-| Networks | Create shared Docker networks, attach to apps | [network](docs/reference/network.md) |
+| Networks | Create shared Docker networks, attach to apps, set network properties per app or globally | [network](docs/reference/network.md) |
 | Domains | Configure domains per app or globally | [domains](docs/reference/domains.md) |
 | Port Mappings | Map external ports to container ports | [ports](docs/reference/ports.md) |
 | SSL Certificates | Add, replace or remove SSL certs | [certs](docs/reference/certs.md) |
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
 | Storage | Named storage entries (`volumes:`) with owner and mode, mounted into apps by name and converged with `storage:mount --replace` | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
-| Scheduler | Select the scheduler and shell per app (`scheduler:set`) | [scheduler](docs/reference/scheduler.md) |
-| Registry | Image repo, template, push and server properties per app (`registry:set`) | [registry](docs/reference/registry.md) |
-| Git | `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image` per app, with a top-level default (`git:set`) | [git](docs/reference/git.md) |
-| Zero-Downtime Checks | Configure deploy checks, disable per process type | [checks](docs/reference/checks.md) |
+| Scheduler | Select the scheduler and shell per app or globally (`scheduler:set`) | [scheduler](docs/reference/scheduler.md) |
+| Registry | Image repo, template, push and server properties per app or globally (`registry:set`) | [registry](docs/reference/registry.md) |
+| Git | `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image` per app; top-level `git:` sets the global `deploy_branch`, `keep_git_dir`, `archive_max_files`, `archive_max_size` (`git:set --global`) | [git](docs/reference/git.md) |
+| Zero-Downtime Checks | Configure deploy checks, disable per process type, set `wait-to-retire` globally | [checks](docs/reference/checks.md) |
 | Log Management | Log retention and vector sink configuration | [logs](docs/reference/logs.md) |
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |
-| Process Scale & ps | Declare process counts (`ps:scale`) and ps properties (`ps:set`) | [scale](docs/reference/scale.md) |
+| Process Scale & ps | Declare process counts (`ps:scale`) and ps properties per app or globally (`ps:set`) | [scale](docs/reference/scale.md) |
 | Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
 | Postgres | Postgres services with optional S3 backups, encrypted or not, read from `postgres:info` so backup drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
 | Redis | Redis service instances with the same optional S3 backups | [redis](docs/reference/redis.md) |
