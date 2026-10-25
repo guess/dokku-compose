@@ -60,15 +60,15 @@ builds:output	X	Read-only
 builds:prune	X	Maintenance
 builds:report	X	Read-only
 builds:set	N	A5: `retention`
-certs:add	P	`ssl: {certfile, keyfile}`; re-added on every `up` (F1)
+certs:add	Y	`ssl: {certfile, keyfile}` when no cert is installed
 certs:chain	X	Not implemented in Dokku
 certs:generate	X	One-shot action
 certs:key	X	Not implemented in Dokku
 certs:remove	Y	`ssl: false`
 certs:report	R	`ssl` read (`--ssl-enabled` only)
 certs:rollback	X	Not implemented in Dokku
-certs:show	X	Read-only (F1 could read it to compare)
-certs:update	N	F1: replace a changed cert in place
+certs:show	R	`ssl` read: `crt` only, compared with `certfile`; the key is never read
+certs:update	Y	`ssl: {certfile, keyfile}` when the installed cert differs
 checks:disable	Y	`checks.disabled`
 checks:enable	Y	`checks` (re-enable)
 checks:report	R	`checks` read
@@ -81,9 +81,9 @@ config:export	R	`env` read (`--format json`)
 config:get	R	`env` read
 config:import	X	`env:` covers it
 config:keys	X	Read-only
-config:set	P	`env:` per app (managed keys) and global; global never unsets removed keys (F4)
+config:set	Y	`env:` per app and global, each with its own managed-keys marker; only changed keys are set
 config:show	X	Read-only
-config:unset	P	Per-app `env:` only; global keys removed from the file stay (F4)
+config:unset	Y	Managed keys removed from app or global `env:`
 cron:list	X	Read-only
 cron:report	X	Read-only
 cron:resume	N	A2: via `cron:set <app> maintenance.<id>`
@@ -107,7 +107,7 @@ domains:reset	X	One-shot action
 domains:set	Y	`domains:`
 domains:set-global	Y	Top-level `domains:`
 git:allow-host	N	A3
-git:auth	N	A3 (a production setup runs it in its setup script)
+git:auth	N	A3 (box setup scripts run it by hand)
 git:auth-status	N	A3: makes `git:auth` idempotent
 git:from-archive	X	Deploy trigger
 git:from-image	X	Deploy trigger
@@ -174,9 +174,9 @@ ps:scale	Y	`scale:` (`--skip-deploy`)
 ps:set	P	`ps:` (all 7 keys); no global (F10)
 ps:start	X	Runtime action
 ps:stop	X	Runtime action
-registry:auth-status	N	F4: makes `docker_auth` idempotent
-registry:login	P	`docker_auth:` (global); logs in on every run, never logs out (F4)
-registry:logout	N	F4: when a server leaves `docker_auth:`
+registry:auth-status	R	`docker_auth:` skips a login that matches (password on stdin)
+registry:login	Y	`docker_auth:` (global), `--password-stdin`, only when the login differs
+registry:logout	Y	`up --prune`, for a global login the file does not list
 registry:report	R	`registry` read
 registry:set	P	`registry:` per app; no global (F10)
 repo:gc	X	Maintenance
