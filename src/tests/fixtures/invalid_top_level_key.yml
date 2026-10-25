@@ -1,0 +1,4 @@
+x-common:
+  domains: [a.example.com]
+apps:
+  myapp: {}

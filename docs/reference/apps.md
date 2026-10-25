@@ -25,4 +25,4 @@ During `up`, `apps:exists <app>` is checked first: an app that exists is skipped
 | up | `apps:create <app>` (if missing) |
 | down | `apps:destroy <app> --force` (if it exists) |
 
-`apps:lock` / `apps:unlock` are not managed: a `locked:` key is not part of the schema and is ignored.
+`apps:lock` / `apps:unlock` are not managed: there is no `locked:` key, and `validate` rejects it, like any other unknown key under an app, with `ERROR: apps.<app>: Unrecognized key: "locked"`.

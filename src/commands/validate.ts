@@ -35,7 +35,8 @@ export function validate(filePath: string): ValidationResult {
       if (reasons && reasons.length > 0) {
         for (const r of reasons) errors.push(`${[issuePath, ...r.path].filter(x => x !== '').join('.')}: ${r.message}`)
       } else {
-        errors.push(`${issuePath}: ${issue.message}`)
+        // A top-level issue (an unknown top-level key) has an empty path: print just the message.
+        errors.push(issuePath ? `${issuePath}: ${issue.message}` : issue.message)
       }
     }
     // Continue to cross-field checks using raw data

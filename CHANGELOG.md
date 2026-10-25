@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Breaking
+
+- **Every command that loads the file now rejects an unknown key.** A typo such as `domain:` for `domains:`, or an unsupported key such as `locked: true`, used to be ignored without a word; it now stops with `ERROR: apps.<app>: Unrecognized key: "domain"` (`validate`) and a non-zero exit. This covers the top level and `apps.<app>`, plus `dokku`, `plugins.<name>`, `docker_auth.<registry>`, `postgres.<service>` (and its `backup`, `backup.auth`), `redis.<service>`, and an app's `ssl`, `network`, `build` and `docker_options`. Remove or fix the key to continue.
+
 ### Fixed
 
 - **`up --prune` never reset git properties.** A `keep_git_dir` removed from the file stayed on the server, and plain `up` did not count it among the leftovers it reports, although 0.14.0 said `--prune` covers git. `up --prune` now runs `git:set <app> keep-git-dir` with no value, and `up` counts it. `deploy-branch`, `source-image` and `rev-env-var` are written by Dokku and are still never reset.

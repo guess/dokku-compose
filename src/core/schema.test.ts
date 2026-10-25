@@ -137,3 +137,43 @@ describe('dokku.version', () => {
     expect(parseConfig({ dokku: {}, apps: {} }).dokku?.version).toBeUndefined()
   })
 })
+
+describe('unknown keys are rejected', () => {
+  const msg = (raw: unknown) => {
+    try { parseConfig(raw) } catch (e) { return (e as Error).message }
+    return ''
+  }
+
+  it('rejects an unknown app key, naming the key and its path', () => {
+    const m = msg({ apps: { web: { domain: ['a.example.com'] } } })
+    expect(m).toContain('domain')
+    expect(m).toContain('apps')
+    expect(m).toContain('web')
+  })
+
+  it('rejects locked: true', () => {
+    expect(msg({ apps: { web: { locked: true } } })).toContain('locked')
+  })
+
+  it('rejects an unknown top-level key', () => {
+    expect(msg({ apps: {}, domain: ['a.example.com'] })).toContain('domain')
+  })
+
+  it('rejects an unknown postgres service key', () => {
+    const m = msg({ apps: {}, postgres: { db: { versoin: '16' } } })
+    expect(m).toContain('versoin')
+    expect(m).toContain('postgres')
+  })
+
+  it('rejects an unknown redis service key', () => {
+    expect(msg({ apps: {}, redis: { cache: { tag: '7' } } })).toContain('tag')
+  })
+
+  it('rejects unknown keys in nested objects', () => {
+    expect(msg({ apps: { web: { build: { dockerfle: 'x' } } } })).toContain('dockerfle')
+    expect(msg({ apps: { web: { docker_options: { deplo: [] } } } })).toContain('deplo')
+    expect(msg({ apps: { web: { network: { tlds: 'x' } } } })).toContain('tlds')
+    expect(msg({ apps: { web: { ssl: { certfile: 'a', keyfile: 'b', extra: 1 } } } })).toContain('extra')
+    expect(msg({ apps: {}, dokku: { versoin: '1' } })).toContain('versoin')
+  })
+})

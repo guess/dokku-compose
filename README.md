@@ -115,7 +115,7 @@ dokku ps:restart worker  # env, storage
 | `dokku-compose diff` | Show what's out of sync between config and server |
 | `dokku-compose export` | Export current server state to YAML |
 | `dokku-compose ps [apps...]` | Show status of configured apps |
-| `dokku-compose validate [file]` | Validate config file offline (no server contact) |
+| `dokku-compose validate [file]` | Validate config file offline (no server contact); an unknown key anywhere in the file is an error |
 | `dokku-compose init [apps...]` | Create a starter `dokku-compose.yml` |
 
 ### Options

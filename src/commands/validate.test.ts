@@ -30,6 +30,11 @@ describe('validate', () => {
     expect(result.errors.some(e => e.includes('aliass'))).toBe(true)
   })
 
+  it('names an unknown top-level key without an empty path prefix', () => {
+    const result = validate(path.join(FIXTURES, 'invalid_top_level_key.yml'))
+    expect(result.errors).toEqual(['Unrecognized key: "x-common"'])
+  })
+
   it('errors on invalid port format', () => {
     const result = validate(path.join(FIXTURES, 'invalid_ports.yml'))
     expect(result.errors.some(e => e.includes('Port must be') || e.includes('invalid port') || e.includes('scheme'))).toBe(true)
