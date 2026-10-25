@@ -11,6 +11,22 @@ import {
 /** The parts of a postgres or redis service these functions read. */
 export interface ServicePropertiesInput {
   properties?: ServicePropertiesConfig
+  mounts?: string[]
+}
+
+/**
+ * The `<plugin>:create` flags for a new service's declared `properties` and `mounts`: every
+ * managed key is a create flag, so a new service is made with them and needs no restart.
+ * Keys with no built-in entry are set after the service exists.
+ */
+export function createArgs(declared: ServicePropertiesInput): string[] {
+  const args: string[] = []
+  for (const [key, value] of declaredEntries(declared.properties)) {
+    const spec = MANAGED_PROPERTIES[key]
+    if (spec) args.push(`--${spec.createFlag}`, value)
+  }
+  for (const mount of declared.mounts ?? []) args.push('--volume', mount)
+  return args
 }
 
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex')

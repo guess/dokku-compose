@@ -2,6 +2,7 @@ import type { Context } from '../core/context.js'
 import type { RedisConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
+import { createArgs } from './service-properties.js'
 import { exportServiceBackup } from './service-backup.js'
 
 export async function ensureRedis(
@@ -30,6 +31,7 @@ export async function ensureRedis(
     const args: string[] = ['redis:create', name]
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
+    args.push(...createArgs(config))
     await ctx.run(...args)
     created.add(name)
     logDone()
