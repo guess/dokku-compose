@@ -17,6 +17,11 @@ networks:
   - studio-net
   - backend-net
 
+volumes:
+  uploads:
+    chown: herokuish
+    mode: "0750"
+
 postgres:
   myapp-db:
     version: "17-3.5"

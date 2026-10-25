@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { SEMVER_RE } from '../modules/version.js'
 import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resources/properties.js'
+import { entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation } from './volume-rules.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V) {
@@ -54,6 +55,38 @@ const LinkSchema = z.union([
     querystring: z.string().min(1).optional(),
   }).strict().refine(l => !(l.alias && l.env_var), { message: '`alias` and `env_var` cannot be combined' }),
 ])
+
+const VolumeSchema = z.object({
+  // Checked below, so a wrong type gets a message that says how to write it.
+  chown: z.union([z.literal(false), z.string(), z.number()]).optional(),
+  mode: z.union([z.string(), z.number()]).optional(),
+  path: z.string().optional(),
+}).strict()
+
+/** Entries by name. A `legacy-<hash>` name may appear only as `{}`: an entry Dokku made, declared so apps can mount it. */
+const VolumesSchema = z.record(z.string(), VolumeSchema).superRefine((volumes, ctx) => {
+  const bad = (name: string, key: string | undefined, message: string) =>
+    ctx.addIssue({ code: 'custom', path: key ? [name, key] : [name], message })
+  for (const [name, v] of Object.entries(volumes)) {
+    if (isLegacyName(name)) {
+      if (Object.keys(v).length > 0) bad(name, undefined, `'${name}' starts with 'legacy-', which Dokku reserves for entries it made from old host-path mounts: declare such an entry as {}, or give a new entry another name`)
+      continue
+    }
+    const nameError = entryNameError(name)
+    if (nameError) bad(name, undefined, nameError)
+    if (v.mode !== undefined) { const e = modeError(v.mode); if (e) bad(name, 'mode', e) }
+    if (v.chown !== undefined) { const e = chownError(v.chown); if (e) bad(name, 'chown', e) }
+    if (v.path !== undefined) {
+      const e = pathError(v.path)
+      if (e) bad(name, 'path', e)
+      else if (!usesDefaultLocation(name, v.path)) {
+        // Dokku manages owner and mode only under its default storage location.
+        if (v.mode !== undefined) bad(name, 'mode', `mode needs the default location: Dokku refuses it on a custom path. Drop path, or manage '${v.path}' yourself`)
+        if (v.chown !== undefined && v.chown !== false) bad(name, 'chown', `chown needs the default location: Dokku refuses it on a custom path. Drop path, use chown: false, or manage '${v.path}' yourself`)
+      }
+    }
+  }
+})
 
 const AppSchema = z.object({
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
@@ -207,6 +240,7 @@ export const ConfigSchema = z.object({
   plugins: z.record(z.string(), PluginSchema).optional(),
   docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
   networks: z.array(z.string()).optional(),
+  volumes: VolumesSchema.optional(),
   postgres: z.record(z.string(), PostgresSchema).optional(),
   redis: z.record(z.string(), RedisSchema).optional(),
   apps: z.record(z.string(), AppSchema),
