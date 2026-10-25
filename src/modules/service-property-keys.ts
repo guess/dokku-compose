@@ -88,7 +88,7 @@ export function rejectedReason(key: string): string | undefined {
 /** The managed keys `--prune` may clear: everything but the password, which cannot be cleared. */
 export const PRUNABLE_PROPERTIES = Object.keys(MANAGED_PROPERTIES).filter(k => k !== 'password')
 
-export type PropertyValue = string | number | string[] | Record<string, string | number | boolean>
+export type PropertyValue = string | number | (string | number)[] | Record<string, string | number | boolean>
 
 /** The value `<plugin>:set` and `<plugin>:create` take for a declared value. */
 export function propertyString(key: string, value: PropertyValue): string {
