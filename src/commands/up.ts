@@ -189,12 +189,19 @@ async function runUpPhases(
 
   // Phase 4: Services
   const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
-  if (config.redis) await ensureRedis(ctx, config.redis)
+  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis) : new Set<string>()
   if (config.postgres) {
     await ensureServiceBackups(ctx, 'postgres', config.postgres, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdPostgres : undefined,
+    })
+  }
+  if (config.redis) {
+    await ensureServiceBackups(ctx, 'redis', config.redis, {
+      prune: opts.prune,
+      dryRun: opts.dryRun,
+      dryRunCreated: opts.dryRun ? createdRedis : undefined,
     })
   }
   await removeBackupHashKeys(ctx)
