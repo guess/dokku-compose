@@ -200,6 +200,8 @@ async function runUpPhases(
 
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)
+  // After the shared networks exist, so a global attach_post_deploy can name one of them.
+  if (config.network !== undefined) await ensureGlobal(ctx, 'network', config.network, globalOpts)
 
   // Storage entries, before any app mounts one. An entry that fails is logged
   // and the run goes on; the apps that mount it report it themselves.

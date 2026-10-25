@@ -23,6 +23,12 @@ env:
 networks:
   - backend-net
 
+network:
+  attach_post_deploy:
+    - backend-net
+  tld: internal
+  bind_all_interfaces: false
+
 volumes:
   uploads: {}               # default location, chowned to herokuish
   data:

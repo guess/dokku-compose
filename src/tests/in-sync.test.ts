@@ -107,6 +107,7 @@ function inSyncServer(): FakeServer {
       'builder:report --global --format json': globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true' }),
       'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
       'app-json:report --global --format json': globalReportJson('app-json', { 'appjson-path': 'app.json' }),
+      'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -766,5 +767,50 @@ describe('top-level global blocks', () => {
     server.queries['app-json:report --global --format json'] = globalReportJson('app-json', { 'appjson-path': 'app.json' })
     expect((await up(server)).log).toEqual([])
     expect((await up(server, { prune: true })).log).toEqual(['builder:set --global build-dir'])
+  })
+
+  it('network: a changed attach_post_deploy lists for rebuild only the apps without their own networks:', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', { tld: 'internal' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['network:set --global attach-post-deploy backend-net'])
+    expect([...changed.ctx.rebuilds.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+    expect(changed.ctx.restarts.size).toBe(0)
+  })
+
+  it('network: a changed tld lists for restart only the apps without their own tld', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'cluster.local' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['network:set --global tld internal'])
+    expect([...changed.ctx.restarts.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+    // A run limited to one app lists only it; apps outside the run are never listed.
+    const limited = await up(server, {}, ['myapp-worker'])
+    expect([...limited.ctx.restarts.keys()]).toEqual(['myapp-worker'])
+  })
+
+  it('network: bind_all_interfaces false is in sync when unset and set to false when the server says true', async () => {
+    const server = inSyncServer()
+    expect((await up(server)).log).toEqual([])
+    server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal', 'bind-all-interfaces': 'true' })
+    expect((await up(server)).log).toEqual(['network:set --global bind-all-interfaces false'])
+  })
+
+  it('network: --prune clears a dropped key and lists the apps, but never attach_post_deploy', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', {
+      'attach-post-deploy': 'backend-net', tld: 'internal', 'initial-network': 'bridge',
+    })
+    expect((await up(server)).log).toEqual([])
+    const pruned = await up(server, { prune: true })
+    expect(pruned.log).toEqual(['network:set --global initial-network'])
+    // myapp sets initial_network itself, so the cleared global value does not reach it.
+    expect([...pruned.ctx.rebuilds.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+
+    const config = loadConfig(FIXTURE)
+    config.network = { tld: 'internal' }
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    expect(runner.dryRunLog).toEqual(['network:set --global initial-network'])
   })
 })
