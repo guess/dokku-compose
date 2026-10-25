@@ -1,5 +1,5 @@
 import type { Context } from '../core/context.js'
-import { parseJsonReport } from '../resources/parsers.js'
+import { readGlobal, ensureGlobal, type GlobalOptions } from './global.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export async function ensureAppNginx(
@@ -26,26 +26,11 @@ export async function ensureAppNginx(
 }
 
 /** Global nginx settings from `nginx:report --global --format json`. */
-export async function readGlobalNginx(ctx: Context): Promise<Record<string, string>> {
-  return parseJsonReport(await ctx.queryStrict('nginx:report', '--global', '--format', 'json'), 'global')
-}
+export const readGlobalNginx = (ctx: Context): Promise<Record<string, string>> => readGlobal(ctx, 'nginx')
 
-/** Sets only the global nginx settings whose server value differs. */
-export async function ensureGlobalNginx(
-  ctx: Context,
-  nginx: Record<string, string | number>
-): Promise<void> {
-  logAction('global', 'Configuring nginx')
-  const current = await readGlobalNginx(ctx)
-  let changed = false
-  for (const [key, value] of Object.entries(nginx)) {
-    if (current[key] === String(value)) continue
-    await ctx.run('nginx:set', '--global', key, String(value))
-    changed = true
-  }
-  if (changed) logDone()
-  else logSkip()
-}
+/** Sets the global nginx settings whose server value differs; under `--prune` clears the ones the block dropped. */
+export const ensureGlobalNginx = (ctx: Context, block: Record<string, string | number>, opts: GlobalOptions = {}): Promise<boolean> =>
+  ensureGlobal(ctx, 'nginx', block, opts)
 
 export async function exportAppNginx(
   ctx: Context,

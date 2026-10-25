@@ -192,8 +192,11 @@ async function runUpPhases(
   if (await ensureGlobalConfig(ctx, config.env)) {
     markGlobalEnvRestart(ctx, apps.filter(app => config.apps[app]))
   }
-  if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
-  if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)
+  // The top-level blocks are Dokku's own `--global` settings. A block the file does not
+  // declare is never read, so settings made outside the file stay (even under --prune).
+  const globalOpts = { prune: opts.prune, apps: apps.filter(app => config.apps[app]), appConfigs: config.apps }
+  if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs, globalOpts)
+  if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx, globalOpts)
 
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)
