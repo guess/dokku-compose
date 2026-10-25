@@ -4,7 +4,7 @@ import type { Config, ServicePropertiesConfig } from '../core/schema.js'
 import { logAction, logDone, logError, logSkip } from '../core/logger.js'
 import { forgetServiceInfo, readServiceInfo, field, type ServiceInfo, type ServiceMismatch } from './service-drift.js'
 import {
-  MANAGED_PROPERTIES, PRUNABLE_PROPERTIES, propertyString, sameProperty, isDefaultProperty,
+  MANAGED_PROPERTIES, PRUNABLE_PROPERTIES, propertyString, sameProperty, isDefaultProperty, mountSet, parseInfoMounts,
   type ServicePlugin,
 } from './service-property-keys.js'
 
@@ -73,6 +73,34 @@ export function propertyChanges(plugin: ServicePlugin, info: ServiceInfo, proper
   return changes
 }
 
+/** The mounts the server reports, as normalised specs. A plugin that reports none of the key is too old to compare. */
+function serverMounts(plugin: ServicePlugin, info: ServiceInfo): string[] {
+  if (!('mounts' in info)) throw new Error(`dokku-${plugin} too old to report mounts`)
+  return parseInfoMounts(field(info, 'mounts'))
+}
+
+/**
+ * The command that makes the server's mounts equal the declared set (order and `rw` do not
+ * matter): `:mount --replace` with the whole list, or `:unmount --all` for `mounts: []`.
+ * Nothing when the file declares no `mounts:` or the sets are equal.
+ */
+export function mountCommand(plugin: ServicePlugin, name: string, info: ServiceInfo, mounts: string[] | undefined): string[] | undefined {
+  if (mounts === undefined) return undefined
+  const desired = mountSet(mounts)
+  const current = serverMounts(plugin, info)
+  if (desired.join(' ') === current.join(' ')) return undefined
+  if (desired.length === 0) return [`${plugin}:unmount`, '--all', name]
+  return [`${plugin}:mount`, '--replace', name, ...new Set(mounts)]
+}
+
+/** Drift of the declared `mounts` against the server, for `diff`. */
+export function mountMismatches(plugin: ServicePlugin, info: ServiceInfo, mounts: string[] | undefined): ServiceMismatch[] {
+  if (mounts === undefined) return []
+  const desired = mountSet(mounts)
+  const current = serverMounts(plugin, info)
+  return desired.join(' ') === current.join(' ') ? [] : [{ field: 'mounts', desired: desired.join(' ') || '(none)', current: current.join(' ') || '(none)' }]
+}
+
 /** The `<plugin>:set` argv for a change. */
 function setArgs(plugin: ServicePlugin, name: string, change: PropertyChange): string[] {
   return [
@@ -98,17 +126,24 @@ export async function ensureServiceProperties(
 ): Promise<{ service: string; error: unknown }[]> {
   const failures: { service: string; error: unknown }[] = []
   for (const [name, declared] of Object.entries(services)) {
-    if (declared.properties === undefined && !opts.prune) continue
+    if (declared.properties === undefined && declared.mounts === undefined && !opts.prune) continue
     if (opts.dryRunCreated?.has(name)) continue
     try {
       const info = await readServiceInfo(ctx, plugin, name)
       const changes = propertyChanges(plugin, info, declared.properties, opts.prune ?? false)
+      const mount = mountCommand(plugin, name, info, declared.mounts)
       logAction('services', `Configuring properties for ${name}`)
-      if (changes.length === 0) { logSkip(); continue }
+      if (changes.length === 0 && !mount) { logSkip(); continue }
       for (const change of changes) {
         await ctx.run(...setArgs(plugin, name, change))
         forgetServiceInfo(ctx, plugin, name)
         if (change.restart) ctx.needsServiceRestart(plugin, name, change.key)
+      }
+      if (mount) {
+        await ctx.run(...mount)
+        forgetServiceInfo(ctx, plugin, name)
+        // mounts are read when the container is made
+        ctx.needsServiceRestart(plugin, name, 'mounts')
       }
       logDone()
     } catch (error) {
