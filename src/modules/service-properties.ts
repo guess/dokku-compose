@@ -2,6 +2,7 @@ import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
 import type { Config, ServicePropertiesConfig } from '../core/schema.js'
 import { logAction, logDone, logError, logSkip } from '../core/logger.js'
+import { normalizeLink } from './links.js'
 import { forgetServiceInfo, readServiceInfo, field, type ServiceInfo, type ServiceMismatch } from './service-drift.js'
 import {
   MANAGED_PROPERTIES, PRUNABLE_PROPERTIES, propertyString, sameProperty, isDefaultProperty, mountSet, parseInfoMounts,
@@ -101,6 +102,20 @@ export function mountMismatches(plugin: ServicePlugin, info: ServiceInfo, mounts
   return desired.join(' ') === current.join(' ') ? [] : [{ field: 'mounts', desired: desired.join(' ') || '(none)', current: current.join(' ') || '(none)' }]
 }
 
+/**
+ * The apps linked to a service, from `<plugin>:links <svc>`. A dry run adds the apps whose
+ * `links:` name the service, which a service planned for creation has not linked yet.
+ */
+export async function linkedApps(ctx: Context, plugin: ServicePlugin, name: string, config: Config, dryRun = false): Promise<string[]> {
+  const apps = new Set((await ctx.query(`${plugin}:links`, name)).split('\n').map(l => l.trim()).filter(l => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(l)))
+  if (dryRun) {
+    for (const [app, appConfig] of Object.entries(config.apps)) {
+      if ((appConfig.links ?? []).some(l => normalizeLink(l).service === name)) apps.add(app)
+    }
+  }
+  return [...apps]
+}
+
 /** The `<plugin>:set` argv for a change. */
 function setArgs(plugin: ServicePlugin, name: string, change: PropertyChange): string[] {
   return [
@@ -121,7 +136,7 @@ export async function ensureServiceProperties(
   ctx: Context,
   plugin: ServicePlugin,
   services: Record<string, ServicePropertiesInput>,
-  _config: Config,
+  config: Config,
   opts: { prune?: boolean; dryRun?: boolean; dryRunCreated?: Set<string> } = {},
 ): Promise<{ service: string; error: unknown }[]> {
   const failures: { service: string; error: unknown }[] = []
@@ -138,6 +153,8 @@ export async function ensureServiceProperties(
         await ctx.run(...setArgs(plugin, name, change))
         forgetServiceInfo(ctx, plugin, name)
         if (change.restart) ctx.needsServiceRestart(plugin, name, change.key)
+        // the plugin rewrites the url every linked app holds: they pick it up when they restart
+        if (change.password) for (const app of await linkedApps(ctx, plugin, name, config, opts.dryRun)) ctx.needsRestart(app, `${name} ${change.key} changed`)
       }
       if (mount) {
         await ctx.run(...mount)

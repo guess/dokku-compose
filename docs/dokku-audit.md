@@ -592,7 +592,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `:app-links` | ⛔ | ⛔ | Read-only |
 | `:clone` | ⛔ | ⛔ | One-shot action |
 | `:linked` | ✅ | ✅ | `links` read |
-| `:links` | ⛔ | ⛔ | Read-only |
+| `:links` | ✅ | ✅ | `up`: the apps linked to a service whose password changed, for the restart summary |
 | `:import` | ⛔ | ⛔ | Data operation |
 | `:export` | ⛔ | ⛔ | Data operation |
 | `:reset` | ⛔ | ⛔ | Destructive one-shot |

@@ -26,7 +26,7 @@ upgrade-cleanup	X	Maintenance	-	—
 app-links	X	Read-only	X	Read-only
 clone	X	One-shot action	X	One-shot action
 linked	R	`links` read	R	`links` read
-links	X	Read-only	X	Read-only
+links	R	`up`: the apps linked to a service whose password changed, for the restart summary	R	Same as postgres
 import	X	Data operation	X	Data operation
 export	X	Data operation	X	Data operation
 reset	X	Destructive one-shot	X	Destructive one-shot
