@@ -76,7 +76,7 @@ function inSyncServer(): FakeServer {
       'redis:linked myapp-redis myapp-worker': false,
     },
     queries: {
-      'version': 'dokku version 0.38.31',
+      'version': 'dokku version 0.38.32',
       'plugin:list --format json': JSON.stringify([
         { name: 'postgres', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
         { name: 'redis', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },

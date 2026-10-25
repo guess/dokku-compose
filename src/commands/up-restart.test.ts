@@ -18,7 +18,7 @@ function makeCtx(opts: { dryRun?: boolean } = {}) {
   const runner = createRunner({ dryRun: opts.dryRun ?? false })
   runner.check = vi.fn().mockResolvedValue(false)
   runner.query = vi.fn(async (...args: string[]) =>
-    args[0] === 'version' ? 'dokku version 0.38.31' : (emptyAnswer(...args) ?? ''))
+    args[0] === 'version' ? 'dokku version 0.38.32' : (emptyAnswer(...args) ?? ''))
   runner.queryStrict = vi.fn(async (...args: string[]) => {
     const out = await runner.query(...args)
     return args[0] === 'plugin:list' && !out ? '[]' : out

@@ -36,7 +36,7 @@ const config = (version?: string): Config => ({
   apps: { web: { ports: ['http:80:5000'] } },
 })
 
-const TOO_OLD = /needs Dokku >= 0\.38\.29; this server runs 0\.37\.9\. Upgrade Dokku first\./
+const TOO_OLD = /needs Dokku >= 0\.38\.32; this server runs 0\.37\.9\. Upgrade Dokku first\./
 
 describe('built-in Dokku floor', () => {
   it('up stops before any other Dokku call', async () => {
@@ -62,14 +62,14 @@ describe('built-in Dokku floor', () => {
     expect(other).toEqual([])
   })
 
-  it('0.38.29 passes the floor', async () => {
-    const { ctx } = fakeServer('0.38.29')
+  it('0.38.32 passes the floor', async () => {
+    const { ctx } = fakeServer('0.38.32')
     await expect(computeDiff(ctx, config())).resolves.toBeDefined()
   })
 
-  it('0.38.28 fails the floor', async () => {
-    const { ctx, other } = fakeServer('0.38.28')
-    await expect(computeDiff(ctx, config())).rejects.toThrow(/this server runs 0\.38\.28/)
+  it('0.38.31 fails the floor', async () => {
+    const { ctx, other } = fakeServer('0.38.31')
+    await expect(computeDiff(ctx, config())).rejects.toThrow(/this server runs 0\.38\.31/)
     expect(other).toEqual([])
   })
 
@@ -100,63 +100,63 @@ describe('built-in Dokku floor', () => {
 
 describe('dokku.version in the file', () => {
   it('up stops before changing anything when the server is older than the file', async () => {
-    const { ctx, other } = fakeServer('0.38.30')
-    await expect(runUp(ctx, config('0.38.31'), [])).rejects.toThrow(
-      /server is v0\.38\.30 but the file requires >= v0\.38\.31/
+    const { ctx, other } = fakeServer('0.38.32')
+    await expect(runUp(ctx, config('0.38.33'), [])).rejects.toThrow(
+      /server is v0\.38\.32 but the file requires >= v0\.38\.33/
     )
     expect(other).toEqual([])
     expect(ctx.runner.run).not.toHaveBeenCalled()
   })
 
   it('diff reports an older server as drift, not an error', async () => {
-    const { ctx } = fakeServer('0.38.30')
-    const diff = await computeDiff(ctx, config('0.38.31'))
+    const { ctx } = fakeServer('0.38.32')
+    const diff = await computeDiff(ctx, config('0.38.33'))
     expect(diff.inSync).toBe(false)
-    expect(formatSummary(diff)).toContain('version: 0.38.31 (file) → 0.38.30 (server)')
+    expect(formatSummary(diff)).toContain('version: 0.38.33 (file) → 0.38.32 (server)')
   })
 
   it('diff reports a newer server as drift and does not throw', async () => {
-    const { ctx } = fakeServer('0.38.32')
-    const diff = await computeDiff(ctx, config('0.38.31'))
+    const { ctx } = fakeServer('0.38.34')
+    const diff = await computeDiff(ctx, config('0.38.33'))
     expect(diff.inSync).toBe(false)
     expect(formatSummary(diff)).toContain('~') // marker
-    expect(formatSummary(diff)).toContain('version: 0.38.31 (file) → 0.38.32 (server)')
+    expect(formatSummary(diff)).toContain('version: 0.38.33 (file) → 0.38.34 (server)')
     expect(formatVerbose(diff)).toContain('@@ dokku version @@')
   })
 
   it('diff is silent when the versions are equal', async () => {
-    const { ctx } = fakeServer('0.38.31')
-    const diff = await computeDiff(ctx, config('0.38.31'))
+    const { ctx } = fakeServer('0.38.33')
+    const diff = await computeDiff(ctx, config('0.38.33'))
     expect(diff.dokku).toBeUndefined()
     expect(formatSummary(diff)).not.toContain('dokku')
   })
 
   it('diff has no version line when the file declares none', async () => {
-    const { ctx } = fakeServer('0.38.32')
+    const { ctx } = fakeServer('0.38.34')
     const diff = await computeDiff(ctx, config())
     expect(diff.dokku).toBeUndefined()
   })
 
   it('up logs one notice for a newer server and carries on', async () => {
-    const { ctx, runner } = fakeServer('0.38.32')
+    const { ctx, runner } = fakeServer('0.38.34')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await runUp(ctx, config('0.38.31'), [])
+    await runUp(ctx, config('0.38.33'), [])
     expect(warnSpy).toHaveBeenCalledTimes(1)
     expect(runner.run).toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
   it('up is silent when equal', async () => {
-    const { ctx } = fakeServer('0.38.31')
+    const { ctx } = fakeServer('0.38.33')
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    await runUp(ctx, config('0.38.31'), [])
+    await runUp(ctx, config('0.38.33'), [])
     expect(warnSpy).not.toHaveBeenCalled()
     warnSpy.mockRestore()
   })
 
   it('unparseable `dokku version` still throws', async () => {
-    const { runner, ctx } = fakeServer('0.38.31')
+    const { runner, ctx } = fakeServer('0.38.33')
     runner.query = vi.fn(async () => 'something weird')
-    await expect(computeDiff(ctx, config('0.38.31'))).rejects.toThrow(/parse/i)
+    await expect(computeDiff(ctx, config('0.38.33'))).rejects.toThrow(/parse/i)
   })
 })

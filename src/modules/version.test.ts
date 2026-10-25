@@ -40,28 +40,28 @@ function fakeCtx(version: string) {
 }
 
 describe('MIN_DOKKU_VERSION', () => {
-  it('is the first Dokku with registry:auth-status', () => {
-    expect(MIN_DOKKU_VERSION).toBe('0.38.29')
+  it('is the first Dokku with per-entry cron MAILTO', () => {
+    expect(MIN_DOKKU_VERSION).toBe('0.38.32')
   })
 })
 
 describe('assertDokkuSupported', () => {
   it('returns the server version at the floor', async () => {
-    expect(await assertDokkuSupported(fakeCtx('dokku version 0.38.29'))).toBe('0.38.29')
+    expect(await assertDokkuSupported(fakeCtx('dokku version 0.38.32'))).toBe('0.38.32')
   })
 
   it('returns the server version above the floor', async () => {
-    expect(await assertDokkuSupported(fakeCtx('0.38.31'))).toBe('0.38.31')
+    expect(await assertDokkuSupported(fakeCtx('0.38.33'))).toBe('0.38.33')
   })
 
   it('stops below the floor with the upgrade message', async () => {
     await expect(assertDokkuSupported(fakeCtx('dokku version 0.37.9'))).rejects.toThrow(
-      /^dokku-compose \d+\.\d+\.\d+ needs Dokku >= 0\.38\.29; this server runs 0\.37\.9\. Upgrade Dokku first\.$/
+      /^dokku-compose \d+\.\d+\.\d+ needs Dokku >= 0\.38\.32; this server runs 0\.37\.9\. Upgrade Dokku first\.$/
     )
   })
 
   it('stops one patch below the floor', async () => {
-    await expect(assertDokkuSupported(fakeCtx('0.38.28'))).rejects.toThrow(/this server runs 0\.38\.28/)
+    await expect(assertDokkuSupported(fakeCtx('0.38.31'))).rejects.toThrow(/this server runs 0\.38\.31/)
   })
 
   it('throws when server output is unparseable', async () => {
@@ -69,7 +69,7 @@ describe('assertDokkuSupported', () => {
   })
 
   it('asks only for the version', async () => {
-    const ctx = fakeCtx('0.38.31')
+    const ctx = fakeCtx('0.38.33')
     await assertDokkuSupported(ctx)
     expect(ctx.query.mock.calls).toEqual([['version']])
   })
