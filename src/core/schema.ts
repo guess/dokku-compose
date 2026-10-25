@@ -6,6 +6,7 @@ import {
   parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
 } from './volume-rules.js'
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
+import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs } from '../modules/service-property-keys.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V, scope = '') {
@@ -331,18 +332,79 @@ const ServiceBackupSchema = z.object({
   timestamp: z.literal(false).optional(),
 }).strict()
 
+
+const PropertyValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.array(z.union([z.string(), z.number()])),
+  z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+])
+
+/**
+ * `properties:` of a postgres or redis service: the plugin's own `:set` keys. Keys with
+ * built-in handling are checked here; any other key passes through (`validate` warns on
+ * keys the tested plugin version does not list).
+ */
+const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superRefine((props, ctx) => {
+  const issue = (key: string, message: string) => ctx.addIssue({ code: 'custom', path: [key], message })
+  for (const [key, value] of Object.entries(props)) {
+    const rejected = rejectedReason(key)
+    if (rejected) { issue(key, `'${key}' cannot be set here: ${rejected}`); continue }
+    const kind = MANAGED_PROPERTIES[key]?.kind
+    if (kind === 'map') {
+      if (Array.isArray(value)) { issue(key, `'${key}' takes a map of names to values`); continue }
+      for (const [name, v] of customEnvPairs(value as string | Record<string, string | number | boolean>)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) issue(key, `'${name}' is not an environment variable name`)
+        if (/[;\r\n]/.test(v)) issue(key, `the value of ${name} must not contain ';' or a newline`)
+        if (v === EXPORT_PLACEHOLDER) issue(key, `the value of ${name}: ${placeholderMessage}`)
+      }
+      if (typeof value === 'string' && /[\r\n]/.test(value)) issue(key, `'${key}' must be a single line`)
+      continue
+    }
+    if (kind === 'list') {
+      const items = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : undefined
+      if (!items) { issue(key, `'${key}' takes a list`); continue }
+      if (items.some(i => String(i).trim() === '' || /[,\s]/.test(String(i).trim()))) issue(key, `'${key}' entries must not be empty or contain commas or spaces`)
+      continue
+    }
+    if (typeof value === 'object') { issue(key, `'${key}' takes a string or number`); continue }
+    const text = String(value)
+    if (text.trim() === '') { issue(key, `'${key}' is empty: leave the key out`); continue }
+    if (/[\r\n]/.test(text)) { issue(key, `'${key}' must be a single line`); continue }
+    if (kind === 'secret') {
+      if (!/^[A-Za-z0-9._~-]+$/.test(text)) issue(key, `'${key}' may hold only letters, digits, '.', '_', '~' and '-'`)
+      if (text === EXPORT_PLACEHOLDER) issue(key, placeholderMessage)
+    } else if (key === 'memory') {
+      if (!/^\d+$/.test(text.trim())) issue(key, 'memory is a whole number of megabytes (0 for no limit)')
+    } else if (key === 'wait-timeout') {
+      if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'wait-timeout is a whole number of seconds greater than 0')
+    }
+  }
+})
+
+/** `mounts:` of a service: `<source>:<container-dir>[:<options>]`, no whitespace. */
+const ServiceMountsSchema = z.array(
+  z.string().min(1).regex(/^\S+$/, 'a mount spec must not contain whitespace').regex(/^[^:]+:[^:]+(:.*)?$/, 'a mount is <source>:<container-dir>[:<options>]')
+)
+
 const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
   // false removes the service's backup schedule, credentials, encryption and settings; absent leaves them alone
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
+  // the plugin's `:set` keys; absent leaves them alone, `--prune` clears the known ones removed from the file
+  properties: ServicePropertiesSchema.optional(),
+  // the whole set of mounts; absent leaves them alone, [] removes them all
+  mounts: ServiceMountsSchema.optional(),
 }).strict()
 
 const RedisSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
-  // same block as postgres
+  // same blocks as postgres
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
+  properties: ServicePropertiesSchema.optional(),
+  mounts: ServiceMountsSchema.optional(),
 }).strict()
 
 const PluginSchema = z.object({
@@ -410,6 +472,7 @@ export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>
 export type PostgresConfig = z.infer<typeof PostgresSchema>
 export type RedisConfig = z.infer<typeof RedisSchema>
+export type ServicePropertiesConfig = z.infer<typeof ServicePropertiesSchema>
 export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>
 export type DockerAuthEntry = z.infer<typeof DockerAuthEntrySchema>
