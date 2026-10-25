@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Backup encryption for postgres and redis (F3).** `backup.encryption` is `{ passphrase }`, `{ public_key_id, keyserver? }` or `false`. It is applied with `<plugin>:set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` and compared by `backup-encryption-fingerprint` and exact strings, so a rotated passphrase is picked up. An absent `encryption:` leaves the server alone (`diff` notes it, `up --prune` only warns); `false` clears it. `backup.storage_class`, `object_name`, `mailto` and `timestamp: false` are managed the same way, and `up --prune` clears one the file no longer declares. `validate` rejects both encryption forms, an empty `encryption`, bad storage classes and object names, and the literal `REPLACE_ME` that `export` writes for secrets. Passphrases are masked completely in logs, `diff` and `export`.
+- **Redis backups (F7).** `redis.<service>.backup` takes the same block as postgres, through the same code: `schedule`, `bucket`, `auth`, the keys above and `backup: false`. Needs dokku-redis 2.3.1 or later. `diff` and `export` cover redis backups too.
+- `diff` notes backup schedules other than `default` (plugin 2.5.0 and later), which `up` never touches.
+
+### Changed
+
+- `backup: false` unschedules with `<plugin>:backup-unschedule <service> --id default` (the plain command is refused when a service has other schedules) and also clears encryption and the backup settings, which `:backup-deauth` leaves behind. A bucket-only change re-runs `:backup-schedule` when another schedule exists, because `set backup-bucket` is refused then.
+- A service whose server holds encryption or backup settings the file leaves out now shows the backup note in `diff`, as a backup without a schedule always did.
+- The too-old plugin error names the plugin (`dokku-redis too old to report backup state (needs 2.3.1+)`).
+
 ### Breaking
 
 - **Every command that loads the file now rejects an unknown key.** A typo such as `domain:` for `domains:`, or an unsupported key such as `locked: true`, used to be ignored without a word; it now stops with `ERROR: apps.<app>: Unrecognized key: "domain"` (`validate`) and a non-zero exit. This covers the top level and `apps.<app>`, plus `dokku`, `plugins.<name>`, `docker_auth.<registry>`, `postgres.<service>` (and its `backup`, `backup.auth`), `redis.<service>`, and an app's `ssl`, `network`, `build` and `docker_options`. Remove or fix the key to continue.

@@ -2,13 +2,13 @@
 # status as in commands.tsv; '-' when that plugin has no such subcommand; a redis note starting 'Same' reuses the postgres note
 create	P	`postgres.<name>` / `redis.<name>` with `image`, `version`; create only; a later `version`/`image` change is shown as drift and warned about, not applied (F2); other create flags missing (F8)	P	Same as postgres (F2, F8)
 destroy	Y	`down`	Y	`down`
-info	R	`diff`, `up` and `export`: version, image and backup settings	R	`diff`, `up` and `export`: version, image
+info	R	`diff`, `up` and `export`: version, image and backup settings	R	Same as postgres
 list	R	`export`	R	`export`
 exists	R	Before create and in `diff`	R	Before create and in `diff`
 logs	X	Read-only	X	Read-only
 link	Y	`apps.<app>.links` with `--alias`, `--env-var`, `--querystring`	Y	Same as postgres
 unlink	Y	`links` removal, `down`	Y	`links` removal, `down`
-set	P	`backup.bucket` alone (`backup-bucket`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose	N	F8, F7
+set	P	`backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; F11: `backup-use-iam`	P	Same as postgres
 mount	N	F8	N	F8
 unmount	N	F8	N	F8
 connect	X	Interactive	X	Interactive
@@ -30,15 +30,15 @@ links	X	Read-only	X	Read-only
 import	X	Data operation	X	Data operation
 export	X	Data operation	X	Data operation
 reset	X	Destructive one-shot	X	Destructive one-shot
-backup-auth	Y	`postgres.<name>.backup.auth`, when `backup-auth-fingerprint`, region, signature version or endpoint differ	N	F7
-backup-deauth	Y	`backup: false`	N	F7
+backup-auth	Y	`<plugin>.<name>.backup.auth`, when `backup-auth-fingerprint`, region, signature version or endpoint differ	Y	Same as postgres
+backup-deauth	Y	`backup: false`	Y	Same as postgres
 backup	X	One-shot backup	X	One-shot backup
-backup-set-encryption	N	F3	N	F7
-backup-set-public-key-encryption	N	F3	N	F7
-backup-unset-encryption	N	F3	N	F7
-backup-unset-public-key-encryption	N	F3	N	F7
-backup-schedule	Y	`postgres.<name>.backup.schedule` and `bucket`, when the schedule differs	N	F7
-backup-schedule-cat	R	Verifies the schedule landed; `export`	N	F7
-backup-unschedule	Y	`backup: false`, when a schedule is installed	N	F7
+backup-set-encryption	X	Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent	X	Same as postgres
+backup-set-public-key-encryption	X	Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent	X	Same as postgres
+backup-unset-encryption	X	Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent	X	Same as postgres
+backup-unset-public-key-encryption	X	Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent	X	Same as postgres
+backup-schedule	Y	`<plugin>.<name>.backup.schedule` and `bucket`, when the schedule differs (or only the bucket does and another schedule exists)	Y	Same as postgres
+backup-schedule-cat	R	Verifies the schedule landed	R	Same as postgres
+backup-unschedule	Y	`backup: false`, as `--id default`, when a schedule is installed	Y	Same as postgres
 backup-logs	X	Read-only	X	Read-only
 certificate	X	Read-only	-	—

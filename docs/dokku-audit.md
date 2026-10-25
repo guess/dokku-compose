@@ -29,12 +29,12 @@ status, and each item links the PRs that change it. See [Tracking work](#trackin
 dokku-compose declares the settings of an app on one Dokku host: create, domains, ports, proxy,
 nginx, certs, storage, networks, env, scale, process settings, checks, logs, registry,
 scheduler, builder (Dockerfile only), docker options, git properties, plugins, registry logins,
-and postgres and redis services with links and postgres backups.
+and postgres and redis services with links and S3 backups (encrypted or not).
 
 The gaps fall into two groups:
 
-1. **Gaps in features it already has.** Postgres backup encryption is not managed, redis
-   has no `backup:`, datastores take no settings after create, storage mounts are plain bind
+1. **Gaps in features it already has.** Backups cannot authenticate with an instance role,
+   datastores take no settings after create, storage mounts are plain bind
    mounts with no named entries, and most namespaces have no global defaults. These come
    first in [Priorities](#priorities).
 2. **Namespaces it does not touch.** `resource`, `cron`, `git:auth`, `apps:lock`, `builds`,
@@ -74,10 +74,10 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `openresty` |  |  | 3 | 5 |
 | `plugin` | 3 |  | 3 | 3 |
 | `ports` | 2 |  |  | 4 |
-| `postgres` | 12 | 2 | 8 | 20 |
+| `postgres` | 12 | 2 | 4 | 24 |
 | `proxy` | 4 | 1 |  | 1 |
 | `ps` | 2 | 1 |  | 6 |
-| `redis` | 7 | 1 | 14 | 18 |
+| `redis` | 12 | 2 | 4 | 22 |
 | `registry` | 4 | 1 |  |  |
 | `repo` |  |  |  | 2 |
 | `resource` |  |  | 5 |  |
@@ -89,7 +89,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 3 |  | 4 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **82** | **12** | **84** | **177** |
+| **Total** | **87** | **13** | **70** | **185** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -105,11 +105,11 @@ say what shipped), 🟡 partial (shipped, with what is left in the Notes), ❌ t
 |---|---|---|---|:-:|
 | F1 | **Settings re-applied on every `up`; a replaced cert file is invisible** | ✅ [#18](https://github.com/guess/dokku-compose/pull/18) | Certs read `certs:report --ssl-enabled` then `certs:show <app> crt` and compare the crt with the file in `up` and `diff`, using `certs:update` for a changed one; `checks:`, global domains, global logs and global nginx read before they write. A harness (`src/tests/in-sync.test.ts`) declares every resource and requires an in-sync server to get no command from `up`. | 2 |
 | F2 | **Datastore `version` and `image` changes ignored** | ✅ [#19](https://github.com/guess/dokku-compose/pull/19) | `postgres:` and `redis:` run `:create` when the service is missing and skip it otherwise. A changed `version` or `image` is shown by `diff` as drift and warned about by `up`; applying it with `:upgrade` is left out on purpose (an upgrade can need a dump and downtime) and would need an explicit opt-in. | 3 |
-| F3 | **Postgres backup state kept outside Dokku** | 🟡 [#27](https://github.com/guess/dokku-compose/pull/27) | Backups are read from `postgres:info --format json` and compared (credentials by `backup-auth-fingerprint`), `backup: false` runs `:backup-unschedule`/`:backup-deauth`, and the `DOKKU_COMPOSE_BACKUP_HASH_*` env vars are unset. Left, shipping together with F7 on one shared implementation (`src/modules/service-backup.ts`): `backup.encryption` (`{ passphrase }` or `{ public_key_id, keyserver? }`, `false` clears) applied with `:set backup-encryption-passphrase`/`backup-public-key-id`/`backup-keyserver` and compared by `backup-encryption-fingerprint` and exact strings, so the four `:backup-*-encryption` commands stay unused; optional `storage_class`, `object_name`, `mailto` and `timestamp: false` through `:set`; `validate` rejects both encryption forms; an absent `encryption:` is a `diff` note and `--prune` only warns; passphrases are masked in logs, `diff` and `export` (`passphrase: REPLACE_ME`); `validate` mirrors the plugin's set-time checks (storage class list, object name, mailto, single-line secrets, `encryption: {}`); unscheduling uses `--id default`, and a bucket-only change re-runs `:backup-schedule` when another schedule exists; `export` reads `<plugin>:info --format json` and writes `backup:` only with a default schedule; `diff` notes other schedules (ids other than `default`, plugin 2.5.0+ only), and `backup: false` clears encryption and settings too (`:backup-deauth` leaves them). The too-old check keys on `backup-auth-fingerprint` (plus `backup-timestamp`/`backup-mailto` when declared); minimum stays 2.3.1. Redis is F7. | 5 |
+| F3 | **Postgres backup state kept outside Dokku** | ✅ [#27](https://github.com/guess/dokku-compose/pull/27) | Backups are read from `postgres:info --format json` and compared (credentials by `backup-auth-fingerprint`), `backup: false` runs `:backup-unschedule --id default`/`:backup-deauth` and clears encryption and settings, and the `DOKKU_COMPOSE_BACKUP_HASH_*` env vars are unset. `backup.encryption` (`{ passphrase }` or `{ public_key_id, keyserver? }`, `false` clears) is applied with `:set backup-encryption-passphrase`/`backup-public-key-id`/`backup-keyserver` and compared by `backup-encryption-fingerprint` and exact strings, so the four `:backup-*-encryption` commands stay unused. Optional `storage_class`, `object_name`, `mailto` and `timestamp: false` go through `:set`. `validate` mirrors the plugin's set-time checks and rejects both encryption forms and the `REPLACE_ME` placeholder `export` writes. An absent `encryption:` is a `diff` note and `--prune` only warns. Passphrases are masked completely in logs, stderr, `diff` and `export`. A bucket-only change re-runs `:backup-schedule` when another schedule exists, and `diff` notes schedules other than `default` (plugin 2.5.0+), which `up` never touches. Both plugins share `src/modules/service-backup.ts`. Authenticating with an instance role is F11. | 5 |
 | F4 | **Global `env:` and `docker_auth:` only ever add** | ✅ [#23](https://github.com/guess/dokku-compose/pull/23) | Global `env:` keeps the marker `DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS`, sets only changed keys and unsets marked keys removed from the file; `docker_auth:` skips a login `registry:auth-status` reports as matching, logs in with `--password-stdin`, and `up --prune` runs `registry:logout` for a server the file does not list. Dokku floor raised to 0.38.29. | 3 |
 | F5 | **Property lists behind Dokku 0.38.31** | ✅ [#25](https://github.com/guess/dokku-compose/pull/25) | Every app-scope `:set` key of nginx, logs, ps, network, proxy, scheduler, builder, git, registry and checks is in a list, the schema and `validate`; `diff` and `--prune` see them all. `checks:` takes only `wait-to-retire` (plus `disabled`/`skipped`), and `registry:` rejects the report-only `auth-servers`. `src/tests/property-keys.test.ts` derives each namespace's settable keys from real Dokku 0.38.31 `<ns>:report --format json` output checked in under `src/tests/fixtures/dokku-0.38.31/reports/` and compares them with the lists. Keys Dokku writes itself (git `deploy-branch` and `source-image`, proxy `proxy-port` and `proxy-ssl-port`, ps `restore`) are compared only when declared and never counted as removals. Global scopes stay in F10. | 3 |
 | F6 | **Link options** | ✅ [#24](https://github.com/guess/dokku-compose/pull/24) | A `links:` entry is a name or `{ service, alias?, env_var?, querystring? }`, passed as `--alias`, `--env-var`, `--querystring`. `diff` reads the variable and its querystring from the app's env; changed options unlink then link. | 2 |
-| F7 | **Redis backups** | ❌ | dokku-redis 2.4.0 has the same backup commands and `redis:info --format json` reports the same `backup-*` keys, including `backup-auth-fingerprint`. `redis.<name>.backup` takes exactly the keys F3 ships (`schedule`, `bucket`, `auth`, `encryption`, `storage_class`, `object_name`, `mailto`, `timestamp`) through the same code, with `redis:` as the prefix; the error for a plugin too old to report backup state names the plugin. Needs dokku-redis 2.3.1 or later. | 2 |
+| F7 | **Redis backups** | ✅ | `redis.<name>.backup` takes exactly the keys of postgres (`schedule`, `bucket`, `auth`, `encryption`, `storage_class`, `object_name`, `mailto`, `timestamp`, or `false`) through the same code, read from `redis:info --format json` (dokku-redis 2.4.0 reports the same `backup-*` keys, `backup-auth-fingerprint` included). Needs dokku-redis 2.3.1 or later; `export` writes the block too. | 2 |
 | F8 | **Datastore settings after create** | ❌ | No create flag beyond `--image`/`--image-version`, and no `:set` beyond `backup-bucket`. dokku-postgres/redis 2.x make every setting a reconcilable `:set` property: `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `post-start-network`, `restart-policy`, `log-driver`, `log-opt`, `expose-*`, plus `:mount`. Needs a design first: which keys apply only at create or after a restart, masking `password` and `custom-env`, whether `expose` is worth it on Docker 29, and splitting the work. | 5 |
 | F9 | **Named storage entries** | ❌ | Dokku 0.38 adds named entries (`storage:create` with `--chown`, `storage:set`, `storage:destroy`) and deprecates `storage:ensure-directory`. Declaring entries would replace a manual `mkdir` + `chown 32767` step for each new mount. `storage:mount --replace` would also converge an app's mounts in one call. Needs a design first: where entries live in the schema, how existing bind mounts map to them, and the Dokku release that added them. | 5 |
 | F10 | **Global defaults for supported namespaces** | ❌ | Global settings exist only for `domains`, `env`, `nginx`, `logs` and registry logins. Dokku also takes `--global` for `scheduler`, `registry:set`, `checks`, `ps`, `builder`, `network`, `proxy`, `git` and `app-json`. Box setup scripts run `git:set --global deploy-branch` by hand today. Open question: top-level `nginx:` and `logs:` mean `--global`, but top-level `git:` is a default copied onto each app. | 3 |
@@ -215,8 +215,7 @@ does not accept the property there.
 | `postgres:set` / `redis:set` | `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `post-start-network`, `restart-policy`, `log-driver`, `log-opt`, `wait-timeout`, `volume-targets`, `password` | ❌ | — | F8 (`image`, `version` are create flags today) |
 | `postgres:set` / `redis:set` | `expose-host`, `expose-mode`, `port-bind-address`, `port-source-range` | ❌ | — | F8 |
 | `postgres:set` / `redis:set` | `export-args`, `import-args` | ⛔ | — | Only affect one-shot data operations |
-| `postgres:set` | `backup-*` (bucket, credentials, endpoint, encryption, schedule options) | 🟡 | — | `backup:` reads them from `postgres:info` and sets credentials and schedule with `:backup-auth`/`:backup-schedule`, a lone bucket change with `backup-bucket`; encryption F3 |
-| `redis:set` | `backup-*` (same keys as postgres) | ❌ | — | F7 |
+| `postgres:set` / `redis:set` | `backup-*` (bucket, credentials, endpoint, encryption, schedule options) | ✅ | ✅ | `backup:` reads them from `<plugin>:info` and sets credentials and schedule with `:backup-auth`/`:backup-schedule`, a lone bucket change with `backup-bucket`, encryption with `backup-encryption-passphrase`/`backup-public-key-id`/`backup-keyserver`, and `backup-storage-class`/`-object-name`/`-mailto`/`-timestamp`; `backup-use-iam` is F11 |
 
 ## Commands
 
@@ -567,13 +566,13 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 |---|:-:|:-:|---|
 | `:create` | 🟡 | 🟡 | `postgres.<name>` / `redis.<name>` with `image`, `version`; create only; a later `version`/`image` change is shown as drift and warned about, not applied (F2); other create flags missing (F8) |
 | `:destroy` | ✅ | ✅ | `down` |
-| `:info` | ✅ | ✅ | postgres: `diff`, `up` and `export`: version, image and backup settings; redis: `diff`, `up` and `export`: version, image |
+| `:info` | ✅ | ✅ | `diff`, `up` and `export`: version, image and backup settings |
 | `:list` | ✅ | ✅ | `export` |
 | `:exists` | ✅ | ✅ | Before create and in `diff` |
 | `:logs` | ⛔ | ⛔ | Read-only |
 | `:link` | ✅ | ✅ | `apps.<app>.links` with `--alias`, `--env-var`, `--querystring` |
 | `:unlink` | ✅ | ✅ | `links` removal, `down` |
-| `:set` | 🟡 | ❌ | postgres: `backup.bucket` alone (`backup-bucket`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; redis: F8, F7 |
+| `:set` | 🟡 | 🟡 | `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; F11: `backup-use-iam` |
 | `:mount` | ❌ | ❌ | F8 |
 | `:unmount` | ❌ | ❌ | F8 |
 | `:connect` | ⛔ | ⛔ | Interactive |
@@ -595,16 +594,16 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `:import` | ⛔ | ⛔ | Data operation |
 | `:export` | ⛔ | ⛔ | Data operation |
 | `:reset` | ⛔ | ⛔ | Destructive one-shot |
-| `:backup-auth` | ✅ | ❌ | postgres: `postgres.<name>.backup.auth`, when `backup-auth-fingerprint`, region, signature version or endpoint differ; redis: F7 |
-| `:backup-deauth` | ✅ | ❌ | postgres: `backup: false`; redis: F7 |
+| `:backup-auth` | ✅ | ✅ | `<plugin>.<name>.backup.auth`, when `backup-auth-fingerprint`, region, signature version or endpoint differ |
+| `:backup-deauth` | ✅ | ✅ | `backup: false` |
 | `:backup` | ⛔ | ⛔ | One-shot backup |
-| `:backup-set-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
-| `:backup-set-public-key-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
-| `:backup-unset-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
-| `:backup-unset-public-key-encryption` | ❌ | ❌ | postgres: F3; redis: F7 |
-| `:backup-schedule` | ✅ | ❌ | postgres: `postgres.<name>.backup.schedule` and `bucket`, when the schedule differs; redis: F7 |
-| `:backup-schedule-cat` | ✅ | ❌ | postgres: Verifies the schedule landed; `export`; redis: F7 |
-| `:backup-unschedule` | ✅ | ❌ | postgres: `backup: false`, when a schedule is installed; redis: F7 |
+| `:backup-set-encryption` | ⛔ | ⛔ | Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent |
+| `:backup-set-public-key-encryption` | ⛔ | ⛔ | Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent |
+| `:backup-unset-encryption` | ⛔ | ⛔ | Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent |
+| `:backup-unset-public-key-encryption` | ⛔ | ⛔ | Covered by `set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` (`backup.encryption`), which are idempotent |
+| `:backup-schedule` | ✅ | ✅ | `<plugin>.<name>.backup.schedule` and `bucket`, when the schedule differs (or only the bucket does and another schedule exists) |
+| `:backup-schedule-cat` | ✅ | ✅ | Verifies the schedule landed |
+| `:backup-unschedule` | ✅ | ✅ | `backup: false`, as `--id default`, when a schedule is installed |
 | `:backup-logs` | ⛔ | ⛔ | Read-only |
 | `:certificate` | ⛔ | n/a | Read-only |
 <!-- /generated:commands -->

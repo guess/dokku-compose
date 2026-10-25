@@ -194,8 +194,8 @@ All features are idempotent — running `up` twice produces no changes.
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |
 | Process Scale & ps | Declare process counts (`ps:scale`) and ps properties (`ps:set`) | [scale](docs/reference/scale.md) |
 | Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
-| Postgres | Postgres services with optional S3 backups, read from `postgres:info` so backup drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
-| Redis | Redis service instances | [redis](docs/reference/redis.md) |
+| Postgres | Postgres services with optional S3 backups, encrypted or not, read from `postgres:info` so backup drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
+| Redis | Redis service instances with the same optional S3 backups | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps, with `alias`, `env_var` or `querystring` | [links](docs/reference/links.md) |
 
 ## Variable interpolation
@@ -260,8 +260,9 @@ dokku-compose/
 │   │   ├── network.ts        # dokku network:create
 │   │   ├── nginx.ts          # dokku nginx:* (global)
 │   │   ├── plugins.ts        # dokku plugin:*
-│   │   ├── postgres.ts       # dokku postgres:* (create, backup, export)
+│   │   ├── postgres.ts       # dokku postgres:* (create, export)
 │   │   ├── redis.ts          # dokku redis:* (create, export)
+│   │   ├── service-backup.ts # <plugin>:backup-* and set backup-* (postgres and redis)
 │   │   └── version.ts        # Dokku version check
 │   ├── commands/
 │   │   ├── up.ts             # up command orchestration
