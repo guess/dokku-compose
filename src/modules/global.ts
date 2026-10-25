@@ -153,6 +153,29 @@ function wanted(gk: GlobalKey, value: unknown): Wanted {
   return { args: [String(value)], inSync: current => current === String(value) }
 }
 
+/** Keys whose value is a boolean in the compose file (Dokku stores `true`/`false`). */
+const BOOLEAN_KEYS = new Set(['push-on-release', 'skip-deploy', 'skip_cleanup', 'keep_git_dir'])
+
+/**
+ * The server's global values as a top-level block, for `export`: lists as lists, booleans as
+ * booleans, a scheduler with only `selected` as the string. `undefined` when nothing is set.
+ */
+export async function exportGlobal(ctx: Context, name: GlobalName): Promise<GlobalBlock | undefined> {
+  const current = await readGlobal(ctx, name)
+  const block: Record<string, unknown> = {}
+  for (const gk of GLOBAL_SPECS[name].keys) {
+    const value = current[gk.yaml]
+    if (value === undefined) continue
+    if (gk.kind === 'list') block[gk.yaml] = words(value)
+    else if (gk.kind === 'flag' || (BOOLEAN_KEYS.has(gk.yaml) && (value === 'true' || value === 'false'))) block[gk.yaml] = value === 'true'
+    else block[gk.yaml] = value
+  }
+  const keys = Object.keys(block)
+  if (keys.length === 0) return undefined
+  if (name === 'scheduler' && keys.length === 1 && keys[0] === 'selected') return block.selected as string
+  return block
+}
+
 export interface GlobalPlan {
   /** Declared keys whose server value differs. */
   changes: { gk: GlobalKey; args: string[] }[]

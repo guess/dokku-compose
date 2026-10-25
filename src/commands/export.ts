@@ -6,6 +6,7 @@ import { exportPostgres } from '../modules/postgres.js'
 import { exportRedis } from '../modules/redis.js'
 import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
+import { GLOBAL_NAMES, exportGlobal } from '../modules/global.js'
 import { readEntries, exportVolumes } from '../modules/volumes.js'
 import { parseSpec } from '../resources/storage.js'
 import { DEFAULT_SCOPE, ALL_PHASES, type MountItem } from '../core/volume-rules.js'
@@ -27,6 +28,16 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
   // Networks
   const networks = await exportNetworks(ctx)
   if (networks.length > 0) config.networks = networks
+
+  // Global settings: each top-level block that holds a value on the server
+  for (const name of GLOBAL_NAMES) {
+    try {
+      const block = await exportGlobal(ctx, name)
+      if (block !== undefined) (config as Record<string, unknown>)[name] = block
+    } catch (err) {
+      logWarn('global', `could not read '${name}', left out of the export: ${err instanceof Error ? err.message : String(err)}`)
+    }
+  }
 
   // Services
   const postgres = await exportPostgres(ctx)
