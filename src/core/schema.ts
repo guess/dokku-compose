@@ -5,18 +5,34 @@ import {
   entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation,
   parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
 } from './volume-rules.js'
+import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
-function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V) {
+function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V, scope = '') {
   return z.record(z.string(), value).superRefine((map, ctx) => {
     for (const key of Object.keys(map)) {
       if (!keys.includes(key)) {
-        ctx.addIssue({ code: 'custom', path: [key], message: `'${key}' is not a ${namespace}:set property (valid: ${keys.join(', ')})` })
+        ctx.addIssue({ code: 'custom', path: [key], message: `'${key}' is not a ${namespace}:set${scope} property (valid: ${keys.join(', ')})` })
       }
     }
   })
 }
 const StringOrNumber = z.union([z.string(), z.number()])
+
+/** Error options for a strict object: a hint for each key it names, Zod's own message for the rest. */
+function withHints(hints: Record<string, string>, notAnObject?: (input: unknown) => string | undefined) {
+  return {
+    error: (iss: any): string | undefined => {
+      if (iss.code === 'unrecognized_keys' && (iss.keys as string[]).some(k => k in hints)) {
+        return (iss.keys as string[]).map(k => `'${k}': ${hints[k] ?? 'unrecognized key'}`).join('; ')
+      }
+      if (iss.code === 'invalid_type' && iss.expected === 'object') return notAnObject?.(iss.input)
+      return undefined
+    },
+  }
+}
+
+const PER_APP_ONLY = 'is a per-app setting (Dokku has no global form); put it under apps.<app>'
 
 const PortSchema = z.string().regex(
   /^(http|https|tcp|udp):\d+:\d+$/,
@@ -44,10 +60,99 @@ const GitSchema = z.object({
   rev_env_var: z.string().optional(),
   source_image: z.string().optional(),
   // Dokku reads `archive-max-files` and `archive-max-size` only from the global setting
-  // (`git:set --global`), which dokku-compose does not manage yet; a per-app value never applies.
-  archive_max_files: z.any().optional().refine(v => v === undefined, { message: 'archive_max_files is read only from the global git setting, which dokku-compose does not manage; run `dokku git:set --global archive-max-files <n>`' }),
-  archive_max_size: z.any().optional().refine(v => v === undefined, { message: 'archive_max_size is read only from the global git setting, which dokku-compose does not manage; run `dokku git:set --global archive-max-size <n>`' }),
+  // (`git:set --global`), so a per-app value never applies: declare them in the top-level `git:`.
+  archive_max_files: z.any().optional().refine(v => v === undefined, { message: 'archive_max_files is read only from the global git setting; declare it in the top-level git:' }),
+  archive_max_size: z.any().optional().refine(v => v === undefined, { message: 'archive_max_size is read only from the global git setting; declare it in the top-level git:' }),
 }).strict()
+
+// The top-level `git:` is `git:set --global`: the four keys Dokku reads globally.
+const GlobalGitSchema = z.strictObject({
+  deploy_branch: z.string().optional(),
+  keep_git_dir: z.union([z.string(), z.boolean()]).optional(),
+  archive_max_files: StringOrNumber.optional(),
+  archive_max_size: StringOrNumber.optional(),
+}, withHints({ rev_env_var: `${PER_APP_ONLY}.git`, source_image: `${PER_APP_ONLY}.git` }))
+
+const SchedulerSchema = z.union([z.string(), z.object({ selected: z.string().optional(), shell: z.string().optional() }).strict()])
+
+const PsSchema = z.object({
+  'procfile-path': z.union([z.string(), z.number()]).optional(),
+  'restart-policy': z.union([z.string(), z.number()]).optional(),
+  'stop-timeout-seconds': z.union([z.string(), z.number()]).optional(),
+  'dockerfile-start-cmd': z.union([z.string(), z.number()]).optional(),
+  restore: z.union([z.string(), z.boolean()]).optional(),
+  'skip-deploy': z.union([z.string(), z.boolean()]).optional(),
+  'start-cmd': z.union([z.string(), z.number()]).optional(),
+}).strict()
+
+const GlobalPsSchema = z.strictObject({
+  'procfile-path': z.union([z.string(), z.number()]).optional(),
+  'restart-policy': z.union([z.string(), z.number()]).optional(),
+  'stop-timeout-seconds': z.union([z.string(), z.number()]).optional(),
+  'skip-deploy': z.union([z.string(), z.boolean()]).optional(),
+}, withHints(Object.fromEntries(['restore', 'start-cmd', 'dockerfile-start-cmd'].map(k => [k, `${PER_APP_ONLY}.ps`]))))
+
+const GlobalChecksSchema = z.strictObject({
+  // The only `checks:set` key (Dokku 0.38.31), and the only one with a global form.
+  'wait-to-retire': z.union([z.string(), z.number(), z.boolean()]).optional(),
+}, withHints({
+  disabled: `${PER_APP_ONLY}.checks`,
+  skipped: `${PER_APP_ONLY}.checks`,
+}, input => input === false ? 'checks: false disables the checks of one app; put it under apps.<app>.checks' : undefined))
+
+const BuildSchema = z.object({
+  dockerfile: z.string().optional(),
+  app_json: z.string().optional(),
+  context: z.string().optional(),
+  selected: z.string().optional(),
+  skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
+  args: z.record(z.string(), z.string()).optional(),
+}).strict()
+
+const GlobalBuildSchema = z.strictObject({
+  dockerfile: z.string().optional(),
+  app_json: z.string().optional(),
+  context: z.string().optional(),
+  selected: z.string().optional(),
+  skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
+}, withHints({ args: 'build args are docker options, which have no global form; put them under apps.<app>.build.args' }))
+
+const NETWORK_LIST_HINT = 'networks: is the list of networks to attach; properties such as tld go under network:'
+const NETWORK_PROPS_HINT = 'network: takes properties (tld, bind_all_interfaces, ...); the list of networks to attach goes under networks:'
+
+const NetworkSchema = z.strictObject({
+  attach_post_create: z.union([z.array(z.string()), z.literal(false)]).optional(),
+  initial_network: z.union([z.string(), z.literal(false)]).optional(),
+  bind_all_interfaces: z.boolean().optional(),
+  static_web_listener: z.union([z.string(), z.literal(false)]).optional(),
+  tld: z.union([z.string(), z.literal(false)]).optional(),
+}, withHints({
+  attach_post_deploy: 'per app, attach-post-deploy is the list under networks:',
+  networks: 'networks: sits beside network:, not inside it',
+}, input => Array.isArray(input) ? NETWORK_PROPS_HINT : undefined))
+
+// The top-level `network:` is `network:set --global`; the plural `networks:` stays the list to create.
+const GlobalNetworkSchema = z.strictObject({
+  attach_post_create: z.union([z.array(z.string()), z.literal(false)]).optional(),
+  attach_post_deploy: z.array(z.string()).optional(),
+  initial_network: z.union([z.string(), z.literal(false)]).optional(),
+  bind_all_interfaces: z.boolean().optional(),
+  tld: z.union([z.string(), z.literal(false)]).optional(),
+}, withHints({
+  static_web_listener: `${PER_APP_ONLY}.network`,
+  networks: 'networks: is the list of shared networks to create; it sits beside network:, not inside it',
+}, input => Array.isArray(input)
+  ? 'network: takes global properties (tld, attach_post_deploy, ...); the list of shared networks to create goes under networks:'
+  : undefined))
+
+const isMap = (input: unknown) => !!input && typeof input === 'object' && !Array.isArray(input)
+const appNetworksList = z.array(z.string(), {
+  error: (iss: any) => iss.code === 'invalid_type' && isMap(iss.input) ? NETWORK_LIST_HINT : undefined,
+})
+const sharedNetworksList = z.array(z.string(), {
+  error: (iss: any) => iss.code === 'invalid_type' && isMap(iss.input)
+    ? 'networks: is the list of shared networks to create; global network properties go under network:' : undefined,
+})
 
 const LinkSchema = z.union([
   z.string(),
@@ -133,38 +238,17 @@ const AppSchema = z.object({
     proxy_port: StringOrNumber.optional(),
     proxy_ssl_port: StringOrNumber.optional(),
   }).strict().optional(),
-  networks: z.array(z.string()).optional(),
-  network: z.object({
-    attach_post_create: z.union([z.array(z.string()), z.literal(false)]).optional(),
-    initial_network: z.union([z.string(), z.literal(false)]).optional(),
-    bind_all_interfaces: z.boolean().optional(),
-    static_web_listener: z.union([z.string(), z.literal(false)]).optional(),
-    tld: z.union([z.string(), z.literal(false)]).optional(),
-  }).strict().optional(),
+  networks: appNetworksList.optional(),
+  network: NetworkSchema.optional(),
   nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber).optional(),
   logs: propertyMap('logs', LOGS_KEYS, StringOrNumber).optional(),
   // `auth-servers` is report-only: it is a registry login, not a `registry:set` key.
   registry: propertyMap('registry', REGISTRY_KEYS, z.union([z.string(), z.boolean()])).optional(),
-  scheduler: z.union([z.string(), z.object({ selected: z.string().optional(), shell: z.string().optional() }).strict()]).optional(),
+  scheduler: SchedulerSchema.optional(),
   scale: z.record(z.string(), z.preprocess(v => (typeof v === 'string' && /^\s*-?\d+\s*$/.test(v) ? Number(v) : v), z.number().int().min(0))).optional(),
-  ps: z.object({
-    'procfile-path': z.union([z.string(), z.number()]).optional(),
-    'restart-policy': z.union([z.string(), z.number()]).optional(),
-    'stop-timeout-seconds': z.union([z.string(), z.number()]).optional(),
-    'dockerfile-start-cmd': z.union([z.string(), z.number()]).optional(),
-    restore: z.union([z.string(), z.boolean()]).optional(),
-    'skip-deploy': z.union([z.string(), z.boolean()]).optional(),
-    'start-cmd': z.union([z.string(), z.number()]).optional(),
-  }).strict().optional(),
+  ps: PsSchema.optional(),
   checks: ChecksSchema.optional(),
-  build: z.object({
-    dockerfile: z.string().optional(),
-    app_json: z.string().optional(),
-    context: z.string().optional(),
-    selected: z.string().optional(),
-    skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
-    args: z.record(z.string(), z.string()).optional(),
-  }).strict().optional(),
+  build: BuildSchema.optional(),
   docker_options: z.object({
     build: z.array(z.string()).optional(),
     deploy: z.array(z.string()).optional(),
@@ -265,17 +349,25 @@ export const ConfigSchema = z.object({
   }).strict().optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
   docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
-  networks: z.array(z.string()).optional(),
+  networks: sharedNetworksList.optional(),
   volumes: VolumesSchema.optional(),
   postgres: z.record(z.string(), PostgresSchema).optional(),
   redis: z.record(z.string(), RedisSchema).optional(),
   apps: z.record(z.string(), AppSchema),
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
   env: EnvMapSchema.optional(),
-  nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber).optional(),
-  // The top-level block is also applied with `--global`, which takes two more keys.
-  logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber).optional(),
-  git: GitSchema.optional(),
+  // The top-level blocks below are Dokku's own `--global` settings (`<ns>:set --global`); Dokku does the inheritance.
+  nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber, ' --global').optional(),
+  // Also takes the two keys only `logs:set --global` accepts.
+  logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber, ' --global').optional(),
+  scheduler: SchedulerSchema.optional(),
+  // `image-repo` names one app's repository: per app only, like the report-only `auth-servers`.
+  registry: propertyMap('registry', REGISTRY_GLOBAL_KEYS, z.union([z.string(), z.boolean()]), ' --global').optional(),
+  checks: GlobalChecksSchema.optional(),
+  ps: GlobalPsSchema.optional(),
+  build: GlobalBuildSchema.optional(),
+  network: GlobalNetworkSchema.optional(),
+  git: GlobalGitSchema.optional(),
 }).strict().superRefine((config, ctx) => {
   // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
   for (const [app, appConfig] of Object.entries(config.apps)) {
@@ -308,6 +400,7 @@ export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>
 export type DockerAuthEntry = z.infer<typeof DockerAuthEntrySchema>
 export type GitConfig = z.infer<typeof GitSchema>
+export type GlobalGitConfig = z.infer<typeof GlobalGitSchema>
 
 export function parseConfig(raw: unknown): Config {
   return ConfigSchema.parse(raw)
