@@ -1,6 +1,6 @@
 # Docker Auth
 
-Dokku docs: https://dokku.com/docs/deployment/registry-management/
+Dokku docs: https://dokku.com/docs/advanced-usage/registry-management/
 
 Module: `src/modules/docker-auth.ts`
 
@@ -39,6 +39,8 @@ It logs in with `dokku registry:login --global --password-stdin <server> <userna
 |-------|----------|-------------|
 | `username` | yes | Registry username. For GHCR, the GitHub user the PAT is scoped to. |
 | `password` | yes | Registry password or PAT. Use `${VAR}` interpolation and an `op://` reference rather than committing the value. |
+
+With `docker_auth:` absent, `up` and `diff` do nothing for registry logins, and `--prune` logs out nothing.
 
 ## Distinct from `apps.<app>.registry`
 

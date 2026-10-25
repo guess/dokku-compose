@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/deployment/zero-downtime-deploys/
 
-Module: `lib/checks.sh`
+Module: `src/resources/checks.ts`
 
 ## YAML Keys
 

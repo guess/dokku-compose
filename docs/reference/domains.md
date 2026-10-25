@@ -2,23 +2,23 @@
 
 Dokku docs: https://dokku.com/docs/configuration/domains/
 
-Module: `lib/domains.sh`
+Module: `src/resources/lists.ts` (per app), `src/modules/domains.ts` (global)
 
 ## YAML Keys
 
 ### App Domains (`apps.<app>.domains`)
 
-Configure custom domains for an app. When a list is provided, vhosts are enabled and domains are set atomically. When set to `false`, the app's domains are disabled. When absent, no changes are made.
+Configure custom domains for an app. When a list is provided, the app's domains are made to match it (enabling vhosts first if they were disabled). When set to `false`, the app's domains are disabled. When absent, no changes are made.
 
 ```yaml
 apps:
   api:
-    domains:                    # enable vhosts + set domains
+    domains:                    # make the app's domains match this list
       - api.example.com
       - www.example.com
 
   worker:
-    domains: false              # disable vhosts + clear domains
+    domains: false              # disable vhosts (removes the app's domains)
 
   other:
     # domains key absent — no change to domain config
@@ -26,7 +26,7 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `[list]` | enabled: `domains:add` / `domains:remove` for the difference only<br>disabled: `domains:enable <app>`, then `domains:set <app> <domains...>` |
+| `[list]` | enabled: enabled: `domains:remove <app> <domain>` / `domains:add <app> <domain>` for the difference only<br>disabled (or unreadable): `domains:enable <app>`, then `domains:set <app> <domains...>` |
 | `false` | `domains:disable <app>`, only when enabled |
 | absent | no action |
 

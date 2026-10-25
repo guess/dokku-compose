@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/advanced-usage/persistent-storage/
 
-Module: `lib/storage.sh`
+Module: `src/resources/lists.ts`
 
 ## YAML Keys
 
@@ -30,16 +30,12 @@ apps:
 
 | Value | Dokku Command |
 |-------|---------------|
-| `[list]` | `storage:mount <app> <mount>` per new entry;<br>`storage:unmount <app> <mount>` per stale entry |
+| `[list]` | `storage:report <app> --storage-deploy-mounts` (check)<br>`storage:unmount <app> <mount>` per stale entry (first);<br>`storage:mount <app> <mount>` per new entry |
 | absent | no action |
 
 Host directories must exist before mounting. For Dockerfile deployments, create directories manually and set ownership to match the process user in your container.
 
-On `down --force`, declared mounts are unmounted before the app is destroyed:
-
-| Phase | Dokku Command |
-|-------|---------------|
-| down | `storage:unmount <app> <mount>` for each declared mount |
+`down` does not unmount storage; destroying the app removes its mounts.
 
 ## Removal
 

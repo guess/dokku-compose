@@ -1,9 +1,9 @@
 # dokku-compose.yml
 # Declarative Dokku deployment configuration
 
-# Optional: Dokku version check
+# Optional: hard minimum Dokku version for `up`
 dokku:
-  version: "0.35.12"
+  version: "0.38.29"
 
 # Plugin installation
 plugins:
@@ -11,11 +11,6 @@ plugins:
     url: https://github.com/dokku/dokku-postgres.git
   redis:
     url: https://github.com/dokku/dokku-redis.git
-  mongo:
-    url: https://github.com/dokku/dokku-mongo.git
-  letsencrypt:
-    url: https://github.com/dokku/dokku-letsencrypt.git
-    script: scripts/letsencrypt.sh   # custom handler (not a service plugin)
 
 # Authenticate host docker daemon to private registries (for `git:from-image`).
 # See docs/reference/docker_auth.md.
@@ -28,30 +23,34 @@ docker_auth:
 networks:
   - backend-net
 
-# Service instances — created via Dokku service plugins
-services:
+# Postgres and Redis service instances, keyed by service name
+postgres:
   api-postgres:
-    plugin: postgres
     version: "17-3.5"
     image: postgis/postgis         # custom image (e.g., PostGIS)
+  worker-db: {}                    # separate database for worker
+redis:
   api-redis:
-    plugin: redis
     version: "7.2-alpine"
-  worker-db:
-    plugin: postgres               # separate database for worker
-  shared-cache:
-    plugin: redis                  # shared between multiple apps
+  shared-cache: {}                 # shared between multiple apps
 
 # Application definitions
 apps:
   # Full example with all options
   api:
-    dockerfile: docker/prod/api/Dockerfile
-    app_json: docker/prod/api/app.json
-    build_dir: apps/api
+    build:
+      dockerfile: docker/prod/api/Dockerfile
+      app_json: docker/prod/api/app.json
+      context: apps/api
+      args:
+        SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
+    domains:
+      - api.example.com
     ports:
       - "https:4001:4000"
-    ssl: certs/example.com
+    ssl:
+      certfile: certs/example.com/server.crt
+      keyfile: certs/example.com/server.key
     links:
       - api-postgres
       - api-redis
@@ -62,14 +61,11 @@ apps:
     env:
       APP_ENV: "${APP_ENV}"
       SECRET_KEY: "${SECRET_KEY}"
-    build_args:
-      SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
     networks:
       - backend-net
 
-  # Worker — shares cache with api, has its own database
+  # Worker -- shares cache with api, has its own database
   worker:
-    build_dir: apps/worker
     ports:
       - "http:5001:5000"
     links:
@@ -77,13 +73,15 @@ apps:
       - shared-cache
     networks:
       - backend-net
+    scale:
+      worker: 2
 
-  # Web frontend — no database, uses letsencrypt custom script
+  # Web frontend -- no database
   web:
-    dockerfile: docker/prod/web/Dockerfile
-    build_dir: apps/web
+    build:
+      dockerfile: docker/prod/web/Dockerfile
+      context: apps/web
+    domains:
+      - www.example.com
     ports:
       - "https:3000:3000"
-    ssl: certs/example.com
-    letsencrypt:
-      email: admin@example.com

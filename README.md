@@ -115,19 +115,21 @@ dokku ps:restart worker  # env, storage
 | `dokku-compose diff` | Show what's out of sync between config and server |
 | `dokku-compose export` | Export current server state to YAML |
 | `dokku-compose ps [apps...]` | Show status of configured apps |
-| `dokku-compose validate` | Validate config file offline (no server contact) |
+| `dokku-compose validate [file]` | Validate config file offline (no server contact) |
 | `dokku-compose init [apps...]` | Create a starter `dokku-compose.yml` |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `--file <path>` | Config file (default: `dokku-compose.yml`) |
+| `-f, --file <path>` | Config file (default: `dokku-compose.yml`); `validate` takes the file as an argument instead |
 | `--dry-run` | Print commands without executing |
 | `--sensitive` | Show sensitive values in output (masked by default) |
 | `--fail-fast` | Stop on first error (default: continue to next app) |
 | `--prune` | `up` only: also reset settings the file no longer declares (read `diff` first) |
-| `--remove-orphans` | Destroy services and networks not in config |
+| `--force` | `down` only: required to destroy anything |
+| `--app <app>` | `export` only: export one app |
+| `-o, --output <path>` | `export` only: write to a file instead of stdout |
 | `--verbose` | Show git-style +/- diff (diff command only) |
 
 ### Settings removed from the file
@@ -144,13 +146,15 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 
 | Resource | Reset command |
 |----------|---------------|
-| `nginx`, `logs`, `registry`, `ps`, `git` (not Dokku-written keys: `ps` `restore`, git `deploy-branch` and `source-image`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
+| `nginx`, `logs`, `registry`, `ps` (not the Dokku-written `ps` key `restore`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
 | `scheduler` | `scheduler:set <app> selected` or `shell` |
 | `proxy` properties | `proxy:set <app> type` with no value (`proxy-port` and `proxy-ssl-port` are written by Dokku) |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
 | `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
 | `build.selected`, `build.skip_cleanup` | `builder:set <app> selected` / `skip-cleanup` with no value |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
+
+`diff` also shows a `-` for a removed `git` key, but `--prune` does not reset git properties ([git](docs/reference/git.md#removal)).
 
 It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
 
@@ -172,7 +176,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Feature | Description | Reference |
 |---------|-------------|-----------|
 | Apps | Create and destroy Dokku apps | [apps](docs/reference/apps.md) |
-| Dokku Version | Warn when the server's Dokku version is older than the pinned floor | [dokku](docs/reference/dokku.md) |
+| Dokku Version | Stop when the server runs Dokku older than 0.38.29; `dokku.version` in the file is a hard minimum for `up` | [dokku](docs/reference/dokku.md) |
 | Environment Variables | Set config vars per app or globally, with full convergence (keys removed from the YAML are unset) | [config](docs/reference/config.md) |
 | Build | Dockerfile path, build context, app.json, build args | [builder](docs/reference/builder.md) |
 | Docker Options | Custom Docker options per phase (build/deploy/run) | [docker_options](docs/reference/docker_options.md) |
@@ -183,7 +187,9 @@ All features are idempotent — running `up` twice produces no changes.
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
 | Storage | Persistent bind mounts with full convergence (keys removed from the YAML are unset) | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
-| Scheduler, Registry, Git | `scheduler` (`selected`, `shell`), `registry` and `git` properties per app; every app-scope `:set` key of Dokku 0.38.31 (audit F5), keys Dokku refuses fail `validate` | [logs](docs/reference/logs.md#removal), [audit](docs/dokku-audit.md) |
+| Scheduler | Select the scheduler and shell per app (`scheduler:set`) | [scheduler](docs/reference/scheduler.md) |
+| Registry | Image repo, template, push and server properties per app (`registry:set`) | [registry](docs/reference/registry.md) |
+| Git | `deploy_branch`, `keep_git_dir`, `rev_env_var`, `source_image` per app, with a top-level default (`git:set`) | [git](docs/reference/git.md) |
 | Zero-Downtime Checks | Configure deploy checks, disable per process type | [checks](docs/reference/checks.md) |
 | Log Management | Log retention and vector sink configuration | [logs](docs/reference/logs.md) |
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |
@@ -191,7 +197,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
 | Postgres | Postgres services with optional S3 backups, read from `postgres:info` so backup drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
 | Redis | Redis service instances | [redis](docs/reference/redis.md) |
-| Service Links | Link postgres/redis services to apps, with `alias`, `env_var` or `querystring` | [plugins](docs/reference/plugins.md#linking-services-to-apps-appsapplinks) |
+| Service Links | Link postgres/redis services to apps, with `alias`, `env_var` or `querystring` | [links](docs/reference/links.md) |
 
 ## Variable interpolation
 
@@ -233,26 +239,31 @@ dokku-compose/
 │   │   ├── config.ts         # YAML loading and parsing
 │   │   ├── dokku.ts          # Runner interface and factory
 │   │   └── logger.ts         # Colored output helpers
-│   ├── modules/              # One file per Dokku namespace
-│   │   ├── apps.ts           # dokku apps:*
-│   │   ├── builder.ts        # dokku builder:*, builder-dockerfile:*, app-json:*
-│   │   ├── certs.ts          # dokku certs:*
-│   │   ├── checks.ts         # dokku checks:*
-│   │   ├── config.ts         # dokku config:*
-│   │   ├── docker_options.ts # dokku docker-options:*
-│   │   ├── domains.ts        # dokku domains:*
-│   │   ├── logs.ts           # dokku logs:*
-│   │   ├── network.ts        # dokku network:*
-│   │   ├── nginx.ts          # dokku nginx:*
+│   ├── resources/            # Per-app resources, reconciled by core/reconcile.ts
+│   │   ├── lifecycle.ts      # dokku apps:create/destroy
+│   │   ├── lists.ts          # ports:*, domains:*, storage:*
+│   │   ├── properties.ts     # nginx:*, logs:*, registry:*, scheduler:*
+│   │   ├── toggle.ts         # proxy:*
+│   │   ├── network.ts        # network:*
+│   │   ├── certs.ts          # certs:*
+│   │   ├── checks.ts         # checks:*
+│   │   ├── config.ts         # config:* (per app)
+│   │   ├── builder.ts        # builder:*, builder-dockerfile:*, app-json:*
+│   │   ├── docker-options.ts # docker-options:*
+│   │   ├── git.ts            # git:*
+│   │   └── ps.ts             # ps:scale, ps:set
+│   ├── modules/              # Global and service steps, and the Dokku version check
+│   │   ├── config.ts         # dokku config:* (global)
+│   │   ├── docker-auth.ts    # docker login for docker_auth
+│   │   ├── domains.ts        # dokku domains:* (global)
+│   │   ├── links.ts          # Service link resolution across plugins
+│   │   ├── logs.ts           # dokku logs:* (global)
+│   │   ├── network.ts        # dokku network:create
+│   │   ├── nginx.ts          # dokku nginx:* (global)
 │   │   ├── plugins.ts        # dokku plugin:*
-│   │   ├── ports.ts          # dokku ports:*
-│   │   ├── proxy.ts          # dokku proxy:*
-│   │   ├── registry.ts       # dokku registry:*
-│   │   ├── scheduler.ts      # dokku scheduler:*
 │   │   ├── postgres.ts       # dokku postgres:* (create, backup, export)
 │   │   ├── redis.ts          # dokku redis:* (create, export)
-│   │   ├── links.ts          # Service link resolution across plugins
-│   │   └── storage.ts        # dokku storage:*
+│   │   └── version.ts        # Dokku version check
 │   ├── commands/
 │   │   ├── up.ts             # up command orchestration
 │   │   ├── down.ts           # down command orchestration
@@ -265,7 +276,7 @@ dokku-compose/
 └── dokku-compose.yml.example
 ```
 
-Each `src/modules/*.ts` file maps to one Dokku command namespace and exports `ensure*()`, `destroy*()`, and `export*()` functions. See [CLAUDE.md](CLAUDE.md) for development conventions.
+Each `src/resources/*.ts` file defines resources that `up`, `diff` and `export` share; `src/modules/*.ts` holds the global and service steps. See [CLAUDE.md](CLAUDE.md) for development conventions.
 
 </details>
 

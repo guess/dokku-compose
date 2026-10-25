@@ -30,7 +30,7 @@ opt-in: if the key is absent, only the built-in minimum applies.
 
 The value is a **minimum**, not an exact match. Pre-release suffixes
 (`-rc1`, `-beta`) are tolerated on both the server output and the value
-itself; only the `X.Y.Z` numeric part is compared. `export` writes the running
+itself; only the `X.Y.Z` numeric part is compared. Write the value as `X.Y.Z`: `validate` accepts any string, but `up` and `diff` fail with `Cannot parse version` on one like `0.38`. `export` writes the running
 server's version into this field, so `export` → edit → `up` gives a useful
 floor without manual effort.
 
@@ -41,7 +41,7 @@ dokku:
 
 | Server vs. file | `up` | `diff` |
 |-----------------|------|--------|
-| older | stops before changing anything: `server is vZ but the file requires >= vX` | drift line, exit 1 (does not throw) |
+| older | stops before changing anything: `Dokku server is vZ but the file requires >= vX. Upgrade Dokku or lower dokku.version.` | drift line, exit 1 (does not throw) |
 | equal | silent | silent |
 | newer | one notice, carries on | drift line, exit 1 |
 

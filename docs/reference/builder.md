@@ -2,11 +2,11 @@
 
 Dokku docs: https://dokku.com/docs/deployment/builders/builder-management/
 
-Module: `lib/builder.sh`
+Module: `src/resources/builder.ts`
 
 ## YAML Keys
 
-All build configuration lives under the `build` key per app. YAML key names follow docker-compose conventions. Only Dockerfile builds are supported.
+All build configuration lives under the `build` key per app. YAML key names follow docker-compose conventions. The Dockerfile settings (`dockerfile`, `context`, `app_json`) configure Dockerfile builds; `selected` picks the builder.
 
 ### Build Context (`build.context`)
 

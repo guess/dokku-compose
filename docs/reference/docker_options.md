@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/advanced-usage/docker-options/
 
-Module: `lib/docker_options.sh`
+Module: `src/resources/docker-options.ts`
 
 ## YAML Keys
 
@@ -10,7 +10,7 @@ Dokku applies deploy and run options only to containers created afterwards, so `
 
 ### Per-Phase Options (`docker_options.<phase>`)
 
-Add custom Docker flags per build phase. Valid phases are `build`, `deploy`, and `run`. Each declared phase is cleared and re-populated on every `up`, providing idempotent convergence. Undeclared phases are left untouched.
+Add custom Docker flags per build phase. Valid phases are `build`, `deploy`, and `run`. `up` compares each declared phase with the server and runs only what differs: an option missing on the server is added, and one on the server but not in the list is removed. Undeclared phases are left untouched. `--link` options (managed by `links`) and `--build-arg` options (managed by `build.args`) are never read or changed here.
 
 ```yaml
 apps:
@@ -27,11 +27,11 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `[list]` | `docker-options:clear <app> <phase>`<br>`docker-options:add <app> <phase> <option>` (per entry) |
+| `[list]` | `docker-options:report <app>` (check)<br>`docker-options:add <app> <phase> <option>` (per missing entry)<br>`docker-options:remove <app> <phase> <option>` (per entry not in the list) |
 | absent | no action |
 
 ## Removal
 
-`up` already removes an option on the server that is missing from a declared `docker_options` block, and `diff` shows it with a red `-`. A `docker_options` block gone from the file is left alone.
+`up` removes an option on the server that is missing from a declared `docker_options` block (as above), and `diff` shows it with a red `-`. A `docker_options` block gone from the file is left alone.
 
 `--build-arg` options in the build phase belong to [`build.args`](builder.md), which reads and writes them as Dokku stores them (quoted words from the JSON report's `build-list`). This block's own options are still read from the text report, where options are space-joined without quoting, so a value containing ` --` or a short flag is not reliably told apart.
