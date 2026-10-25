@@ -32,6 +32,9 @@ function storeStatus(plugin: string, sub: string): string | undefined {
 }
 
 describe('dokku-audit status files', () => {
+  // Sees only a command written as a literal straight into run/query/queryStrict/check: one
+  // picked by a ternary or held in a variable (`certs:update`, `setCmd: 'registry:set'`) is
+  // missed here, and left to the generated-table tests below.
   it('mark every Dokku command the code runs as supported', () => {
     const wrong: string[] = []
     for (const m of code.matchAll(/\.(?:run|query|queryStrict|check)\(\s*['`]([^'`]+)['`]/g)) {
