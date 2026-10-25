@@ -1,9 +1,7 @@
-import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
-import type { ServiceBackupConfig } from '../core/schema.js'
 
 export interface ServiceMismatch {
-  field: 'version' | 'image' | 'backup.auth' | 'backup.schedule' | 'backup.bucket' | 'backup'
+  field: string
   desired: string
   current: string
 }
@@ -43,7 +41,7 @@ async function fetchServiceInfo(ctx: Context, plugin: 'postgres' | 'redis', name
   throw new Error(`${plugin}:info ${name} --format json did not return JSON`)
 }
 
-const field = (info: ServiceInfo, key: string) => String(info[key] ?? '')
+export const field = (info: ServiceInfo, key: string) => String(info[key] ?? '')
 
 /**
  * Compare a service's declared `version` and `image` with the info's
@@ -72,66 +70,4 @@ export async function readServiceMismatches(
 ): Promise<ServiceMismatch[]> {
   if (declared.version === undefined && declared.image === undefined) return []
   return versionMismatches(await readServiceInfo(ctx, plugin, name), declared)
-}
-
-/**
- * What dokku-datastore reports as `backup-auth-fingerprint`: the lowercase hex
- * sha256 of the access key id and the secret joined by one newline.
- */
-export function backupAuthFingerprint(accessKeyId: string, secretAccessKey: string): string {
-  // Dokku stores each credential in a file and fingerprints its trimmed first line.
-  const firstLine = (v: string) => v.trim().split('\n')[0].trim()
-  return createHash('sha256').update(`${firstLine(accessKeyId)}\n${firstLine(secretAccessKey)}`).digest('hex')
-}
-
-/** Whether the server holds any backup schedule or credentials for the service. */
-export function hasBackup(info: ServiceInfo): boolean {
-  return field(info, 'backup-schedule') !== '' || field(info, 'backup-authenticated') === 'true'
-}
-
-/**
- * Compare a declared backup with the server's `backup-*` info keys.
- * Credentials are compared by fingerprint and never appear in the result.
- * `false` drifts when any backup is left on the server.
- */
-export function backupMismatches(info: ServiceInfo, backup: ServiceBackupConfig | false): ServiceMismatch[] {
-  // An absent key is not an empty value: an older plugin would read as "no backup" and re-apply every run.
-  for (const key of ['backup-authenticated', 'backup-auth-fingerprint', 'backup-schedule']) {
-    if (!(key in info)) throw new Error('dokku-postgres too old to report backup state (needs 2.3.1+)')
-  }
-  if (backup === false) {
-    return hasBackup(info) ? [{ field: 'backup', desired: 'none', current: describeServerBackup(info) }] : []
-  }
-  const out: ServiceMismatch[] = []
-  const { auth } = backup
-  const authDiffers: string[] = []
-  if (field(info, 'backup-auth-fingerprint') !== backupAuthFingerprint(auth.access_key_id, auth.secret_access_key)) {
-    authDiffers.push('credentials')
-  }
-  if (field(info, 'backup-default-region') !== auth.region) authDiffers.push('region')
-  if (field(info, 'backup-signature-version') !== auth.signature_version) authDiffers.push('signature version')
-  if (field(info, 'backup-endpoint-url') !== auth.endpoint) authDiffers.push('endpoint')
-  if (authDiffers.length > 0) {
-    out.push({
-      field: 'backup.auth',
-      desired: `${authDiffers.join(', ')} from the file`,
-      current: field(info, 'backup-authenticated') === 'true' ? 'other values' : 'not authenticated',
-    })
-  }
-  if (field(info, 'backup-schedule') !== backup.schedule) {
-    out.push({ field: 'backup.schedule', desired: backup.schedule, current: field(info, 'backup-schedule') })
-  }
-  if (field(info, 'backup-bucket') !== backup.bucket) {
-    out.push({ field: 'backup.bucket', desired: backup.bucket, current: field(info, 'backup-bucket') })
-  }
-  return out
-}
-
-/** A one-line, credential-free description of the server's backup. */
-export function describeServerBackup(info: ServiceInfo): string {
-  const schedule = field(info, 'backup-schedule')
-  const parts: string[] = []
-  if (schedule) parts.push(`scheduled ${schedule} to ${field(info, 'backup-bucket')}`)
-  if (field(info, 'backup-authenticated') === 'true') parts.push('credentials stored')
-  return parts.join(', ') || 'none'
 }

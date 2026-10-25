@@ -2,11 +2,13 @@ import type { Context } from '../core/context.js'
 import type { RedisConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
+import { exportServiceBackup } from './service-backup.js'
 
 export async function ensureRedis(
   ctx: Context,
   services: Record<string, RedisConfig>
-): Promise<void> {
+): Promise<Set<string>> {
+  const created = new Set<string>()
   for (const [name, config] of Object.entries(services)) {
     logAction('services', `Ensuring ${name}`)
     const exists = await ctx.check('redis:exists', name)
@@ -29,8 +31,10 @@ export async function ensureRedis(
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
     await ctx.run(...args)
+    created.add(name)
     logDone()
   }
+  return created
 }
 
 export async function destroyRedis(
@@ -73,6 +77,9 @@ export async function exportRedis(
     } else {
       config.version = versionField
     }
+
+    const backup = await exportServiceBackup(ctx, 'redis', name)
+    if (backup) config.backup = backup
 
     services[name] = config
   }

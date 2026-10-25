@@ -3,6 +3,7 @@
 // dokku-compose manages; `inSyncServer()` is a server whose state equals it.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import * as fs from 'fs'
+import { createHash } from 'crypto'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
@@ -28,6 +29,24 @@ function nothingSet(name: string): Record<string, string> {
     [`docker-options:report ${name}`]: report(name, 'docker-options', {}),
     [`docker-options:report ${name} --format json`]: JSON.stringify({ 'build-list': [] }),
   }
+}
+
+// printf 'KEY\nSECRET' | shasum -a 256
+const KEY_FINGERPRINT = '367b0dd6299da53d84c87a01b0519aed571f65b54ed7d95687fbbaf6760462b3'
+const AUTHENTICATED = {
+  'backup-authenticated': 'true', 'backup-auth-fingerprint': KEY_FINGERPRINT,
+  'backup-default-region': 'auto', 'backup-signature-version': 's3v4', 'backup-endpoint-url': 'https://s3.example.com',
+}
+// sha256 of 'in-sync-passphrase', no newline
+const PASSPHRASE_FINGERPRINT = createHash('sha256').update('in-sync-passphrase').digest('hex')
+const REDIS_BACKUP = {
+  ...AUTHENTICATED, 'backup-schedule': '0 * * * *', 'backup-bucket': 'backups/myapp-redis',
+  'backup-encryption-fingerprint': PASSPHRASE_FINGERPRINT, 'backup-encrypted': 'true',
+  'backup-storage-class': 'STANDARD_IA', 'backup-object-name': 'cache/latest', 'backup-mailto': 'ops@example.com', 'backup-timestamp': 'false',
+}
+const REPORTS_BACKUP = {
+  ...AUTHENTICATED, 'backup-schedule': '30 2 * * *', 'backup-bucket': 'backups/myapp-reports',
+  'backup-public-key-id': 'ABCD1234ABCD1234', 'backup-keyserver': 'hkp://keys.example.com', 'backup-encrypted': 'true',
 }
 
 function inSyncServer(): FakeServer {
@@ -63,8 +82,9 @@ function inSyncServer(): FakeServer {
         { name: 'redis', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
       ]),
       'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5'),
-      'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine'),
-      'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17'),
+      'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', REDIS_BACKUP),
+      'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17', REPORTS_BACKUP),
+      'redis:backup-schedule-cat myapp-redis': '0 * * * * dokku /usr/bin/dokku redis:backup myapp-redis backups/myapp-redis',
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
       'logs:report --global --format json': logsGlobalJson({
@@ -243,7 +263,7 @@ describe('a server whose state equals the file', () => {
   it('a service whose version or image differs shows in diff, and up warns and runs no :upgrade', async () => {
     const server = inSyncServer()
     server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgres', '16.1')
-    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.0-alpine')
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.0-alpine', REDIS_BACKUP)
     const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
     expect(diff.services['myapp-db']).toMatchObject({
       status: 'changed',
@@ -425,7 +445,7 @@ describe('a server whose state equals the file', () => {
     const quiet = fakeContext(server)
     await runUp(quiet.ctx, config, [])
     expect(quiet.runner.dryRunLog).toEqual([])
-    expect((quiet.runner.queryStrict as any).mock.calls.filter((c: string[]) => c[0] === 'postgres:info')).toHaveLength(1)
+    expect((quiet.runner.queryStrict as any).mock.calls.filter((c: string[]) => c[0] === 'postgres:info' && c[1] === 'myapp-db')).toHaveLength(1)
 
     server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...onServer, 'backup-bucket': 'old/myapp-db' })
     server.queries['config:export --global --format json'] = JSON.stringify({
@@ -473,5 +493,60 @@ describe('a server whose state equals the file', () => {
     } finally {
       warn.mockRestore()
     }
+  })
+
+  it('redis encryption and settings drift shows in diff without the passphrase, and up fixes exactly those', async () => {
+    const server = inSyncServer()
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', {
+      ...REDIS_BACKUP, 'backup-encryption-fingerprint': createHash('sha256').update('old-passphrase').digest('hex'),
+      'backup-mailto': 'other@example.com', 'backup-timestamp': 'true',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.inSync).toBe(false)
+    expect(diff.services['myapp-redis'].mismatches!.map(m => m.field)).toEqual(['backup.encryption', 'backup.mailto', 'backup.timestamp'])
+    expect(formatVerbose(diff) + formatSummary(diff)).not.toContain('in-sync-passphrase')
+    expect(formatVerbose(diff) + formatSummary(diff)).not.toContain('old-passphrase')
+    const fix = fakeContext(server)
+    await runUp(fix.ctx, loadConfig(FIXTURE), [])
+    expect(fix.runner.dryRunLog).toEqual([
+      'redis:set myapp-redis backup-encryption-passphrase in-sync-passphrase',
+      'redis:set myapp-redis backup-mailto ops@example.com',
+      'redis:set myapp-redis backup-timestamp false',
+    ])
+  })
+
+  it('encryption the file leaves out is a diff note, never drift; settings it leaves out are cleared only by --prune', async () => {
+    const config = loadConfig(FIXTURE)
+    delete (config.redis!['myapp-redis'].backup as any).encryption
+    delete (config.redis!['myapp-redis'].backup as any).mailto
+    const server = inSyncServer()
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.inSync).toBe(true)
+    expect(diff.services['myapp-redis'].note).toContain('backup encryption on the server is not in the file')
+    expect(diff.services['myapp-redis'].note).toContain('backup mailto on the server is not in the file')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const plain = fakeContext(server)
+      await runUp(plain.ctx, config, [])
+      expect(plain.runner.dryRunLog).toEqual([])
+      const pruned = fakeContext(server)
+      await runUp(pruned.ctx, config, [], { prune: true })
+      expect(pruned.runner.dryRunLog).toEqual(['redis:set myapp-redis backup-mailto'])
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  it('other schedules on a 2.5.0 plugin are a diff note and never touched by up', async () => {
+    const server = inSyncServer()
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', {
+      ...REDIS_BACKUP, 'backup-schedules': 'default|0 * * * *|backups/myapp-redis|false;monthly|@monthly|archive|false',
+    })
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.inSync).toBe(true)
+    expect(diff.services['myapp-redis'].note).toContain('other backup schedules (monthly)')
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
+    expect(runner.dryRunLog).toEqual([])
   })
 })

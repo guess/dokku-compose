@@ -104,6 +104,43 @@ describe('runUp', () => {
     expect(runCalls).toContain('postgres:backup-schedule new-db 0 * * * * backups/new-db')
   })
 
+  it('dry-run plans the backup, encryption and settings of a redis service it would create', async () => {
+    const runner = createRunner({ dryRun: true })
+    runner.check = vi.fn(async () => false)
+    runner.query = vi.fn(async (...args: string[]) => {
+      if (args.join(' ') === 'version') return 'dokku version 0.38.31'
+      return emptyAnswer(...args) ?? ''
+    })
+    runner.run = vi.fn()
+    stubStrict(runner)
+    const lenient = runner.queryStrict
+    runner.queryStrict = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'redis:info') throw new Error('Redis service new-cache does not exist')
+      return lenient(...args)
+    })
+    const config = ConfigSchema.parse({
+      apps: {},
+      redis: {
+        'new-cache': {
+          backup: {
+            schedule: '0 * * * *',
+            bucket: 'backups/new-cache',
+            auth: { access_key_id: 'K', secret_access_key: 'S', region: 'auto', signature_version: 's3v4', endpoint: 'https://r2.example.com' },
+            encryption: { passphrase: 'correct-horse' },
+            mailto: 'ops@example.com',
+          },
+        },
+      },
+    })
+    await runUp(createContext(runner), config, [], { dryRun: true })
+    const runCalls = runner.run.mock.calls.map((c: string[]) => c.join(' '))
+    expect(runCalls).toContain('redis:create new-cache')
+    expect(runCalls).toContain('redis:backup-auth new-cache K S auto s3v4 https://r2.example.com')
+    expect(runCalls).toContain('redis:backup-schedule new-cache 0 * * * * backups/new-cache')
+    expect(runCalls).toContain('redis:set new-cache backup-encryption-passphrase correct-horse')
+    expect(runCalls).toContain('redis:set new-cache backup-mailto ops@example.com')
+  })
+
   it('filters to specific apps when appFilter provided', async () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)

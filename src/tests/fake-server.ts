@@ -137,7 +137,9 @@ export function serviceInfoJson(svc: string, image: string, imageVersion: string
   return JSON.stringify({
     'backup-schedule': '', 'backup-bucket': '', 'backup-authenticated': 'false', 'backup-auth-fingerprint': '',
     'backup-access-key-id-fingerprint': '', 'backup-secret-access-key-fingerprint': '', 'backup-default-region': '',
-    'backup-signature-version': '', 'backup-endpoint-url': '', 'backup-encrypted': 'false', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
+    'backup-signature-version': '', 'backup-endpoint-url': '', 'backup-encrypted': 'false',
+    'backup-encryption-fingerprint': '', 'backup-public-key-id': '', 'backup-keyserver': '', 'backup-storage-class': '',
+    'backup-object-name': '', 'backup-mailto': '', 'backup-timestamp': 'true', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
     'data-dir': `/var/lib/dokku/services/x/${svc}/data`, status: 'running',
     service: svc, image, 'image-version': imageVersion, version: `${image}:${imageVersion}`, links: 'myapp',
     ...values,
