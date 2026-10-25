@@ -1,6 +1,6 @@
 import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
-import type { Config, ServicePropertiesConfig } from '../core/schema.js'
+import { EXPORT_PLACEHOLDER, type Config, type ServicePropertiesConfig } from '../core/schema.js'
 import { logAction, logDone, logError, logSkip } from '../core/logger.js'
 import { normalizeLink } from './links.js'
 import { forgetServiceInfo, readServiceInfo, field, type ServiceInfo, type ServiceMismatch } from './service-drift.js'
@@ -200,4 +200,39 @@ export function propertyMismatches(plugin: ServicePlugin, info: ServiceInfo, pro
     out.push({ field: `properties.${key}`, desired: '(not in the file)', current, removed: true })
   }
   return out
+}
+
+/**
+ * The `properties` and `mounts` `export` writes for a service, from `<plugin>:info --format json`:
+ * managed keys with a value that is not the plugin's default. `password` is never written (only its
+ * fingerprint is readable) and every `custom-env` value is `REPLACE_ME`. A service whose info cannot
+ * be read gets neither (the backup export has already said so).
+ */
+export async function exportServiceProperties(
+  ctx: Context,
+  plugin: ServicePlugin,
+  name: string,
+): Promise<{ properties?: ServicePropertiesConfig; mounts?: string[] }> {
+  let info: ServiceInfo
+  try {
+    info = await readServiceInfo(ctx, plugin, name)
+  } catch {
+    return {}
+  }
+  const properties: ServicePropertiesConfig = {}
+  for (const key of PRUNABLE_PROPERTIES) {
+    const current = field(info, key)
+    if (isDefaultProperty(key, current)) continue
+    switch (MANAGED_PROPERTIES[key].kind) {
+      case 'list': properties[key] = current.split(',').filter(v => v !== ''); break
+      case 'map': properties[key] = Object.fromEntries(current.split(';').filter(v => v !== '').map(p => [p.split('=')[0], EXPORT_PLACEHOLDER])); break
+      case 'number': properties[key] = Number(current); break
+      default: properties[key] = current
+    }
+  }
+  const mounts = 'mounts' in info ? parseInfoMounts(field(info, 'mounts')) : []
+  return {
+    ...(Object.keys(properties).length > 0 ? { properties } : {}),
+    ...(mounts.length > 0 ? { mounts } : {}),
+  }
 }

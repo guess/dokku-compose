@@ -2,7 +2,7 @@ import type { Context } from '../core/context.js'
 import type { PostgresConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
-import { createArgs } from './service-properties.js'
+import { createArgs, exportServiceProperties } from './service-properties.js'
 import { exportServiceBackup } from './service-backup.js'
 import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
 
@@ -107,6 +107,8 @@ export async function exportPostgres(
 
     const backup = await exportServiceBackup(ctx, 'postgres', name)
     if (backup) config.backup = backup
+
+    Object.assign(config, await exportServiceProperties(ctx, 'postgres', name))
 
     services[name] = config
   }

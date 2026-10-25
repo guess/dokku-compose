@@ -2,7 +2,7 @@ import type { Context } from '../core/context.js'
 import type { RedisConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
-import { createArgs } from './service-properties.js'
+import { createArgs, exportServiceProperties } from './service-properties.js'
 import { exportServiceBackup } from './service-backup.js'
 
 export async function ensureRedis(
@@ -82,6 +82,8 @@ export async function exportRedis(
 
     const backup = await exportServiceBackup(ctx, 'redis', name)
     if (backup) config.backup = backup
+
+    Object.assign(config, await exportServiceProperties(ctx, 'redis', name))
 
     services[name] = config
   }
