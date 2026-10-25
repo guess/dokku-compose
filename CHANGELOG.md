@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`up --prune` never reset git properties.** A `keep_git_dir` removed from the file stayed on the server, and plain `up` did not count it among the leftovers it reports, although 0.14.0 said `--prune` covers git. `up --prune` now runs `git:set <app> keep-git-dir` with no value, and `up` counts it. `deploy-branch`, `source-image` and `rev-env-var` are written by Dokku and are still never reset.
+
 ## [0.14.2] - 2026-10-24
 
 ### Fixed

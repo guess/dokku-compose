@@ -126,7 +126,7 @@ async function processApp(
 
   // Build
   await step(() => reconcile(Builder, ctx, app, appConfig.build, count, prune))
-  await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git))
+  await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git, count, prune))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
 
   if (leftOnServer > 0) {
