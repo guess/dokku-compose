@@ -7,7 +7,7 @@ import { createHash } from 'crypto'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, gitReport, proxyReport, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -120,7 +120,11 @@ function inSyncServer(): FakeServer {
       [`ports:report ${app} --ports-map`]: 'http:80:5000 https:443:5000',
       [`certs:report ${app} --ssl-enabled`]: 'true',
       [`certs:show ${app} crt`]: CRT,
-      [`storage:report ${app} --storage-deploy-mounts`]: '-v /var/lib/dokku/data/storage/myapp/uploads:/app/uploads',
+      [`storage:report ${app} --format json`]: storageReportJson([
+        { entry: 'uploads', hostPath: '/var/lib/dokku/data/storage/uploads', containerPath: '/app/uploads' },
+        { entry: 'data', hostPath: '/var/lib/dokku/data/storage/data', containerPath: '/app/data', phases: 'deploy', readonly: true },
+        { entry: 'media', hostPath: '/srv/media', containerPath: '/app/media', processType: 'worker', volumeOptions: 'Z' },
+      ]),
       [`nginx:report ${app}`]: report(app, 'nginx', {
         'Nginx client max body size': '15m',
         'Nginx global client max body size': '20m',
@@ -220,6 +224,50 @@ describe('a server whose state equals the file', () => {
 
   it('up --dry-run --prune runs no command', async () => {
     const { ctx, runner } = fakeContext(inSyncServer())
+    await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
+    expect(runner.dryRunLog).toEqual([])
+  })
+
+  it('up creates a missing entry and moves a legacy mount onto it, before the app step', async () => {
+    const server = inSyncServer()
+    const entries = JSON.parse(server.queries['storage:list-entries --format json']) as { name: string }[]
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      ...entries.filter(e => e.name !== 'uploads'),
+      { name: 'legacy-3f9c1a2b7d', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/uploads' },
+    ])
+    server.queries['storage:report myapp --format json'] = storageReportJson([
+      { entry: 'legacy-3f9c1a2b7d', hostPath: '/var/lib/dokku/data/storage/uploads', containerPath: '/app/uploads' },
+      { entry: 'data', hostPath: '/var/lib/dokku/data/storage/data', containerPath: '/app/data', phases: 'deploy', readonly: true },
+      { entry: 'media', hostPath: '/srv/media', containerPath: '/app/media', processType: 'worker', volumeOptions: 'Z' },
+    ])
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), [])
+    expect(runner.dryRunLog).toEqual([
+      'storage:create uploads --chown herokuish',
+      'storage:mount --replace myapp uploads:/app/uploads data:/app/data:ro,phase=deploy',
+    ])
+  })
+
+  it('an entry that cannot be converged is reported, and the app that mounts it skips its storage step', async () => {
+    const server = inSyncServer()
+    const entries = JSON.parse(server.queries['storage:list-entries --format json']) as { name: string; host_path: string }[]
+    server.queries['storage:list-entries --format json'] = JSON.stringify(entries.map(e => e.name === 'media' ? { ...e, host_path: '/srv/old' } : e))
+    server.queries['storage:report myapp --format json'] = storageReportJson([])
+    const { ctx, runner } = fakeContext(server)
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [])).rejects.toThrow(/up failed for 1 app\(s\): myapp/)
+    expect(runner.dryRunLog.filter(c => c.startsWith('storage:'))).toEqual([])
+    const shown = err.mock.calls.map(c => String(c[0])).join('\n')
+    expect(shown).toContain("entry 'media' is at /srv/old on the server but the file says /srv/media")
+    expect(shown).toContain("storage skipped: entry 'media' failed")
+    err.mockRestore()
+  })
+
+  it('up --prune never destroys an entry the file does not declare', async () => {
+    const server = inSyncServer()
+    const entries = JSON.parse(server.queries['storage:list-entries --format json']) as object[]
+    server.queries['storage:list-entries --format json'] = JSON.stringify([...entries, { name: 'old', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/old', chown: 'root' }])
+    const { ctx, runner } = fakeContext(server)
     await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
     expect(runner.dryRunLog).toEqual([])
   })

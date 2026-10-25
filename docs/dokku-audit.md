@@ -425,10 +425,10 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `storage:list` | List bind mounts for an app's container(s) (legacy host:container v… | ⛔ | Read-only |
 | `storage:list-entries` | List registered storage entries | ✅ | `volumes:` read (entries, `--format json`) |
 | `storage:migrate` | Re-run the legacy -v to attachment migration for an app | ⛔ | Maintenance |
-| `storage:mount` | Create or replace bind mounts | ✅ | `storage:` (`--replace` would converge in one call, F9) |
-| `storage:report` | Displays a storage report for one or more apps | ✅ | `storage` read (`--storage-deploy-mounts`) |
+| `storage:mount` | Create or replace bind mounts | ✅ | `storage:` (`--replace`, one call per process type) |
+| `storage:report` | Displays a storage report for one or more apps | ✅ | `storage` read (`--format json`, the `attachment.<n>.*` keys) |
 | `storage:set` | Update a storage entry in place | ✅ | `volumes:` (`chown`, `mode` of an existing entry) |
-| `storage:unmount` | Remove one or all bind mounts | ✅ | `storage:` |
+| `storage:unmount` | Remove one or all bind mounts | ✅ | `storage:` (`--all` for a process type the file no longer declares) |
 | `storage:wait` | Wait for a storage entry's PVC to be bound (k3s) | ⛔ | k3s only |
 
 ### Registry

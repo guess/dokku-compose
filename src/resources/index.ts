@@ -1,6 +1,7 @@
 // src/resources/index.ts
 import { Apps } from './lifecycle.js'
-import { Domains, Ports, Storage } from './lists.js'
+import { Domains, Ports } from './lists.js'
+import { Storage } from './storage.js'
 import { Nginx, Logs, Registry, Scheduler } from './properties.js'
 import { Proxy, ProxyProps } from './toggle.js'
 import { Config } from './config.js'

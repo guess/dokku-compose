@@ -240,7 +240,8 @@ dokku-compose/
 │   │   └── logger.ts         # Colored output helpers
 │   ├── resources/            # Per-app resources, reconciled by core/reconcile.ts
 │   │   ├── lifecycle.ts      # dokku apps:create/destroy
-│   │   ├── lists.ts          # ports:*, domains:*, storage:*
+│   │   ├── lists.ts          # ports:*, domains:*
+│   │   ├── storage.ts        # storage:mount --replace, storage:unmount (per app)
 │   │   ├── properties.ts     # nginx:*, logs:*, registry:*, scheduler:*
 │   │   ├── toggle.ts         # proxy:*
 │   │   ├── network.ts        # network:*

@@ -4,6 +4,7 @@ import type { Config, AppConfig, PostgresConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { proxyProps } from '../resources/toggle.js'
+import { desiredSpecs } from '../resources/storage.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
@@ -158,6 +159,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         desired = appConfig.git ?? config.git
       } else if (resource.key === 'proxy_props') {
         desired = proxyProps(appConfig.proxy)
+      } else if (resource.key === 'storage') {
+        desired = desiredSpecs(appConfig.storage)
       } else {
         desired = (appConfig as any)[resource.key]
       }

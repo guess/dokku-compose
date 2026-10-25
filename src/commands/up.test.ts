@@ -17,6 +17,7 @@ function stubStrict(runner: ReturnType<typeof createRunner>) {
     if (!out && args.join(' ') === 'config:export --global --format json') return '{}'
     // A box with no storage entries prints an empty JSON list.
     if (!out && args[0] === 'storage:list-entries') return '[]'
+    if (!out && args[0] === 'storage:report') return '{}'
     return args[0] === 'plugin:list' && !out ? '[]' : out
   })
   // No registry login stored yet; a login goes through runner.run like any other mutation.

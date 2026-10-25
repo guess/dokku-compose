@@ -1,7 +1,10 @@
 import { z } from 'zod'
 import { SEMVER_RE } from '../modules/version.js'
 import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resources/properties.js'
-import { entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation } from './volume-rules.js'
+import {
+  entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation,
+  parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
+} from './volume-rules.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V) {
@@ -88,6 +91,29 @@ const VolumesSchema = z.record(z.string(), VolumeSchema).superRefine((volumes, c
   }
 })
 
+const unsupportedMountKey = (key: string) => z.any().optional().refine(v => v === undefined, {
+  message: `${key} is not supported: on docker-local Dokku stores it but never applies it`,
+})
+
+const MountObjectSchema = z.object({
+  entry: z.string().min(1),
+  container_dir: z.string().min(1),
+  readonly: z.boolean().optional(),
+  phases: z.array(z.enum(['deploy', 'run'])).min(1).optional(),
+  process_type: z.string().optional(),
+  options: z.array(z.string()).optional(),
+  subpath: unsupportedMountKey('subpath'),
+  volume_chown: unsupportedMountKey('volume_chown'),
+}).strict().superRefine((m, ctx) => {
+  for (const message of mountIssues(m as MountItem)) ctx.addIssue({ code: 'custom', message })
+})
+
+const MountStringSchema = z.string().superRefine((s, ctx) => {
+  const parsed = parseMountString(s)
+  if (typeof parsed === 'string') ctx.addIssue({ code: 'custom', message: parsed })
+  else for (const message of mountIssues(parsed)) ctx.addIssue({ code: 'custom', message })
+})
+
 const AppSchema = z.object({
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
   links: z.array(LinkSchema).optional(),
@@ -100,7 +126,7 @@ const AppSchema = z.object({
     z.literal(true),
     z.object({ certfile: z.string(), keyfile: z.string() }).strict()
   ]).optional(),
-  storage: z.array(z.string()).optional(),
+  storage: z.array(z.union([MountStringSchema, MountObjectSchema])).optional(),
   proxy: z.object({
     enabled: z.boolean().optional(),
     type: z.string().optional(),
@@ -250,7 +276,25 @@ export const ConfigSchema = z.object({
   // The top-level block is also applied with `--global`, which takes two more keys.
   logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber).optional(),
   git: GitSchema.optional(),
-}).strict()
+}).strict().superRefine((config, ctx) => {
+  // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
+  for (const [app, appConfig] of Object.entries(config.apps)) {
+    const mounts = declaredMounts(appConfig.storage as (string | MountItem)[] | undefined)
+    mounts.forEach((m, i) => {
+      const where = ['apps', app, 'storage', i]
+      if (!config.volumes || !(m.entry in config.volumes)) {
+        ctx.addIssue({ code: 'custom', path: where, message: `entry '${m.entry}' is not declared under volumes:` })
+      }
+      mounts.slice(0, i).forEach(earlier => {
+        if (earlier.container_dir !== m.container_dir || !scopesOverlap(earlier.process_type, m.process_type)) return
+        const how = earlier.process_type === m.process_type
+          ? `twice in ${m.process_type === DEFAULT_SCOPE ? 'every process' : `process type ${m.process_type}`}`
+          : 'in the default scope and in a named process type, which Dokku forbids'
+        ctx.addIssue({ code: 'custom', path: where, message: `container_dir '${m.container_dir}' is mounted ${how}` })
+      })
+    })
+  }
+})
 
 export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>

@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/advanced-usage/persistent-storage/
 
-Module: `src/modules/volumes.ts` (top-level `volumes`), `src/resources/lists.ts` (`apps.<app>.storage`)
+Module: `src/modules/volumes.ts` (top-level `volumes`), `src/resources/storage.ts` (`apps.<app>.storage`)
 
 Needs Dokku >= 0.38.32 (named storage entries need 0.38.0 and `storage:mount --replace` with per-mount options 0.38.30). See [dokku](dokku.md).
 
@@ -108,7 +108,7 @@ apps:
 
 - an `entry` not declared in `volumes:`;
 - a host path (an item starting with `/`), with a message that points at `path:`;
-- a container dir that is not absolute or normalised, or is used twice in one scope;
+- a container dir that is not absolute or normalised, contains `:`, or is used twice in one scope;
 - the same container dir in the default scope and a named one (Dokku forbids overlapping scopes);
 - an `options` item that is empty or contains `ro`, `rw`, a comma or `=` (use `readonly`; Dokku rejects unknown `key=` tokens);
 - `phases` that is empty or repeats a phase.

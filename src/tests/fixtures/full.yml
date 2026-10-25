@@ -57,7 +57,7 @@ apps:
     checks:
       wait-to-retire: 60
     storage:
-      - "/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"
+      - uploads:/app/uploads
     registry:
       push-on-release: true
       server: registry.example.com
