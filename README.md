@@ -123,9 +123,9 @@ dokku ps:restart worker  # env, storage
 | Option | Description |
 |--------|-------------|
 | `-f, --file <path>` | Config file (default: `dokku-compose.yml`); `validate` takes the file as an argument instead |
-| `--dry-run` | Print commands without executing |
-| `--sensitive` | Show sensitive values in output (masked by default) |
-| `--fail-fast` | Stop on first error (default: continue to next app) |
+| `--dry-run` | `up` only: print commands without executing |
+| `--sensitive` | `up`, `diff` and `export`: show sensitive values in output (masked by default) |
+| `--fail-fast` | `up` and `down`: stop on first error (default: continue to next app) |
 | `--prune` | `up` only: also reset settings the file no longer declares (read `diff` first) |
 | `--force` | `down` only: required to destroy anything |
 | `--app <app>` | `export` only: export one app |

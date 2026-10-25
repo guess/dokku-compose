@@ -18,7 +18,7 @@ apps:
     # ...
 ```
 
-During `up`, `apps:exists <app>` is checked first: an app that exists is skipped, a missing one is created. `down` unlinks the app's services, then destroys the app if it exists. If creating the app fails, `up` skips that app's other resources.
+During `up`, `apps:exists <app>` is checked first: an app that exists is skipped, a missing one is created. `down` unlinks the services in the app's `links:` (when the file declares `postgres:` or `redis:`), then destroys the app if it exists. If creating the app fails, `up` skips that app's other resources.
 
 | Phase | Dokku Commands |
 |-------|----------------|

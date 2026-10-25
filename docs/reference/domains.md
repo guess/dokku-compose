@@ -26,7 +26,7 @@ apps:
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `[list]` | enabled: enabled: `domains:remove <app> <domain>` / `domains:add <app> <domain>` for the difference only<br>disabled (or unreadable): `domains:enable <app>`, then `domains:set <app> <domains...>` |
+| `[list]` | enabled: `domains:remove <app> <domain>` / `domains:add <app> <domain>` for the difference only<br>disabled (or unreadable): `domains:enable <app>`, then `domains:set <app> <domains...>` |
 | `false` | `domains:disable <app>`, only when enabled |
 | absent | no action |
 

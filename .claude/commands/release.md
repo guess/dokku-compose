@@ -72,7 +72,7 @@ Releases land through a pull request: either a release PR (`chore: release v<ver
 
 ## Step 5: Confirm success
 
-After the script completes, tell the user:
+After the tag is pushed, tell the user:
 - The version that was released
 - The git tag that was created
 - Remind them they can track the CI run with: `gh run list --workflow=release.yml --limit=1` (it runs `bun test` and `bun run build`, publishes to npm and creates the GitHub release)
