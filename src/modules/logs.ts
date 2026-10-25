@@ -1,5 +1,5 @@
 import type { Context } from '../core/context.js'
-import { readGlobal, ensureGlobal, type GlobalOptions } from './global.js'
+import { ensureGlobal, type GlobalOptions } from './global.js'
 
 export async function ensureAppLogs(
   ctx: Context,
@@ -10,9 +10,6 @@ export async function ensureAppLogs(
     await ctx.run('logs:set', app, key, String(value))
   }
 }
-
-/** Global logs settings from `logs:report --global --format json`. */
-export const readGlobalLogs = (ctx: Context): Promise<Record<string, string>> => readGlobal(ctx, 'logs')
 
 /** Sets the global logs settings whose server value differs; under `--prune` clears the ones the block dropped. */
 export const ensureGlobalLogs = (ctx: Context, block: Record<string, string | number>, opts: GlobalOptions = {}): Promise<boolean> =>

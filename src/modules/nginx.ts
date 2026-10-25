@@ -1,5 +1,5 @@
 import type { Context } from '../core/context.js'
-import { readGlobal, ensureGlobal, type GlobalOptions } from './global.js'
+import { ensureGlobal, type GlobalOptions } from './global.js'
 import { logAction, logDone, logSkip } from '../core/logger.js'
 
 export async function ensureAppNginx(
@@ -24,9 +24,6 @@ export async function ensureAppNginx(
     logSkip()
   }
 }
-
-/** Global nginx settings from `nginx:report --global --format json`. */
-export const readGlobalNginx = (ctx: Context): Promise<Record<string, string>> => readGlobal(ctx, 'nginx')
 
 /** Sets the global nginx settings whose server value differs; under `--prune` clears the ones the block dropped. */
 export const ensureGlobalNginx = (ctx: Context, block: Record<string, string | number>, opts: GlobalOptions = {}): Promise<boolean> =>

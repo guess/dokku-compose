@@ -822,6 +822,75 @@ describe('top-level global blocks', () => {
     expect(runner.dryRunLog).toEqual(['network:set --global initial-network'])
   })
 
+  describe('diff shows the global blocks under global', () => {
+    const diffOf = (server: FakeServer, mutate: (c: ReturnType<typeof loadConfig>) => void = () => {}) => {
+      const config = loadConfig(FIXTURE)
+      mutate(config)
+      return computeDiff(fakeContext(server).ctx, config)
+    }
+
+    it('a changed value is ~, a value the server lacks is +, and both count as drift', async () => {
+      const server = inSyncServer()
+      server.queries['registry:report --global --format json'] = globalReportJson('registry', { server: 'old.example.com', 'push-on-release': 'true' })
+      server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', {})
+      server.queries['checks:report --global --format json'] = globalReportJson('checks', {})
+      const diff = await diffOf(server)
+      expect(diff.global.registry).toMatchObject({ status: 'changed', desired: { server: 'registry.example.com', 'push-on-release': true }, current: { server: 'old.example.com', 'push-on-release': 'true' } })
+      expect(diff.global.scheduler).toMatchObject({ status: 'missing', desired: 'docker-local' })
+      expect(diff.global.checks).toMatchObject({ status: 'missing' })
+      expect(diff.inSync).toBe(false)
+      const summary = formatSummary(diff)
+      expect(summary.match(/^  global$/gm)).toHaveLength(1)
+      expect(summary).toMatch(/~ registry/)
+      expect(summary).toMatch(/\+ scheduler/)
+      expect(formatVerbose(diff)).toContain('@@ global / registry @@')
+    })
+
+    it('a key the declared block dropped is - and counts as drift', async () => {
+      const server = inSyncServer()
+      server.queries['ps:report --global --format json'] = globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'stop-timeout-seconds': '45', 'skip-deploy': 'true' })
+      server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal', 'initial-network': 'bridge' })
+      const diff = await diffOf(server)
+      expect(diff.global.ps).toMatchObject({ status: 'extra', removed: ['skip-deploy'] })
+      expect(diff.global.network).toMatchObject({ status: 'extra', removed: ['initial_network'] })
+      expect(diff.inSync).toBe(false)
+      expect(formatSummary(diff)).toContain('not in the file: skip-deploy')
+      expect(formatVerbose(diff)).toContain('- skip-deploy (not in the file)')
+    })
+
+    it('a block the file does not declare is never read or shown', async () => {
+      const server = inSyncServer()
+      server.queries['ps:report --global --format json'] = globalReportJson('ps', { 'restart-policy': 'always' })
+      const diff = await diffOf(server, c => { delete (c as any).ps })
+      expect(diff.global.ps).toBeUndefined()
+      expect(diff.inSync).toBe(true)
+    })
+
+    it('an attach_post_deploy the block does not declare is not a removal', async () => {
+      const server = inSyncServer()
+      const diff = await diffOf(server, c => { c.network = { tld: 'internal', bind_all_interfaces: false } })
+      expect(diff.global.network).toBeUndefined()
+      expect(diff.inSync).toBe(true)
+    })
+
+    it('an unreadable global report is unknown, not missing', async () => {
+      const server = inSyncServer()
+      server.queries['git:report --global --format json'] = 'not json'
+      const diff = await diffOf(server)
+      expect(diff.global.git).toMatchObject({ status: 'unknown' })
+      expect(diff.readWarnings.join('\n')).toContain("could not read global 'git'")
+      expect(diff.inSync).toBe(false)
+    })
+
+    it('a log sink under global is masked in the output', async () => {
+      const server = inSyncServer()
+      server.queries['logs:report --global --format json'] = logsGlobalJson({ 'global-max-size': '50m', 'global-vector-sink': 'http://user:secret@logs.example.com' })
+      const diff = await diffOf(server)
+      expect(diff.global.logs).toMatchObject({ status: 'changed' })
+      expect(JSON.stringify(maskDiffResult(diff))).not.toContain('secret')
+    })
+  })
+
   it('git: a changed global value is set, including the limits that exist only globally; a dropped key is pruned', async () => {
     const server = inSyncServer()
     server.queries['git:report --global --format json'] = globalReportJson('git', {
