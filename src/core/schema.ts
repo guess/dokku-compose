@@ -114,30 +114,79 @@ const AppSchema = z.object({
   git: GitSchema.optional(),
 }).strict()
 
+/** What `export` writes in place of a secret it cannot read back. */
+export const EXPORT_PLACEHOLDER = 'REPLACE_ME'
+
+/** A secret the file must really give: not the placeholder `export` wrote. */
+const notPlaceholder = (v: string) => v !== EXPORT_PLACEHOLDER
+const placeholderMessage = `replace the ${EXPORT_PLACEHOLDER} placeholder written by export`
+const singleLine = (v: string) => !/[\r\n]/.test(v)
+
 const ServiceBackupAuthSchema = z.object({
-  access_key_id: z.string().min(1),
-  secret_access_key: z.string().min(1),
+  access_key_id: z.string().min(1).refine(notPlaceholder, placeholderMessage),
+  secret_access_key: z.string().min(1).refine(notPlaceholder, placeholderMessage),
   region: z.string().min(1),
   signature_version: z.string().min(1),
   endpoint: z.string().min(1),
 }).strict()
 
+// `encryption` names one form: a passphrase, or a GPG public key (with an optional keyserver); false clears it.
+const ServiceBackupEncryptionSchema = z.object({
+  passphrase: z.string().min(1).refine(singleLine, 'must be a single line').refine(notPlaceholder, placeholderMessage).optional(),
+  public_key_id: z.string().min(1).refine(singleLine, 'must be a single line').optional(),
+  keyserver: z.string().min(1).refine(singleLine, 'must be a single line').optional(),
+}).strict().superRefine((enc, ctx) => {
+  if (enc.passphrase !== undefined && enc.public_key_id !== undefined) {
+    ctx.addIssue({ code: 'custom', message: 'name passphrase or public_key_id, not both' })
+  } else if (enc.passphrase === undefined && enc.public_key_id === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'name passphrase or public_key_id (use encryption: false to clear it)' })
+  }
+  if (enc.keyserver !== undefined && enc.public_key_id === undefined) {
+    ctx.addIssue({ code: 'custom', path: ['keyserver'], message: 'keyserver goes with public_key_id' })
+  }
+})
+
+export const STORAGE_CLASSES = [
+  'STANDARD', 'REDUCED_REDUNDANCY', 'STANDARD_IA', 'ONEZONE_IA', 'INTELLIGENT_TIERING', 'GLACIER', 'DEEP_ARCHIVE', 'GLACIER_IR',
+] as const
+
+/** The plugin's own rule for `backup-object-name`. */
+function objectNameProblem(name: string): string | undefined {
+  if (name.length > 512) return 'must be at most 512 characters'
+  if (!/^[A-Za-z0-9._\-/]+$/.test(name)) return 'may hold only letters, numbers, dots, dashes, underscores and slashes'
+  if (name.startsWith('/') || name.endsWith('/')) return 'must not start or end with a slash'
+  if (name.split('/').some(seg => seg === '' || seg === '.' || seg === '..')) return 'must not have an empty, . or .. segment'
+  return undefined
+}
+
 const ServiceBackupSchema = z.object({
   schedule: z.string().min(1),
   bucket: z.string().min(1),
   auth: ServiceBackupAuthSchema,
+  // false clears the service's encryption; absent leaves it alone
+  encryption: z.union([ServiceBackupEncryptionSchema, z.literal(false)]).optional(),
+  storage_class: z.enum(STORAGE_CLASSES).optional(),
+  object_name: z.string().superRefine((name, ctx) => {
+    const problem = objectNameProblem(name)
+    if (problem) ctx.addIssue({ code: 'custom', message: problem })
+  }).optional(),
+  mailto: z.string().min(1).regex(/^\S+$/, 'must not contain spaces').optional(),
+  // the plugin takes false (no timestamp in the object name) or unset
+  timestamp: z.literal(false).optional(),
 }).strict()
 
 const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
-  // false removes the service's backup schedule and credentials; absent leaves them alone
+  // false removes the service's backup schedule, credentials, encryption and settings; absent leaves them alone
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
 }).strict()
 
 const RedisSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
+  // same block as postgres
+  backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
 }).strict()
 
 const PluginSchema = z.object({

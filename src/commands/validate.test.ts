@@ -48,4 +48,11 @@ describe('validate', () => {
       'apps.myapp.env_external: "DOKKU_COMPOSE_MANAGED_KEYS" is dokku-compose\'s own marker',
     ])
   })
+
+  it('rejects both backup encryption forms and the REPLACE_ME placeholders export writes', () => {
+    const result = validate(path.join(FIXTURES, 'invalid_backup_encryption.yml'))
+    expect(result.errors.some(e => e.startsWith('postgres.myapp-db.backup.encryption') && e.includes('not both'))).toBe(true)
+    expect(result.errors.some(e => e.includes('redis.myapp-cache.backup.auth.access_key_id') && e.includes('replace the REPLACE_ME placeholder written by export'))).toBe(true)
+    expect(result.errors.some(e => e.includes('redis.myapp-cache.backup.encryption.passphrase') && e.includes('REPLACE_ME'))).toBe(true)
+  })
 })

@@ -1,0 +1,15 @@
+apps: {}
+postgres:
+  myapp-db:
+    backup:
+      schedule: "0 * * * *"
+      bucket: backups/myapp-db
+      auth: { access_key_id: KEY, secret_access_key: SECRET, region: auto, signature_version: s3v4, endpoint: "https://s3.example.com" }
+      encryption: { passphrase: abc, public_key_id: ABCD }
+redis:
+  myapp-cache:
+    backup:
+      schedule: "0 * * * *"
+      bucket: backups/myapp-cache
+      auth: { access_key_id: REPLACE_ME, secret_access_key: SECRET, region: auto, signature_version: s3v4, endpoint: "https://s3.example.com" }
+      encryption: { passphrase: REPLACE_ME }
