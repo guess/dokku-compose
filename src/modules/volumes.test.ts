@@ -53,6 +53,13 @@ describe('entryState', () => {
     expect(state).toEqual({ kind: 'changed', chown: { server: '', want: 'herokuish' } })
   })
 
+  it('counts chown: false as in sync with an entry that has no stored chown', () => {
+    const server = { name: 'scratch', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/scratch' }
+    expect(entryState(desiredEntry('scratch', { chown: false }), server)).toEqual({ kind: 'ok' })
+    expect(entryState(desiredEntry('scratch', { chown: false }), { ...server, chown: 'false' })).toEqual({ kind: 'ok' })
+    expect(entryState(desiredEntry('scratch', { chown: false }), { ...server, chown: 'root' })).toMatchObject({ kind: 'changed' })
+  })
+
   it('compares the mode in 4-digit form', () => {
     const state = entryState(desiredEntry('data', { mode: '750' }), { scheduler: 'docker-local', ...entry('data', { mode: '0750' }) } as ServerEntry)
     expect(state).toEqual({ kind: 'ok' })

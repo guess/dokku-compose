@@ -6,6 +6,9 @@ import { exportPostgres } from '../modules/postgres.js'
 import { exportRedis } from '../modules/redis.js'
 import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
+import { readEntries, exportVolumes } from '../modules/volumes.js'
+import { parseSpec } from '../resources/storage.js'
+import { DEFAULT_SCOPE, ALL_PHASES, type MountItem } from '../core/volume-rules.js'
 import { logWarn } from '../core/logger.js'
 import { assertDokkuSupported } from '../modules/version.js'
 
@@ -43,6 +46,7 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
   )
 
   // Per-app
+  const mounts = new Map<string, string[]>()
   for (const app of apps) {
     const appConfig: Config['apps'][string] = {}
 
@@ -52,6 +56,14 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
       if (resource.forceApply) continue  // skip forceApply resources — they can't be read
       // The checks report holds comma-joined lists the schema does not take as is.
       if (resource.key === 'checks') continue
+
+      // Mounts are written once the entries are known: legacy entries get new names.
+      if (resource.key === 'storage') {
+        try { mounts.set(app, await resource.read(ctx, app) as string[]) } catch (err) {
+          logWarn(app, `could not read 'storage', left out of the export: ${err instanceof Error ? err.message : String(err)}`)
+        }
+        continue
+      }
 
       const bulk = prefetched.get(resource.key)
       let value: unknown
@@ -89,5 +101,48 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
     config.apps[app] = appConfig
   }
 
+  await exportStorage(ctx, config, mounts, !!opts.appFilter?.length)
+
   return config
+}
+
+/** `volumes:` and each app's `storage:`, from the entries and mounts on the server. */
+async function exportStorage(ctx: Context, config: Config, mounts: Map<string, string[]>, onlyMounted: boolean): Promise<void> {
+  let server
+  try {
+    server = await readEntries(ctx)
+  } catch (err) {
+    logWarn('storage', `could not read the storage entries, storage left out of the export: ${err instanceof Error ? err.message : String(err)}`)
+    return
+  }
+  const parsed = new Map([...mounts].map(([app, specs]) => [app, specs.map(parseSpec)]))
+  const mounted = new Set([...parsed.values()].flat().map(m => m.entry))
+  const { volumes, names } = exportVolumes(server, mounted, onlyMounted)
+  if (Object.keys(volumes).length > 0) config.volumes = volumes
+
+  for (const [app, list] of parsed) {
+    const items: (string | MountItem)[] = []
+    for (const m of list) {
+      const entry = names.get(m.entry)
+      if (entry === undefined) {
+        // An entry of another scheduler (or one that vanished): nothing the file can name.
+        logWarn(app, `mount of '${m.entry}' at ${m.dir} left out of the export: dokku-compose manages only docker-local entries`)
+        continue
+      }
+      if (m.subpath || m.volumeChown) {
+        logWarn(app, `${m.dir}: ${[m.subpath && 'volume-subpath', m.volumeChown && 'volume-chown'].filter(Boolean).join(' and ')} dropped: docker-local stores it but never applies it`)
+      }
+      const plain = !m.readonly && m.phases.length === ALL_PHASES.length && m.options.length === 0 && m.scope === DEFAULT_SCOPE
+      if (plain) { items.push(`${entry}:${m.dir}`); continue }
+      items.push({
+        entry,
+        container_dir: m.dir,
+        ...(m.readonly ? { readonly: true } : {}),
+        ...(m.phases.length !== ALL_PHASES.length ? { phases: m.phases } : {}),
+        ...(m.scope !== DEFAULT_SCOPE ? { process_type: m.scope } : {}),
+        ...(m.options.length > 0 ? { options: m.options } : {}),
+      })
+    }
+    if (items.length > 0) config.apps[app].storage = items
+  }
 }

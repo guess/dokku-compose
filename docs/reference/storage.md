@@ -30,7 +30,7 @@ volumes:
 |-----|-------|---------------|
 | entry present | | `storage:list-entries --format json` (check)<br>`storage:create <name> [<path>] [--chown <v>] [--mode <v>]` (if missing) |
 | `chown` | `herokuish`, `heroku`, `paketo`, `root`, or a uid 0-65535 | `storage:set <name> chown <value>` (if different from the entry's `chown`) |
-| `chown: false` | opt out of ownership changes | `storage:set <name> chown false` (if different) |
+| `chown: false` | opt out of ownership changes | `storage:set <name> chown false` (if different; an entry with no stored `chown` already counts as `false`) |
 | `chown` absent | `herokuish` | as for `chown: herokuish`; `storage:create` always gets `--chown` |
 | `mode` | quoted octal, e.g. `"0750"` or `"750"` | `storage:set <name> mode <value>` (if different from the entry's `mode`, compared in 4-digit form) |
 | `mode` absent | not managed | no action (a new directory keeps 0755) |
@@ -163,7 +163,7 @@ Two apps that mounted the same host path shared one `legacy-<hash>` entry; decla
 - A note, `storage entries not in the compose file (up leaves them)`, for a docker-local entry the file does not declare. It does not count as drift. `legacy-*` entries and entries of another scheduler are never listed.
 - Under an app's `storage`: the mounts as the server has them (`-`) and as the file declares them (`+`), each as `[<process type>=]<entry>:<container-dir>[:<tokens>]`, where the tokens are `ro`, `phase=<p>` (when not both phases), the Docker options, and a `volume-subpath=` or `volume-chown=` that only the server holds. A mount on a `legacy-<hash>` entry therefore shows against the named entry that replaces it.
 
-`export` writes every docker-local entry under `volumes:` with `chown` and `mode` as stored, and `path:` only when it is not the default location. Each app's mounts go under `storage:` as `<entry>:<container-dir>`, in the map form when they have `readonly`, `phases`, `options` or `process_type`. A `subpath` or `volume-chown` on the server is dropped with a warning.
+`export` writes every docker-local entry under `volumes:` with `chown` and `mode` as stored, and `path:` only when it is not the default location. An entry at the default location with no stored `chown` is written as `chown: false`, so a later `up` leaves its directory as it is instead of chowning it to `herokuish`; `chown: false` also counts as in sync with an entry that has no stored `chown`. With `--app`, only the entries those apps mount are written. Each app's mounts go under `storage:` as `<entry>:<container-dir>`, in the map form when they have `readonly`, `phases`, `options` or `process_type`. A `subpath` or `volume-chown` on the server is dropped with a warning.
 
 A `legacy-*` entry is written under a name made from its host path, with `path:`:
 

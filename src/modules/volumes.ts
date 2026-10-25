@@ -3,7 +3,8 @@ import type { Context } from '../core/context.js'
 import type { Config } from '../core/schema.js'
 import { logAction, logDone, logSkip, logError } from '../core/logger.js'
 import {
-  DEFAULT_CHOWN, chownValue, defaultPath, isLegacyName, normalizeMode, usesDefaultLocation,
+  DEFAULT_CHOWN, MAX_ENTRY_NAME, LEGACY_PREFIX, chownValue, defaultPath, isLegacyName, isValidEntryName, normalizeMode,
+  pathError, usesDefaultLocation,
 } from '../core/volume-rules.js'
 
 export type VolumeConfig = NonNullable<Config['volumes']>[string]
@@ -84,7 +85,9 @@ export function entryState(d: DesiredEntry, server: ServerEntry | undefined): En
   if (d.legacy) return { kind: 'ok' }
   const want = hostPathOf(d)
   if ((server.host_path ?? '') !== want) return { kind: 'path', server: server.host_path ?? '', want }
-  const chown = d.chown !== undefined && (server.chown ?? '') !== d.chown ? { server: server.chown ?? '', want: d.chown } : undefined
+  // `chown: false` and no stored chown both mean Dokku never chowns the directory.
+  const chownMatches = d.chown === 'false' ? (server.chown ?? '') === '' || server.chown === 'false' : (server.chown ?? '') === d.chown
+  const chown = d.chown !== undefined && !chownMatches ? { server: server.chown ?? '', want: d.chown } : undefined
   const mode = d.mode !== undefined && (server.mode ?? '') !== d.mode ? { server: server.mode ?? '', want: d.mode } : undefined
   return chown || mode ? { kind: 'changed', ...(chown ? { chown } : {}), ...(mode ? { mode } : {}) } : { kind: 'ok' }
 }
@@ -151,4 +154,91 @@ export async function ensureVolumes(
     }
   }
   return failed
+}
+
+/** A path component made into the shape of an entry name; '' when nothing usable is left. */
+export function sanitizeName(raw: string): string {
+  const trim = (n: string) => n.replace(/^-+|-+$/g, '')
+  let n = trim(raw.toLowerCase().replace(/[^a-z0-9]+/g, '-'))
+  while (n.startsWith(LEGACY_PREFIX)) n = trim(n.slice(LEGACY_PREFIX.length))
+  return n.slice(0, MAX_ENTRY_NAME).replace(/-+$/, '')
+}
+
+/**
+ * Names for the `legacy-<hash>` entries an export has to write under `volumes:`
+ * (Dokku reserves the prefix). A name comes from the last component of the host
+ * path, else the last two joined with a dash, else the first with `-2`, `-3`, ...
+ * It must be valid and not taken: `taken` holds every entry name on the server and
+ * is added to as names are given out. null means no valid name: the caller keeps
+ * the `legacy-<hash>` name.
+ */
+export function legacyExportNames(legacy: ServerEntry[], taken: Set<string>): Map<string, string | null> {
+  const names = new Map<string, string | null>()
+  for (const e of [...legacy].sort((a, b) => a.name.localeCompare(b.name))) {
+    const parts = (e.host_path ?? '').split('/').filter(Boolean)
+    const last = parts[parts.length - 1] ?? ''
+    const two = parts.length > 1 ? `${parts[parts.length - 2]}-${last}` : ''
+    const candidates = [sanitizeName(last), sanitizeName(two)].filter(n => n !== '' && isValidEntryName(n))
+    let chosen: string | null = candidates.find(n => !taken.has(n)) ?? null
+    if (chosen === null && candidates.length > 0) {
+      for (let i = 2; i < 100 && chosen === null; i++) {
+        const suffix = `-${i}`
+        const base = candidates[0].slice(0, MAX_ENTRY_NAME - suffix.length).replace(/-+$/, '')
+        if (!taken.has(base + suffix)) chosen = base + suffix
+      }
+    }
+    if (chosen !== null) taken.add(chosen)
+    names.set(e.name, chosen)
+  }
+  return names
+}
+
+type ExportedVolume = NonNullable<Config['volumes']>[string]
+
+function exportedChown(stored: string | undefined): string | number | false {
+  if (stored === undefined || stored === '' || stored === 'false') return false
+  return /^\d+$/.test(stored) ? Number(stored) : stored
+}
+
+/**
+ * The `volumes:` block of an export, and the name each entry an app mounts goes by in the file.
+ * Entries of other schedulers are left out; so is a legacy entry nothing mounts.
+ * `onlyMounted` limits the block to the entries `mounted` names (an export of some apps).
+ */
+export function exportVolumes(
+  server: Map<string, ServerEntry>,
+  mounted: Set<string>,
+  onlyMounted = false
+): { volumes: Record<string, ExportedVolume>; names: Map<string, string> } {
+  const volumes: Record<string, ExportedVolume> = {}
+  const names = new Map<string, string>()
+  const dockerLocal = [...server.values()].filter(e => e.scheduler === DOCKER_LOCAL)
+
+  const describe = (name: string, e: ServerEntry): ExportedVolume => {
+    const atDefault = (e.host_path ?? '') === defaultPath(name)
+    if (!atDefault) return { path: e.host_path }
+    // An exported entry keeps its directory as it is: an unset chown is written as false, never as the herokuish default.
+    return { chown: exportedChown(e.chown), ...(e.mode ? { mode: e.mode } : {}) }
+  }
+
+  for (const e of dockerLocal.filter(e => !isLegacyName(e.name)).sort((a, b) => a.name.localeCompare(b.name))) {
+    if (onlyMounted && !mounted.has(e.name)) continue
+    volumes[e.name] = describe(e.name, e)
+    names.set(e.name, e.name)
+  }
+
+  const used = dockerLocal.filter(e => isLegacyName(e.name) && mounted.has(e.name))
+  const given = legacyExportNames(used, new Set(server.keys()))
+  for (const e of used) {
+    const name = given.get(e.name)
+    // A host path that is not a valid `path:` cannot be written either: keep Dokku's name for it.
+    if (name == null || pathError(e.host_path) !== undefined) {
+      volumes[e.name] = {}
+      names.set(e.name, e.name)
+      continue
+    }
+    volumes[name] = describe(name, e)
+    names.set(e.name, name)
+  }
+  return { volumes, names }
 }
