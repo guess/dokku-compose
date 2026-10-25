@@ -30,7 +30,7 @@ opt-in: if the key is absent, only the built-in minimum applies.
 
 The value is a **minimum**, not an exact match. Pre-release suffixes
 (`-rc1`, `-beta`) are tolerated on both the server output and the value
-itself; only the `X.Y.Z` numeric part is compared. Write the value as `X.Y.Z`: `validate` accepts any string, but `up` and `diff` fail with `Cannot parse version` on one like `0.38`. `export` writes the running
+itself; only the `X.Y.Z` numeric part is compared. Write the value as a quoted `X.Y.Z`: `validate` rejects one that does not start with it (`0.38`, `latest`, `v0.38.31`, or the unquoted YAML number `0.38`), so `up` and `diff` never see it. `export` writes the running
 server's version into this field, so `export` → edit → `up` gives a useful
 floor without manual effort.
 
