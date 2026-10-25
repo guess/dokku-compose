@@ -17,7 +17,8 @@ import { Networks, NetworkProps } from '../resources/network.js'
 import { ensurePlugins } from '../modules/plugins.js'
 import { ensureDockerAuth, pruneDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
-import { ensurePostgres, ensurePostgresBackups, removeBackupHashKeys } from '../modules/postgres.js'
+import { ensurePostgres, removeBackupHashKeys } from '../modules/postgres.js'
+import { ensureServiceBackups } from '../modules/service-backup.js'
 import { ensureRedis } from '../modules/redis.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
@@ -190,7 +191,7 @@ async function runUpPhases(
   const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
   if (config.redis) await ensureRedis(ctx, config.redis)
   if (config.postgres) {
-    await ensurePostgresBackups(ctx, config.postgres, {
+    await ensureServiceBackups(ctx, 'postgres', config.postgres, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdPostgres : undefined,

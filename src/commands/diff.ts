@@ -10,7 +10,8 @@ import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
-import { readServiceInfo, versionMismatches, backupMismatches, hasBackup, describeServerBackup, type ServiceMismatch } from '../modules/service-drift.js'
+import { readServiceInfo, versionMismatches, type ServiceMismatch } from '../modules/service-drift.js'
+import { backupMismatches, hasBackup, describeServerBackup } from '../modules/service-backup.js'
 import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
 import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
 import { staleBackupHashKeys } from '../modules/postgres.js'
@@ -466,7 +467,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       try {
         // One info read covers version, image and backup.
         const info = await readServiceInfo(ctx, plugin, svc)
-        const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(info, backup) : [])]
+        const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(plugin, info, backup) : [])]
         // An undeclared backup is never removed (only `backup: false` does), so it is a note, not drift.
         const note = plugin === 'postgres' && backup === undefined && hasBackup(info)
           ? `backup on the server is not in the file (${describeServerBackup(info)}); up leaves it, backup: false removes it`

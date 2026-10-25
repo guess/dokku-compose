@@ -1,7 +1,8 @@
 import type { Context } from '../core/context.js'
 import type { PostgresConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
-import { readServiceMismatches, readServiceInfo, backupMismatches, hasBackup, describeServerBackup } from './service-drift.js'
+import { readServiceMismatches } from './service-drift.js'
+import { exportServiceBackup } from './service-backup.js'
 import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
 
 export async function ensurePostgres(
@@ -35,96 +36,6 @@ export async function ensurePostgres(
     logDone()
   }
   return created
-}
-
-/**
- * Converge each service's backup with what `postgres:info --format json`
- * reports. Credentials are compared by fingerprint, so a rotated key is
- * picked up, and are only ever passed to `:backup-auth` (masked in logs).
- * Only `backup: false` removes a backup; an absent block leaves it alone.
- * `dryRunCreated` names services this --dry-run only planned to create: they
- * cannot be read, and a new service has no backup, so every step is planned.
- * `dryRun` skips the check that a new schedule landed, since nothing ran.
- */
-export async function ensurePostgresBackups(
-  ctx: Context,
-  services: Record<string, PostgresConfig>,
-  opts: { prune?: boolean; dryRun?: boolean; dryRunCreated?: Set<string> } = {}
-): Promise<void> {
-  for (const [name, config] of Object.entries(services)) {
-    const backup = config.backup
-    if (backup === undefined && !opts.prune) continue
-
-    if (backup === undefined) {
-      // Only a warning can come of this, so a failed read (a service created
-      // on this --dry-run, a transient error) never stops the run.
-      let info
-      try {
-        info = await readServiceInfo(ctx, 'postgres', name)
-      } catch (err) {
-        logWarn('services', `could not read backup state for ${name}: ${err instanceof Error ? err.message : String(err)}`)
-        continue
-      }
-      if (hasBackup(info)) {
-        logWarn('services', `${name}: has a backup the file does not declare (${describeServerBackup(info)}); --prune leaves it, set backup: false to remove it`)
-      }
-      continue
-    }
-
-    if (opts.dryRunCreated?.has(name)) {
-      logAction('services', `Configuring backup for ${name}`)
-      if (backup !== false) {
-        const { schedule, bucket, auth } = backup
-        await ctx.run(
-          'postgres:backup-auth', name,
-          auth.access_key_id, auth.secret_access_key,
-          auth.region, auth.signature_version, auth.endpoint
-        )
-        await ctx.run('postgres:backup-schedule', name, schedule, bucket)
-      }
-      logDone()
-      continue
-    }
-
-    const info = await readServiceInfo(ctx, 'postgres', name)
-    logAction('services', `Configuring backup for ${name}`)
-    const fields = new Set(backupMismatches(info, backup).map(m => m.field))
-    if (fields.size === 0) { logSkip(); continue }
-
-    if (backup === false) {
-      if (String(info['backup-schedule'] ?? '') !== '') await ctx.run('postgres:backup-unschedule', name)
-      // deauth removes the whole backup folder, credentials included
-      await ctx.run('postgres:backup-deauth', name)
-      logDone()
-      continue
-    }
-
-    const { schedule, bucket, auth } = backup
-    // NOTE: never call `postgres:backup-deauth` before `backup-auth`: deauth
-    // wipes the per-service backup directory and cron file, so a failed auth
-    // would leave no backups at all. `backup-auth` replaces the stored
-    // credentials in place.
-    if (fields.has('backup.auth')) {
-      await ctx.run(
-        'postgres:backup-auth', name,
-        auth.access_key_id, auth.secret_access_key,
-        auth.region, auth.signature_version, auth.endpoint
-      )
-    }
-    if (fields.has('backup.schedule')) {
-      await ctx.run('postgres:backup-schedule', name, schedule, bucket)
-      // Check the schedule landed: a silent failure would otherwise leave no backups.
-      if (!opts.dryRun) {
-        const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
-        if (!parseBackupSchedule(cronOutput)) {
-          throw new Error(`Backup schedule for ${name} was not installed after backup-schedule ran`)
-        }
-      }
-    } else if (fields.has('backup.bucket')) {
-      await ctx.run('postgres:set', name, 'backup-bucket', bucket)
-    }
-    logDone()
-  }
 }
 
 /**
@@ -164,18 +75,6 @@ export async function destroyPostgres(
   }
 }
 
-function parseBackupSchedule(
-  cronLine: string
-): { schedule: string; bucket: string } | null {
-  // Used to check a schedule landed and for export only; drift reads postgres:info.
-  // Format: "0 * * * * dokku /usr/bin/dokku postgres:backup <name> <bucket>"
-  const parts = cronLine.trim().split(/\s+/)
-  if (parts.length < 8) return null
-  const schedule = parts.slice(0, 5).join(' ')
-  const bucket = parts[parts.length - 1]
-  return { schedule, bucket }
-}
-
 export async function exportPostgres(
   ctx: Context
 ): Promise<Record<string, PostgresConfig>> {
@@ -204,27 +103,8 @@ export async function exportPostgres(
       config.version = versionField
     }
 
-    try {
-      const cronOutput = await ctx.query('postgres:backup-schedule-cat', name)
-      if (cronOutput) {
-        const parsed = parseBackupSchedule(cronOutput)
-        if (parsed) {
-          config.backup = {
-            schedule: parsed.schedule,
-            bucket: parsed.bucket,
-            auth: {
-              access_key_id: 'REPLACE_ME',
-              secret_access_key: 'REPLACE_ME',
-              region: 'REPLACE_ME',
-              signature_version: 'REPLACE_ME',
-              endpoint: 'REPLACE_ME',
-            },
-          }
-        }
-      }
-    } catch {
-      // No backup configured for this service
-    }
+    const backup = await exportServiceBackup(ctx, 'postgres', name)
+    if (backup) config.backup = backup
 
     services[name] = config
   }
