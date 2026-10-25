@@ -65,7 +65,7 @@ const AppSchema = z.object({
   ssl: z.union([
     z.literal(false),
     z.literal(true),
-    z.object({ certfile: z.string(), keyfile: z.string() })
+    z.object({ certfile: z.string(), keyfile: z.string() }).strict()
   ]).optional(),
   storage: z.array(z.string()).optional(),
   proxy: z.object({
@@ -81,7 +81,7 @@ const AppSchema = z.object({
     bind_all_interfaces: z.boolean().optional(),
     static_web_listener: z.union([z.string(), z.literal(false)]).optional(),
     tld: z.union([z.string(), z.literal(false)]).optional(),
-  }).optional(),
+  }).strict().optional(),
   nginx: propertyMap('nginx', NGINX_KEYS, StringOrNumber).optional(),
   logs: propertyMap('logs', LOGS_KEYS, StringOrNumber).optional(),
   // `auth-servers` is report-only: it is a registry login, not a `registry:set` key.
@@ -105,14 +105,14 @@ const AppSchema = z.object({
     selected: z.string().optional(),
     skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
     args: z.record(z.string(), z.string()).optional(),
-  }).optional(),
+  }).strict().optional(),
   docker_options: z.object({
     build: z.array(z.string()).optional(),
     deploy: z.array(z.string()).optional(),
     run: z.array(z.string()).optional(),
-  }).optional(),
+  }).strict().optional(),
   git: GitSchema.optional(),
-})
+}).strict()
 
 const ServiceBackupAuthSchema = z.object({
   access_key_id: z.string().min(1),
@@ -120,41 +120,41 @@ const ServiceBackupAuthSchema = z.object({
   region: z.string().min(1),
   signature_version: z.string().min(1),
   endpoint: z.string().min(1),
-})
+}).strict()
 
 const ServiceBackupSchema = z.object({
   schedule: z.string().min(1),
   bucket: z.string().min(1),
   auth: ServiceBackupAuthSchema,
-})
+}).strict()
 
 const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
   // false removes the service's backup schedule and credentials; absent leaves them alone
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
-})
+}).strict()
 
 const RedisSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
-})
+}).strict()
 
 const PluginSchema = z.object({
   url: z.string().url(),
   version: z.string().optional(),
-})
+}).strict()
 
 const DockerAuthEntrySchema = z.object({
   username: z.string().min(1),
   password: z.string().min(1),
-})
+}).strict()
 
 export const ConfigSchema = z.object({
   dokku: z.object({
     version: z.string({ error: 'dokku.version must be a quoted string starting with X.Y.Z, e.g. "0.38.31"' })
       .regex(SEMVER_RE, 'dokku.version must start with X.Y.Z, e.g. "0.38.31"').optional(),
-  }).optional(),
+  }).strict().optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
   docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
   networks: z.array(z.string()).optional(),
@@ -167,7 +167,7 @@ export const ConfigSchema = z.object({
   // The top-level block is also applied with `--global`, which takes two more keys.
   logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber).optional(),
   git: GitSchema.optional(),
-})
+}).strict()
 
 export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>
