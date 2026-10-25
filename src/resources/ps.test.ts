@@ -32,19 +32,19 @@ describe('parseScale', () => {
 describe('Scale resource', () => {
   it('applies a drifted scale with --skip-deploy in one command', async () => {
     const ctx = makeCtx({ 'ps:scale': TABLE })
-    await reconcile(Scale, ctx, 'chatwoot', { web: 1, worker: 1 } as any)
-    expect(ctx.commands).toEqual([['ps:scale', '--skip-deploy', 'chatwoot', 'worker=1']])
+    await reconcile(Scale, ctx, 'myapp', { web: 1, worker: 1 } as any)
+    expect(ctx.commands).toEqual([['ps:scale', '--skip-deploy', 'myapp', 'worker=1']])
   })
 
   it('is a no-op when the scale already matches', async () => {
     const ctx = makeCtx({ 'ps:scale': TABLE })
-    await reconcile(Scale, ctx, 'chatwoot', { web: 1, worker: 0 } as any)
+    await reconcile(Scale, ctx, 'myapp', { web: 1, worker: 0 } as any)
     expect(ctx.commands).toEqual([])
   })
 
   it('leaves a process type removed from the file alone', async () => {
     const ctx = makeCtx({ 'ps:scale': TABLE })
-    await reconcile(Scale, ctx, 'chatwoot', { web: 1 } as any)
+    await reconcile(Scale, ctx, 'myapp', { web: 1 } as any)
     expect(ctx.commands).toEqual([])
   })
 
