@@ -208,6 +208,23 @@ All features are idempotent — running `up` twice produces no changes.
 | Redis | Redis service instances with the same optional S3 backups | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps, with `alias`, `env_var` or `querystring` | [links](docs/reference/links.md) |
 
+### Global defaults
+
+A top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network` or `git` block is Dokku's own `--global` setting for that namespace: apps without their own value inherit it, and Dokku does the inheriting. The keys are the per-app ones that Dokku accepts globally.
+
+```yaml
+git:
+  deploy_branch: main        # git:set --global deploy-branch main
+registry:
+  server: registry.example.com
+checks:
+  wait-to-retire: 30
+network:
+  attach_post_deploy: [backend-net]   # `networks:` creates networks; `network:` sets properties
+```
+
+`diff` shows these under `global`, `up --prune` clears a key that left a declared block, and a block the file does not declare is never touched. The top-level `git:` used to be copied onto each app; see the [upgrade note](CHANGELOG.md) and [git](docs/reference/git.md#migrating-from-the-old-top-level-git).
+
 ## Variable interpolation
 
 `${VAR}` in a string value is replaced with the environment variable `VAR`. The file is parsed as YAML first and substituted afterwards, value by value, so a secret can contain any character (`"`, `'`, `#`, `\`, `:`, newlines) and arrives in the value unchanged; it can never change the file's structure. Keys and comments are never substituted. Every unset or empty variable is collected and reported together:
@@ -266,10 +283,11 @@ dokku-compose/
 │   │   ├── config.ts         # dokku config:* (global)
 │   │   ├── docker-auth.ts    # docker login for docker_auth
 │   │   ├── domains.ts        # dokku domains:* (global)
+│   │   ├── global.ts         # <ns>:set --global for the top-level nginx, logs, scheduler, registry, checks, ps, build, network and git blocks
 │   │   ├── links.ts          # Service link resolution across plugins
-│   │   ├── logs.ts           # dokku logs:* (global)
+│   │   ├── logs.ts           # dokku logs:* (per-app helpers)
 │   │   ├── network.ts        # dokku network:create
-│   │   ├── nginx.ts          # dokku nginx:* (global)
+│   │   ├── nginx.ts          # dokku nginx:* (per-app helpers)
 │   │   ├── plugins.ts        # dokku plugin:*
 │   │   ├── postgres.ts       # dokku postgres:* (create, export)
 │   │   ├── redis.ts          # dokku redis:* (create, export)
