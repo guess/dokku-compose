@@ -4,6 +4,8 @@ export interface ServiceMismatch {
   field: string
   desired: string
   current: string
+  /** The server holds it and the file does not declare it: `diff` shows a `-`, and only `--prune` clears it */
+  removed?: boolean
 }
 
 export type ServiceInfo = Record<string, unknown>
@@ -30,6 +32,11 @@ export function readServiceInfo(
     reads.set(key, read)
   }
   return read
+}
+
+/** Drop the cached info of a service after a command changed it, so the next read sees the change. */
+export function forgetServiceInfo(ctx: Context, plugin: 'postgres' | 'redis', name: string): void {
+  infoReads.get(ctx)?.delete(`${plugin}\0${name}`)
 }
 
 async function fetchServiceInfo(ctx: Context, plugin: 'postgres' | 'redis', name: string): Promise<ServiceInfo> {

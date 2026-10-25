@@ -22,6 +22,7 @@ import { ensurePostgres, removeBackupHashKeys } from '../modules/postgres.js'
 import { ensureServiceBackups } from '../modules/service-backup.js'
 import { ensureVolumes } from '../modules/volumes.js'
 import { ensureRedis } from '../modules/redis.js'
+import { ensureServiceProperties } from '../modules/service-properties.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
@@ -70,11 +71,12 @@ export function printRestartSummary(ctx: Context, dryRun = false): void {
   for (const [app, reasons] of ctx.rebuilds) console.log(`dokku ps:rebuild ${app}  # ${reasons.join(', ')}`)
 }
 
-/** Thrown by runUp when one or more apps failed during the per-app phase. */
+/** Thrown by runUp when one or more apps or services failed. A service failure is named `<plugin>:<name>`. */
 export class UpFailedError extends Error {
-  constructor(public readonly failures: { app: string; error: unknown }[]) {
+  constructor(public readonly failures: { app: string; error: unknown; service?: boolean }[]) {
+    const kinds = failures.every(f => f.service) ? 'service(s)' : failures.some(f => f.service) ? 'app(s) and service(s)' : 'app(s)'
     super(
-      `up failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')}`
+      `up failed for ${failures.length} ${kinds}: ${failures.map(f => f.app).join(', ')}`
     )
     this.name = 'UpFailedError'
   }
@@ -235,12 +237,22 @@ async function runUpPhases(
       dryRunCreated: opts.dryRun ? createdRedis : undefined,
     })
   }
+  // A service whose properties fail is reported; the run goes on and ends non-zero.
+  const serviceFailures: { app: string; error: unknown; service: true }[] = []
+  for (const [plugin, services, created] of [['postgres', config.postgres, createdPostgres], ['redis', config.redis, createdRedis]] as const) {
+    if (!services) continue
+    const failed = await ensureServiceProperties(ctx, plugin, services, config, {
+      prune: opts.prune, dryRun: opts.dryRun, dryRunCreated: opts.dryRun ? created : undefined,
+    })
+    serviceFailures.push(...failed.map(f => ({ app: `${plugin}:${f.service}`, error: f.error, service: true as const })))
+  }
+  if (opts.failFast && serviceFailures.length > 0) throw new UpFailedError(serviceFailures)
   await removeBackupHashKeys(ctx)
 
   // Phase 5: Per-app. Default (documented) behaviour is to continue to the
   // next app on failure and report a summary at the end, exiting non-zero.
   // --fail-fast stops at the first failure instead.
-  const failures: { app: string; error: unknown }[] = []
+  const failures: { app: string; error: unknown; service?: boolean }[] = [...serviceFailures]
   for (const app of apps) {
     const appConfig = config.apps[app]
     if (!appConfig) continue
