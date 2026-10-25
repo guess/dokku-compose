@@ -79,6 +79,18 @@ postgres:
   myapp-db:
     version: "17-3.5"
     image: postgis/postgis
+    properties:
+      memory: 512
+      shm-size: 256m
+      restart-policy: unless-stopped
+      post-create-network: [backend-net, other-net]
+      custom-env:
+        TZ: UTC
+        PGOPTIONS: "-c work_mem=8MB"
+      password: Zq7-Hk9vbn2
+    mounts:
+      - /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra
+      - dbvol:/opt/data:ro
 
   myapp-reports:
     backup:
@@ -90,6 +102,13 @@ postgres:
 redis:
   myapp-redis:
     version: "7.2-alpine"
+    properties:
+      memory: 128
+      log-driver: json-file
+      log-opt: [max-size=10m, max-file=3]
+      wait-timeout: 90
+      config-options: "--maxmemory-policy allkeys-lru"
+    mounts: []
     backup:
       schedule: "0 * * * *"
       bucket: backups/myapp-redis

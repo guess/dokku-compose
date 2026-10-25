@@ -26,7 +26,7 @@ function unshell(word: string): string {
 }
 
 /** `NAME=value;NAME=value` with every value gone: the names are shown, the values never. */
-function maskCustomEnv(value: string): string {
+export function maskCustomEnv(value: string): string {
   return value.split(';').filter(p => p !== '').map(p => {
     const i = p.indexOf('=')
     return i === -1 ? '****' : `${p.slice(0, i)}=****`
