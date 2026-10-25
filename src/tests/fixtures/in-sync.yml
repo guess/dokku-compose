@@ -23,6 +23,14 @@ env:
 networks:
   - backend-net
 
+volumes:
+  uploads: {}               # default location, chowned to herokuish
+  data:
+    chown: 1000
+    mode: "0750"
+  media:
+    path: /srv/media        # an existing directory; owner and mode are left alone
+
 domains:
   - example.com
 

@@ -86,7 +86,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `scheduler-docker-local` |  |  | 1 | 1 |
 | `scheduler-k3s` |  |  | 11 | 15 |
 | `ssh-keys` |  |  | 3 |  |
-| `storage` | 3 |  | 4 | 10 |
+| `storage` | 6 |  | 1 | 10 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
 | **Total** | **87** | **13** | **70** | **185** |
@@ -415,7 +415,7 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 |---|---|:-:|---|
 | `storage:annotations:report` | Displays annotations for one or more storage entries | ⛔ | k3s only |
 | `storage:annotations:set` | Set or clear a single annotation on a storage entry | ⛔ | k3s only |
-| `storage:create` | Register a named storage entry | ❌ | F9: named entries with `--chown` |
+| `storage:create` | Register a named storage entry | ✅ | `volumes:` (new entries, with `--chown`, `--mode`, a custom path) |
 | `storage:destroy` | Remove a named storage entry (must be unmounted from every app first) | ❌ | F9 |
 | `storage:ensure-directory` | [DEPRECATED] use storage:create instead | ⛔ | Deprecated in Dokku: use `storage:create` |
 | `storage:exec` | Run a command (or shell) in a temporary container that mounts the e… | ⛔ | Interactive |
@@ -423,11 +423,11 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 | `storage:labels:report` | Displays labels for one or more storage entries | ⛔ | k3s only |
 | `storage:labels:set` | Set or clear a single label on a storage entry | ⛔ | k3s only |
 | `storage:list` | List bind mounts for an app's container(s) (legacy host:container v… | ⛔ | Read-only |
-| `storage:list-entries` | List registered storage entries | ❌ | F9 (read side) |
+| `storage:list-entries` | List registered storage entries | ✅ | `volumes:` read (entries, `--format json`) |
 | `storage:migrate` | Re-run the legacy -v to attachment migration for an app | ⛔ | Maintenance |
 | `storage:mount` | Create or replace bind mounts | ✅ | `storage:` (`--replace` would converge in one call, F9) |
 | `storage:report` | Displays a storage report for one or more apps | ✅ | `storage` read (`--storage-deploy-mounts`) |
-| `storage:set` | Update a storage entry in place | ❌ | F9 |
+| `storage:set` | Update a storage entry in place | ✅ | `volumes:` (`chown`, `mode` of an existing entry) |
 | `storage:unmount` | Remove one or all bind mounts | ✅ | `storage:` |
 | `storage:wait` | Wait for a storage entry's PVC to be bound (k3s) | ⛔ | k3s only |
 

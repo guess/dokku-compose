@@ -200,7 +200,7 @@ ssh-keys:list	N	A7 (read side)
 ssh-keys:remove	N	A7
 storage:annotations:report	X	k3s only
 storage:annotations:set	X	k3s only
-storage:create	N	F9: named entries with `--chown`
+storage:create	Y	`volumes:` (new entries, with `--chown`, `--mode`, a custom path)
 storage:destroy	N	F9
 storage:ensure-directory	X	Deprecated in Dokku: use `storage:create`
 storage:exec	X	Interactive
@@ -208,10 +208,10 @@ storage:info	X	Read-only
 storage:labels:report	X	k3s only
 storage:labels:set	X	k3s only
 storage:list	X	Read-only
-storage:list-entries	N	F9 (read side)
+storage:list-entries	R	`volumes:` read (entries, `--format json`)
 storage:migrate	X	Maintenance
 storage:mount	Y	`storage:` (`--replace` would converge in one call, F9)
 storage:report	R	`storage` read (`--storage-deploy-mounts`)
-storage:set	N	F9
+storage:set	Y	`volumes:` (`chown`, `mode` of an existing entry)
 storage:unmount	Y	`storage:`
 storage:wait	X	k3s only

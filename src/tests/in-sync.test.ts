@@ -85,6 +85,12 @@ function inSyncServer(): FakeServer {
       'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', REDIS_BACKUP),
       'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17', REPORTS_BACKUP),
       'redis:backup-schedule-cat myapp-redis': '0 * * * * dokku /usr/bin/dokku redis:backup myapp-redis backups/myapp-redis',
+      // Storage entries, as `storage:list-entries --format json` prints them (an entry made by hand and one by Dokku's legacy migration are not in the file).
+      'storage:list-entries --format json': JSON.stringify([
+        { name: 'data', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/data', chown: '1000', mode: '0750', schema_version: 1 },
+        { name: 'media', scheduler: 'docker-local', host_path: '/srv/media', schema_version: 1 },
+        { name: 'uploads', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/uploads', chown: 'herokuish', schema_version: 1 },
+      ]),
       // Global settings
       'domains:report --global --domains-global-vhosts': 'example.com',
       'logs:report --global --format json': logsGlobalJson({

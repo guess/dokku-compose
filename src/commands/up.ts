@@ -19,6 +19,7 @@ import { ensureDockerAuth, pruneDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
 import { ensurePostgres, removeBackupHashKeys } from '../modules/postgres.js'
 import { ensureServiceBackups } from '../modules/service-backup.js'
+import { ensureVolumes } from '../modules/volumes.js'
 import { ensureRedis } from '../modules/redis.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
@@ -187,6 +188,10 @@ async function runUpPhases(
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)
 
+  // Storage entries, before any app mounts one. An entry that fails is logged
+  // and the run goes on; the apps that mount it report it themselves.
+  const failedVolumes = config.volumes ? await ensureVolumes(ctx, config.volumes, opts.failFast) : new Map<string, string>()
+
   // Phase 4: Services
   const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
   const createdRedis = config.redis ? await ensureRedis(ctx, config.redis) : new Set<string>()
@@ -228,5 +233,9 @@ async function runUpPhases(
 
   if (failures.length > 0) {
     throw new UpFailedError(failures)
+  }
+  // An entry that failed and that no processed app reported (it is already logged).
+  if (failedVolumes.size > 0) {
+    throw new Error(`up failed for storage entr${failedVolumes.size === 1 ? 'y' : 'ies'}: ${[...failedVolumes.keys()].join(', ')}`)
   }
 }
