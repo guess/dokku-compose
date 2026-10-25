@@ -20,8 +20,32 @@ function maskValue(value: string, opaque = false): string {
 // instead of leaking.
 const WORD = String.raw`(?:'[^']*'|\\.|[^\s\\])+`
 
+/** A shell word as the dry-run listing writes it, back to its value. */
+function unshell(word: string): string {
+  return /^'.*'$/s.test(word) ? word.slice(1, -1).replace(/'\\''/g, "'") : word
+}
+
+/** `NAME=value;NAME=value` with every value gone: the names are shown, the values never. */
+function maskCustomEnv(value: string): string {
+  return value.split(';').filter(p => p !== '').map(p => {
+    const i = p.indexOf('=')
+    return i === -1 ? '****' : `${p.slice(0, i)}=****`
+  }).join(';')
+}
+
 /** Mask KEY=VALUE pairs in a command string */
 export function maskSensitiveArgs(cmd: string): string {
+  // A datastore service's password and custom-env values are the last argument of `<plugin>:set`
+  // (after `--`) or follow the `--password` / `--custom-env` create flags. They go before the
+  // KEY=VALUE rules below, which would leave the last characters of a `API_KEY=...` value.
+  const original = cmd
+  cmd = cmd.replace(/^(\S+:set\s+(?:--no-restart\s+)?\S+\s+password\s+(?:--\s+)?).+$/s, (_, prefix) => `${prefix}****`)
+  cmd = cmd.replace(/^(\S+:set\s+(?:--no-restart\s+)?\S+\s+custom-env\s+(?:--\s+)?)(.+)$/s, (_, prefix, rest) => `${prefix}${maskCustomEnv(unshell(rest))}`)
+  cmd = cmd.replace(new RegExp(String.raw`^(\S+:create\s.*?\s--password\s+)(${WORD})`, 's'), (_, prefix) => `${prefix}****`)
+  cmd = cmd.replace(new RegExp(String.raw`^(\S+:create\s.*?\s--custom-env\s+)(${WORD})`, 's'), (_, prefix, word) => `${prefix}${maskCustomEnv(unshell(word))}`)
+  // Nothing else on such a line holds a secret, and the rules below would mask the masked value again.
+  if (cmd !== original) return cmd
+
   // A whole argument shell-quoted because its value holds spaces or quotes: 'KEY=a b'.
   let masked = cmd.replace(new RegExp(String.raw`'([^\s='\\]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s='\\]*)=((?:[^']|'\\'')*)'`, 'gi'), (_, key, value) => {
     return `${key}=${maskValue(value.replace(/'\\''/g, "'"), OPAQUE_RE.test(key))}`
@@ -82,8 +106,37 @@ export function maskSensitiveArgsList(args: string[]): { masked: string[]; secre
     masked[index] = maskValue(value, completely)
   }
 
+  // `<plugin>:set [--no-restart] <name> password -- <password>` and `<plugin>:create ... --password <password>`
+  // mask the password completely; custom-env values (`<plugin>:set <name> custom-env -- NAME=value;...` and
+  // `<plugin>:create ... --custom-env NAME=value;...`) are masked completely with the names left readable.
+  const handled = new Set<number>()
+  const markCustomEnv = (index: number) => {
+    handled.add(index)
+    const value = masked[index]
+    if (value === undefined || value === '') return
+    for (const part of value.split(';')) {
+      const v = part.slice(part.indexOf('=') + 1)
+      if (v.length >= 3) { secrets.push(v); opaque.push(v) }
+    }
+    masked[index] = maskCustomEnv(value)
+  }
+  if (/^\S+:set$/.test(masked[0] ?? '')) {
+    const name = masked[1] === '--no-restart' ? 2 : 1
+    const key = masked[name + 1]
+    const valueAt = masked[name + 2] === '--' ? name + 3 : name + 2
+    if (key === 'password') { handled.add(valueAt); mark(valueAt, true) }
+    if (key === 'custom-env') markCustomEnv(valueAt)
+  }
+  if (/^\S+:create$/.test(masked[0] ?? '')) {
+    for (let i = 1; i < masked.length - 1; i++) {
+      if (masked[i] === '--password') { handled.add(i + 1); mark(i + 1, true) }
+      if (masked[i] === '--custom-env') markCustomEnv(i + 1)
+    }
+  }
+
   // KEY=VALUE pairs, wherever they appear.
   for (let i = 0; i < masked.length; i++) {
+    if (handled.has(i)) continue
     const m = masked[i].match(/^([^\s=]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s=]*)=(.+)$/i)
     if (m) {
       secrets.push(m[2])
@@ -135,6 +188,13 @@ export function maskSensitiveData(data: unknown): unknown {
       // A log sink is a DSN that can carry credentials (logs `vector-sink`, `vector-cron-sink`).
       if (NOT_SECRET_KEYS.has(key.toLowerCase()) || value === PLACEHOLDER) {
         result[key] = value
+      } else if (key === 'custom-env' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        // a service's custom-env: the names are shown, the values never
+        result[key] = Object.fromEntries(Object.entries(value).map(([k, v]) => [k, v === PLACEHOLDER ? v : '****']))
+      } else if (key === 'properties' && typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        const props = maskSensitiveData(value) as Record<string, unknown>
+        if (typeof props.password === 'string' && props.password !== PLACEHOLDER) props.password = '****'
+        result[key] = props
       } else if (typeof value === 'string' && (SENSITIVE_RE.test(key) || /sink/i.test(key))) {
         result[key] = maskValue(value, OPAQUE_RE.test(key))
       } else if (typeof value === 'object' && value !== null) {
