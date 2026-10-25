@@ -14,35 +14,45 @@ function maskValue(value: string, opaque = false): string {
   return `****${value.slice(-4)}`
 }
 
+// One shell word as the dry-run listing writes it: single-quoted runs (which may hold spaces),
+// backslash escapes (`'\''` is a quote inside a quoted word) and bare characters. A stray quote
+// that closes nowhere is consumed with the rest of the line, so a malformed value over-masks
+// instead of leaking.
+const WORD = String.raw`(?:'[^']*'|\\.|[^\s\\])+`
+
 /** Mask KEY=VALUE pairs in a command string */
 export function maskSensitiveArgs(cmd: string): string {
-  let masked = cmd.replace(/([^\s=]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s=]*)=(\S+)/gi, (_, key, value) => {
+  // A whole argument shell-quoted because its value holds spaces or quotes: 'KEY=a b'.
+  let masked = cmd.replace(new RegExp(String.raw`'([^\s='\\]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s='\\]*)=((?:[^']|'\\'')*)'`, 'gi'), (_, key, value) => {
+    return `${key}=${maskValue(value.replace(/'\\''/g, "'"), OPAQUE_RE.test(key))}`
+  })
+  masked = masked.replace(new RegExp(String.raw`([^\s=]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s=]*)=(${WORD})`, 'gi'), (_, key, value) => {
     return `${key}=${maskValue(value, OPAQUE_RE.test(key))}`
   })
 
   // `<plugin>:set <name> backup-encryption-passphrase <passphrase>` and
-  // `<plugin>:backup-set-encryption <name> <passphrase>`: the passphrase is positional
-  // (and may be shell-quoted when it holds spaces).
+  // `<plugin>:backup-set-encryption <name> <passphrase>`: the passphrase is the last argument,
+  // so the whole rest of the line goes, whatever quotes, spaces or dashes it holds.
   masked = masked.replace(
-    /^(\S+:set\s+\S+\s+backup-encryption-passphrase\s+)('[^']*'|\S+)/,
+    /^(\S+:set\s+\S+\s+backup-encryption-passphrase\s+).+$/s,
     (_, prefix) => `${prefix}****`
   )
   masked = masked.replace(
-    /^(\S+:backup-set-encryption\s+\S+\s+)('[^']*'|\S+)/,
+    /^(\S+:backup-set-encryption\s+\S+\s+).+$/s,
     (_, prefix) => `${prefix}****`
   )
 
   // Special-case `registry:login [--global] <server> <username> <password>` —
   // password is a positional arg, not KEY=VALUE, so the regex above can't catch it.
   masked = masked.replace(
-    /^(?!.*--password-stdin)(registry:login\s+(?:--global\s+)?\S+\s+\S+\s+)(\S+)/,
+    new RegExp(String.raw`^(?!.*--password-stdin)(registry:login\s+(?:--global\s+)?\S+\s+\S+\s+)(${WORD})`),
     (_, prefix, password) => `${prefix}${maskValue(password)}`
   )
 
   // Special-case `<plugin>:backup-auth <name> <access_key_id> <secret_access_key> ...` —
   // both credentials are positional args, not KEY=VALUE.
   masked = masked.replace(
-    /^(\S+:backup-auth\s+\S+\s+)(\S+)(\s+)(\S+)/,
+    new RegExp(String.raw`^(\S+:backup-auth\s+\S+\s+)(${WORD})(\s+)(${WORD})`),
     (_, prefix, accessKeyId, sep, secretAccessKey) =>
       `${prefix}${maskValue(accessKeyId)}${sep}${maskValue(secretAccessKey)}`
   )

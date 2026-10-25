@@ -112,7 +112,7 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
 
     async run(...args: string[]): Promise<void> {
       if (opts.dryRun) {
-        log.push(args.map(a => a.includes(' ') ? shellQuote(a) : a).join(' '))
+        log.push(args.map(shellQuote).join(' '))
         return
       }
       const { ok, exitCode, stderr } = await execDokku(args)
@@ -146,7 +146,7 @@ export function createRunner(opts: RunnerOptions = {}): Runner {
 
     async runWithInput(input: string, ...args: string[]): Promise<void> {
       if (opts.dryRun) {
-        log.push(args.map(a => a.includes(' ') ? shellQuote(a) : a).join(' '))
+        log.push(args.map(shellQuote).join(' '))
         return
       }
       const { ok, exitCode, stderr } = await execDokku(args, input)
