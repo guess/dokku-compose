@@ -89,7 +89,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 6 |  |  | 11 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **87** | **13** | **70** | **185** |
+| **Total** | **90** | **13** | **66** | **186** |
 <!-- /generated:summary -->
 
 ## Priorities

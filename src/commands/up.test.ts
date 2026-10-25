@@ -111,7 +111,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: true })
     runner.check = vi.fn(async () => false)
     runner.query = vi.fn(async (...args: string[]) => {
-      if (args.join(' ') === 'version') return 'dokku version 0.38.31'
+      if (args.join(' ') === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn()
