@@ -130,7 +130,7 @@ describe('dokku.version', () => {
   })
 
   it('rejects a YAML number such as 0.38', () => {
-    expect(() => parse(0.38)).toThrow()
+    expect(() => parse(0.38)).toThrow(/dokku.version must be a quoted string starting with X.Y.Z/)
   })
 
   it('accepts a missing version', () => {

@@ -152,7 +152,8 @@ const DockerAuthEntrySchema = z.object({
 
 export const ConfigSchema = z.object({
   dokku: z.object({
-    version: z.string().regex(SEMVER_RE, 'dokku.version must start with X.Y.Z, e.g. "0.38.31"').optional(),
+    version: z.string({ error: 'dokku.version must be a quoted string starting with X.Y.Z, e.g. "0.38.31"' })
+      .regex(SEMVER_RE, 'dokku.version must start with X.Y.Z, e.g. "0.38.31"').optional(),
   }).optional(),
   plugins: z.record(z.string(), PluginSchema).optional(),
   docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
