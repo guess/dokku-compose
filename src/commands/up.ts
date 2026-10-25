@@ -49,10 +49,21 @@ export function markGlobalEnvRestart(ctx: Context, apps: string[], reason = 'glo
   for (const app of apps) ctx.needsRestart(app, reason)
 }
 
-/** Print the apps whose applied changes need `dokku ps:restart`. Nothing is restarted (no --restart flag by design). */
+/**
+ * Print the services and apps whose applied changes need a restart or rebuild. Nothing is
+ * restarted (no --restart flag by design). A service needs stop and start: `restart` keeps
+ * the container it has.
+ */
 export function printRestartSummary(ctx: Context, dryRun = false): void {
   // A rebuild restarts the app, so an app needing both shows only the rebuild line.
   const restarts = [...ctx.restarts].filter(([app]) => !ctx.rebuilds.has(app))
+  const services = [...(ctx.serviceRestarts?.values() ?? [])]
+  if (services.length > 0) {
+    console.log(`\n# Services that ${dryRun ? 'would need' : 'need'} a stop and start:`)
+    for (const { plugin, service, reasons } of services) {
+      console.log(`dokku ${plugin}:stop ${service} && dokku ${plugin}:start ${service}  # ${reasons.join(', ')}`)
+    }
+  }
   if (restarts.length === 0 && ctx.rebuilds.size === 0) return
   console.log(`\n# Apps that ${dryRun ? 'would need' : 'need'} a restart or rebuild:`)
   for (const [app, reasons] of restarts) console.log(`dokku ps:restart ${app}  # ${reasons.join(', ')}`)
