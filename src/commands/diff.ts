@@ -11,7 +11,7 @@ import { readGlobalLogs } from '../modules/logs.js'
 import { readGlobalNginx } from '../modules/nginx.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceInfo, versionMismatches, type ServiceMismatch } from '../modules/service-drift.js'
-import { backupMismatches, hasBackup, describeServerBackup } from '../modules/service-backup.js'
+import { backupMismatches, backupNotes } from '../modules/service-backup.js'
 import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
 import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
 import { staleBackupHashKeys } from '../modules/postgres.js'
@@ -457,26 +457,20 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         result.inSync = false
         continue
       }
-      const backup = plugin === 'postgres' ? (declared as PostgresConfig).backup : undefined
-      // Nothing declared to compare: redis needs no read; postgres reads only to note an undeclared backup.
+      const backup = declared.backup
+      // Nothing declared to compare: the read only looks for backup notes, and a failed one is best effort.
       const compares = declared?.version !== undefined || declared?.image !== undefined || backup !== undefined
-      if (!compares && plugin === 'redis') {
-        result.services[svc] = { status: 'in-sync', mismatches: [] }
-        continue
-      }
       try {
         // One info read covers version, image and backup.
         const info = await readServiceInfo(ctx, plugin, svc)
         const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(plugin, info, backup) : [])]
-        // An undeclared backup is never removed (only `backup: false` does), so it is a note, not drift.
-        const note = plugin === 'postgres' && backup === undefined && hasBackup(info)
-          ? `backup on the server is not in the file (${describeServerBackup(info)}); up leaves it, backup: false removes it`
-          : undefined
-        result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches, note }
+        // What up leaves alone on purpose (an undeclared backup, encryption or setting, other schedules) is a note, not drift.
+        const notes = backupNotes(info, backup)
+        result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches, note: notes.length ? notes.join('; ') : undefined }
         if (mismatches.length) result.inSync = false
       } catch (err) {
         result.readWarnings.push(`could not read ${plugin} service '${svc}': ${err instanceof Error ? err.message : String(err)}`)
-        // Only a read the file depends on makes the service unknown; the undeclared-backup note is best effort.
+        // Only a read the file depends on makes the service unknown; the notes are best effort.
         if (!compares) { result.services[svc] = { status: 'in-sync', mismatches: [] }; continue }
         result.services[svc] = { status: 'unknown' }
         result.inSync = false

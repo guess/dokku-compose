@@ -60,12 +60,11 @@ describe('diff of a service', () => {
     expect(diff.readWarnings[0]).toContain('boom')
     expect(diff.inSync).toBe(false)
   })
-  it('does not read a redis service that declares nothing', async () => {
-    const { ctx, runner } = ctxWith(new Error('must not be read'))
+  it('stays in sync, with a read warning, when a redis service that declares nothing cannot be read', async () => {
+    const { ctx } = ctxWith(new Error('boom'))
     const diff = await computeDiff(ctx, { apps: {}, redis: { cache: {} } } as unknown as Config)
     expect(diff.services.cache.status).toBe('in-sync')
-    expect(runner.queryStrict).not.toHaveBeenCalledWith('redis:info', 'cache', '--format', 'json')
-    expect(diff.readWarnings.some(w => w.includes("redis service 'cache'"))).toBe(false)
+    expect(diff.readWarnings.some(w => w.includes("redis service 'cache'") && w.includes('boom'))).toBe(true)
   })
   it('stays in sync, with a read warning, when a postgres service that declares nothing cannot be read', async () => {
     const { ctx } = ctxWith(new Error('boom'))

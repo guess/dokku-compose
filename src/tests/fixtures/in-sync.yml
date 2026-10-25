@@ -41,11 +41,25 @@ postgres:
     version: "17-3.5"
     image: postgis/postgis
 
-  myapp-reports: {}
+  myapp-reports:
+    backup:
+      schedule: "30 2 * * *"
+      bucket: backups/myapp-reports
+      auth: { access_key_id: KEY, secret_access_key: SECRET, region: auto, signature_version: s3v4, endpoint: "https://s3.example.com" }
+      encryption: { public_key_id: ABCD1234ABCD1234, keyserver: "hkp://keys.example.com" }
 
 redis:
   myapp-redis:
     version: "7.2-alpine"
+    backup:
+      schedule: "0 * * * *"
+      bucket: backups/myapp-redis
+      auth: { access_key_id: KEY, secret_access_key: SECRET, region: auto, signature_version: s3v4, endpoint: "https://s3.example.com" }
+      encryption: { passphrase: in-sync-passphrase }
+      storage_class: STANDARD_IA
+      object_name: cache/latest
+      mailto: ops@example.com
+      timestamp: false
 
 apps:
   myapp:
