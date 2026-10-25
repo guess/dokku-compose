@@ -159,6 +159,7 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | `checks` | `checks:enable <app> <type,type>` for the process types of a removed `disabled`/`skipped` list that the file declares in no list (a type the file does declare is left, with a warning naming the command to run by hand), `checks:set <app> wait-to-retire` |
 | `build.selected`, `build.skip_cleanup` | `builder:set <app> selected` / `skip-cleanup` with no value |
 | `git` (`keep_git_dir`, and a `deploy_branch` equal to the top-level `git:` one that the app does not declare, which is a copy; `source_image`, `rev_env_var` and any other `deploy_branch` are never reset) | `git:set <app> keep-git-dir` / `deploy-branch` with no value |
+| `postgres`/`redis` `properties` | `<plugin>:set <service> <key>` with no value for a known key the file dropped (never `password`); `mounts` is never cleared because its key is missing, only `mounts: []` clears it |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
 It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service, network or storage entry, never uninstalls a plugin, never changes `scale`, never clears a `chown` or `mode` removed from a `volumes:` entry, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy.enabled` is not a removal (`type` is). `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
@@ -173,7 +174,7 @@ A failing Dokku command (mutation) is never reported as a success. On `up` and `
 global-phase failure (plugins, docker auth, global config such as the top-level settings, networks, services) aborts the whole
 run immediately. A per-app failure is printed with the command and Dokku's error output, and by
 default the run continues to the next app, exiting non-zero at the end with a summary of which
-apps failed; pass `--fail-fast` to stop at the first failure instead. `diff` never reports a
+apps or services failed (a datastore service whose `properties:` the plugin refuses is reported the same way); pass `--fail-fast` to stop at the first failure instead. `diff` never reports a
 resource as missing when it could not actually read server state — it falls back to a per-app
 read and, if that's unreadable too, marks the resource `unknown` and exits non-zero with a
 warning naming what it couldn't read.
@@ -204,8 +205,8 @@ All features are idempotent — running `up` twice produces no changes.
 | Plugins | Install Dokku plugins at pinned versions, updating forward only | [plugins](docs/reference/plugins.md) |
 | Process Scale & ps | Declare process counts (`ps:scale`) and ps properties per app or globally (`ps:set`) | [scale](docs/reference/scale.md) |
 | Docker Auth | Authenticate the host docker daemon to private registries (e.g. ghcr.io) for `git:from-image` flows | [docker_auth](docs/reference/docker_auth.md) |
-| Postgres | Postgres services with optional S3 backups, encrypted or not, read from `postgres:info` so backup drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
-| Redis | Redis service instances with the same optional S3 backups | [redis](docs/reference/redis.md) |
+| Postgres | Postgres services with settings (`properties:`: memory, networks, restart policy, password, custom env, …), mounts and optional S3 backups, encrypted or not, all read from `postgres:info` so drift shows in `diff`; a changed version or image shows in `diff` | [postgres](docs/reference/postgres.md) |
+| Redis | Redis service instances with the same properties, mounts and optional S3 backups | [redis](docs/reference/redis.md) |
 | Service Links | Link postgres/redis services to apps, with `alias`, `env_var` or `querystring` | [links](docs/reference/links.md) |
 
 ### Global defaults
@@ -292,6 +293,8 @@ dokku-compose/
 │   │   ├── postgres.ts       # dokku postgres:* (create, export)
 │   │   ├── redis.ts          # dokku redis:* (create, export)
 │   │   ├── service-backup.ts # <plugin>:backup-* and set backup-* (postgres and redis)
+│   │   ├── service-properties.ts # <plugin>:set, mount, unmount, create flags (postgres and redis)
+│   │   ├── service-property-keys.ts # the built-in table of property keys
 │   │   └── version.ts        # Dokku version check
 │   ├── commands/
 │   │   ├── up.ts             # up command orchestration
