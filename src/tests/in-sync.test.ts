@@ -228,6 +228,52 @@ describe('a server whose state equals the file', () => {
     expect(runner.dryRunLog).toEqual([])
   })
 
+  it('diff shows a missing entry, a changed owner and mode, and one it cannot converge, and only notes an undeclared entry', async () => {
+    const server = inSyncServer()
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      { name: 'data', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/data', chown: 'root', mode: '0700' },
+      { name: 'media', scheduler: 'docker-local', host_path: '/srv/old' },
+      // not in the file: noted, except Dokku's own legacy entries and other schedulers', which are not
+      { name: 'old', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/old' },
+      { name: 'legacy-3f9c1a2b7d', scheduler: 'docker-local', host_path: '/srv/x' },
+      { name: 'cluster', scheduler: 'k3s' },
+    ])
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.volumes['uploads']).toEqual({ status: 'missing' })
+    expect(diff.volumes['data']).toMatchObject({ status: 'changed', current: { chown: 'root', mode: '0700' }, desired: { chown: '1000', mode: '0750' } })
+    expect(diff.volumes['media']).toMatchObject({ status: 'changed', note: expect.stringContaining('Dokku cannot change an entry') })
+    expect(diff.volumeNotes).toEqual(['old'])
+    expect(diff.inSync).toBe(false)
+    const summary = formatSummary(diff)
+    expect(summary).toContain('uploads: not created')
+    expect(summary).toContain('chown root → 1000, mode 0700 → 0750')
+    expect(summary).toContain('storage entries not in the compose file (up leaves them): old')
+    expect(formatVerbose(diff)).toContain('@@ volumes / data @@')
+  })
+
+  it('an undeclared entry alone is a note and not drift', async () => {
+    const server = inSyncServer()
+    const entries = JSON.parse(server.queries['storage:list-entries --format json']) as object[]
+    server.queries['storage:list-entries --format json'] = JSON.stringify([...entries, { name: 'old', scheduler: 'docker-local', host_path: '/srv/old' }])
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.volumeNotes).toEqual(['old'])
+    expect(diff.inSync).toBe(true)
+  })
+
+  it('diff shows a legacy mount against the named entry that replaces it', async () => {
+    const server = inSyncServer()
+    server.queries['storage:report myapp --format json'] = storageReportJson([
+      { entry: 'legacy-3f9c1a2b7d', hostPath: '/var/lib/dokku/data/storage/uploads', containerPath: '/app/uploads', phases: 'deploy' },
+      { entry: 'data', hostPath: '/var/lib/dokku/data/storage/data', containerPath: '/app/data', phases: 'deploy', readonly: true },
+      { entry: 'media', hostPath: '/srv/media', containerPath: '/app/media', processType: 'worker', volumeOptions: 'Z' },
+    ])
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps['myapp'].storage.status).toBe('changed')
+    const verbose = formatVerbose(diff)
+    expect(verbose).toContain('"legacy-3f9c1a2b7d:/app/uploads:phase=deploy"')
+    expect(verbose).toContain('"uploads:/app/uploads"')
+  })
+
   it('up creates a missing entry and moves a legacy mount onto it, before the app step', async () => {
     const server = inSyncServer()
     const entries = JSON.parse(server.queries['storage:list-entries --format json']) as { name: string }[]

@@ -157,10 +157,11 @@ Two apps that mounted the same host path shared one `legacy-<hash>` entry; decla
 
 ## `diff` and `export`
 
-`diff` reads entries with `storage:list-entries --format json` and each app's mounts with `storage:report <app> --format json` (the `attachment.<n>.*` keys: entry name, host path, container path, phases, process type, subpath, readonly, volume options, volume chown). It shows:
+`diff` reads entries with `storage:list-entries --format json` (only when the file declares `volumes:`) and each app's mounts with `storage:report <app> --format json` (the `attachment.<n>.*` keys: entry name, host path, container path, phases, process type, subpath, readonly, volume options, volume chown). It shows:
 
-- `+ <name>: not created` for a declared entry the server lacks; `~ <name> chown/mode: <server> -> <file>` when a declared value differs (a path difference is shown as an error `up` stops on); an entry on the server that the file does not declare as a note.
-- `-` / `+` lines for each mount that differs, as `<entry>:<container-dir>` plus the options that differ. A mount on a `legacy-<hash>` entry shows as `-` against the named entry's `+`.
+- Under `volumes:`: `+ <name>: not created` for a declared entry the server lacks; `~ <name>: chown root → herokuish, mode 0700 → 0750` when a declared value differs (only declared values are compared); and, for an entry `up` cannot converge (another path, another scheduler, a `legacy-` entry that is not on the server), the reason. These count as drift.
+- A note, `storage entries not in the compose file (up leaves them)`, for a docker-local entry the file does not declare. It does not count as drift. `legacy-*` entries and entries of another scheduler are never listed.
+- Under an app's `storage`: the mounts as the server has them (`-`) and as the file declares them (`+`), each as `[<process type>=]<entry>:<container-dir>[:<tokens>]`, where the tokens are `ro`, `phase=<p>` (when not both phases), the Docker options, and a `volume-subpath=` or `volume-chown=` that only the server holds. A mount on a `legacy-<hash>` entry therefore shows against the named entry that replaces it.
 
 `export` writes every docker-local entry under `volumes:` with `chown` and `mode` as stored, and `path:` only when it is not the default location. Each app's mounts go under `storage:` as `<entry>:<container-dir>`, in the map form when they have `readonly`, `phases`, `options` or `process_type`. A `subpath` or `volume-chown` on the server is dropped with a warning.
 
