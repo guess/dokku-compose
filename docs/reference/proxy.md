@@ -2,32 +2,13 @@
 
 Dokku docs: https://dokku.com/docs/networking/proxy-management/
 
-Module: `lib/proxy.sh`
+Module: `src/resources/toggle.ts`
 
 ## YAML Keys
 
-### Enable/Disable Proxy — Shorthand (`apps.<app>.proxy: true/false`)
+### Enable/Disable Proxy (`apps.<app>.proxy.enabled`)
 
-Enable or disable the proxy for an app using the shorthand form. This is the simplest way to control proxy state when you don't need to set the proxy type.
-
-```yaml
-apps:
-  api:
-    proxy: true               # proxy:enable
-
-  worker:
-    proxy: false              # proxy:disable — no web traffic
-```
-
-| Value | Dokku Commands |
-|-------|----------------|
-| `true` | `proxy:report <app> --proxy-enabled` (check)<br>`proxy:enable <app>` (if not already enabled) |
-| `false` | `proxy:report <app> --proxy-enabled` (check)<br>`proxy:disable <app>` (if not already disabled) |
-| absent | no action |
-
-### Enable/Disable Proxy — Map Form (`apps.<app>.proxy.enabled`)
-
-Enable or disable the proxy using the map form. Use this when you also want to configure `proxy.type` on the same app.
+Enable or disable the proxy. `proxy` is always a map: the shorthand `proxy: true` / `proxy: false` is rejected by `validate`.
 
 ```yaml
 apps:
@@ -55,14 +36,16 @@ Set the proxy implementation and the ports it listens on. Dokku 0.38.31's `proxy
 apps:
   api:
     proxy:
-      type: caddy             # proxy:set api caddy
+      type: caddy             # proxy:set api type caddy
+      proxy_port: 80          # proxy:set api proxy-port 80
+      proxy_ssl_port: 443     # proxy:set api proxy-ssl-port 443
 ```
 
 | Value | Dokku Commands |
 |-------|----------------|
-| `type: "nginx"` / `"caddy"` / `"haproxy"` / `"traefik"` | `proxy:report <app>` (check)<br>`proxy:set <app> type <type>` (if changed) |
-| `proxy_port: <port>` | `proxy:set <app> proxy-port <port>` (if changed) |
-| `proxy_ssl_port: <port>` | `proxy:set <app> proxy-ssl-port <port>` (if changed) |
+| `type: <string>` (e.g. `"nginx"`, `"caddy"`, `"haproxy"`, `"traefik"`; any string is accepted) | `proxy:report <app>` (check)<br>`proxy:set <app> type <type>` (if changed) |
+| `proxy_port: <port>` | `proxy:report <app>` (check)<br>`proxy:set <app> proxy-port <port>` (if changed) |
+| `proxy_ssl_port: <port>` | `proxy:report <app>` (check)<br>`proxy:set <app> proxy-ssl-port <port>` (if changed) |
 | absent | no action |
 
 ## Removal

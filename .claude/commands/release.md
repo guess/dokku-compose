@@ -60,16 +60,19 @@ becomes:
 ## [0.4.0] - 2026-03-04
 ```
 
-## Step 4: Commit the changelog and run the release script
+## Step 4: Land the release and tag it
 
-1. Stage and commit the changelog: `git add CHANGELOG.md && git commit -m "chore: update changelog for v<version>"`
-2. Run the release script: `./scripts/release.sh <version>`
+Releases land through a pull request: either a release PR (`chore: release v<version>`) that changes only `CHANGELOG.md` and the `version` in `package.json`, or the bump included in the last fix PR. The tag `v<version>` points at the squash-merge commit on `main`. Pushing the tag is what triggers `.github/workflows/release.yml`.
 
-The release script handles bumping package.json, tagging, and pushing. It will fail if the tree is dirty (which it shouldn't be since we just committed), if the tag already exists, or if you're not on main.
+1. On a branch, commit the changelog from Step 3 and bump `package.json`: `npm version <version> --no-git-tag-version`. Commit as `chore: release v<version>`, open the PR and merge it (squash) into `main`.
+2. Switch to `main`, pull, and confirm HEAD is the merged release commit with a clean tree.
+3. Tag and push the tag: `git tag v<version> && git push origin v<version>`.
+
+`./scripts/release.sh <version>` is the direct alternative. It bumps `package.json`, commits `chore: release v<version>`, tags and pushes `main` and the tag in one go, so use it only when you may push to `main` without a PR, with the changelog already committed. It fails if the tree is dirty, the tag exists or you are not on `main`.
 
 ## Step 5: Confirm success
 
-After the script completes, tell the user:
+After the tag is pushed, tell the user:
 - The version that was released
 - The git tag that was created
-- Remind them they can track the CI run with: `gh run list --workflow=release.yml --limit=1`
+- Remind them they can track the CI run with: `gh run list --workflow=release.yml --limit=1` (it runs `bun test` and `bun run build`, publishes to npm and creates the GitHub release)

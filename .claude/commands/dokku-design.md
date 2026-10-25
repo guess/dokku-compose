@@ -2,100 +2,86 @@
 description: Design and implement a dokku-compose module from the audit
 arguments:
   - name: context
-    description: The namespace to work on (e.g., apps, domains, config, certs)
+    description: The audit item or namespace to work on (e.g., F10, A3, storage, certs)
     required: true
 ---
 
 # Dokku Module Design: $ARGUMENTS.context
 
-Work through the `$ARGUMENTS.context` namespace from `docs/dokku-audit.md`, designing the YAML API and implementing it.
+Work through `$ARGUMENTS.context` from `docs/dokku-audit.md`: design the YAML API, then ship it in one PR whose first commit is the design (the reference docs) and whose later commits make it true. The workflow is the doc's "Tracking work" section; read it first.
 
 ## Step 1: Research
 
-Read these files to understand the current state:
+Read these to understand the current state:
 
-- `docs/dokku-audit.md` — the `$ARGUMENTS.context` rows in **Commands** and **Properties**, and the **Priorities** items they name
-- `lib/<module>.sh` — the current implementation (if it exists)
-- `tests/<module>.bats` — the current tests (if they exist)
-- Fetch the upstream Dokku docs (the link is in the audit) to understand all available commands and their behavior
+- `docs/dokku-audit.md`: the item's row in **Priorities**, and its rows in **Commands** and **Properties**
+- The current implementation in `src/modules/*.ts` and `src/resources/*.ts`, and the tests beside it
+- `docs/reference/<module>.md`, if the feature already has one
+- Upstream Dokku at the audited tag (the doc's "Re-auditing" section has the clone commands): the plugin's help text and source, for every command, flag and property and how each behaves
 
 Summarize what exists today and what the audit identifies as gaps.
 
 ## Step 2: Design the YAML API
 
-**STOP and present the design to the user before implementing.**
+**STOP and present the design to the user before writing anything.**
 
-For each gap or new feature, propose the YAML key structure. Follow these conventions established by apps and domains:
+For each gap or new feature, propose the YAML key structure. Follow the patterns the existing resources use:
 
-- **Tri-state pattern for booleans:** `true` does X, `false` does Y, absent = no action
-- **List/false/absent pattern:** list sets values, `false` clears/disables, absent = no action
-- **Map pattern:** each key-value pair maps to a `<namespace>:set` call
-- **Consistency:** use the same patterns as existing modules (check `lib/proxy.sh` for boolean, `lib/domains.sh` for list/false/absent, `lib/nginx.sh` for map passthrough)
+- **Tri-state boolean:** `true` does X, `false` does Y, absent = no action (`src/resources/toggle.ts`)
+- **List/false/absent:** a list sets values, `false` clears or disables, absent = no action (`src/resources/lists.ts`)
+- **Map of properties:** each key maps to a `<namespace>:set` call (`src/resources/properties.ts`)
 
-Present a clear table showing:
-- Each YAML key and its possible values
-- What Dokku command each value maps to
-- What happens when the key is absent
+Present a table showing each YAML key and its possible values, the Dokku command each value runs, and what happens when the key is absent.
 
 Consider:
-- Does this need both app-scoped and global-scoped support?
-- Does the `down` path need changes?
-- Are there any yq gotchas with `false`/boolean values? (reminder: `yaml_app_get` swallows `false` due to `// ""` — use `yaml_app_key_exists` + raw `yq eval` for booleans)
+
+- App scope, global scope (`--global`), or both
+- How `diff` and `export` read it, and whether `diff` in sync still means `up` runs nothing (`src/tests/in-sync.test.ts`)
+- `--prune`, `down`, and `--dry-run` (a read after a command the dry run skipped)
+- Whether a change needs a restart or rebuild to reach the app (`ctx.needsRestart`, `ctx.needsRebuild`)
+- Secrets: values that must be masked in logs, `diff` and `export`
+- What `validate` rejects (`src/core/schema.ts`), and the Dokku version that added each command
 
 **Wait for user approval before proceeding.**
 
-## Step 3: Write tests
+## Step 3: Commit the design
 
-Write tests FIRST in `tests/<module>.bats`. Cover:
+The PR's first commit changes docs only, and is the contract for the rest:
 
-- Each YAML value variant (list, true, false, map values)
-- Absent key = no action
-- Any new global-scoped function
+- `docs/reference/<module>.md`: edit it in place to describe what the PR ships, following `docs/reference/CLAUDE.md`. Write it as the current reference: no "Proposed", "Planned" or "Design" section.
+- `docs/dokku-audit.md`: rewrite the item's Notes to say what will change. The Status stays ❌.
 
-Create minimal fixture files in `tests/fixtures/` as needed.
+Reasons and rejected options go in the PR description, not the docs. Implementation plans are working notes: keep them out of the repo.
 
-Run the tests and confirm they fail (functions don't exist yet or behavior changed).
+## Step 4: Write tests
 
-## Step 4: Implement
+Write the tests first, beside the code (`src/resources/<name>.test.ts`, `src/modules/<name>.test.ts`). Cover:
 
-Update `lib/<module>.sh` with the new/changed functions. Follow existing patterns:
+- Each YAML value variant (list, `true`, `false`, map values), and the key absent
+- Already in sync: no command runs
+- `diff` and `export` for the new keys
+- The in-sync harness: add the keys to `src/tests/fixtures/in-sync.yml` and the matching server state to `src/tests/fake-server.ts`
 
-- Use `yaml_app_key_exists` for presence checks on keys that can be `false`
-- Use raw `yq eval` to read boolean values (not `yaml_app_get`)
-- Use `yaml_app_has` / `yaml_app_get` for non-boolean values
-- Log with `log_action` / `log_done`
-- Mutations go through `dokku_cmd`, checks through `dokku_cmd_check`
+Run them and confirm they fail.
 
-If a new global function was added (like `ensure_global_domains`), wire it into `bin/dokku-compose` in the correct phase.
+## Step 5: Implement
 
-If new per-app functions were added, wire them into `configure_app()` in `bin/dokku-compose`.
+Follow the existing patterns:
 
-Run the tests and confirm they all pass. Then run the full suite: `./tests/bats/bin/bats tests/`
+- A per-app setting is a `Resource` (`src/core/reconcile.ts`): `read` the server state, `onChange` to apply a difference, `prune` for `--prune`. Register it in `src/resources/index.ts` and wire it into `src/commands/up.ts` in the order the CLAUDE.md execution flow gives.
+- Schema and validation go in `src/core/schema.ts`.
+- `ctx.query` and `ctx.queryStrict` read, `ctx.check` tests a boolean, `ctx.run` mutates.
 
-## Step 5: Update docs
+Commit in reviewable steps (schema, resource, `diff`, `export`, …). Run `bun test` after each.
 
-Three docs to update:
+## Step 6: Close the item
 
-### 5a. `docs/dokku-audit.md`
+The PR's last commit:
 
-- **Commands**: change the status and note in `scripts/dokku-audit/commands.tsv` (or `datastores.tsv`) for every command the change covers, then regenerate the tables and summary as described in the doc's "Re-auditing" section
-- **Properties**: change the mark (✅ 🟡 ❌ ⛔) and note for every property the change covers
-- **Priorities**: remove a finished item, or narrow it to what remains
+- `docs/dokku-audit.md`: change the commands' rows in `scripts/dokku-audit/commands.tsv` (or `datastores.tsv`) and rerun the generator ("Re-auditing", step 1); update **Properties**; set the item's Status to ✅ (or 🟡, naming what is left), add the PR link and rewrite its Notes to say what shipped
+- `README.md`: keep the feature section brief and link to the reference doc
+- `CHANGELOG.md`: an entry under `## [Unreleased]`
 
-### 5b. `docs/reference/<module>.md`
+## Step 7: Verify
 
-Create or update the reference doc following the template in `docs/reference/CLAUDE.md`:
-- Title, Dokku docs link, Module
-- One subsection per YAML key with description, example, and value→command table
-- Only document what is implemented — no planned features
-
-### 5c. `README.md`
-
-- Update the feature section (keep it brief, link to full reference)
-- Update the "What `up` Does" ordered list if execution phases changed
-
-## Step 6: Verify
-
-Run the full test suite one final time: `./tests/bats/bin/bats tests/`
-
-Present a summary of changes to the user.
+Run `bun test` (`src/tests/audit.test.ts` fails if the audit trails the code) and `bun run build`, then present a summary of the changes to the user.

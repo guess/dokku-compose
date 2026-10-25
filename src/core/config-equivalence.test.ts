@@ -8,7 +8,7 @@ import { parseConfig } from './schema.js'
 const FIXTURE_DIR = path.join(import.meta.dirname, '../tests/fixtures')
 const REAL_DIR = process.env.DOKKU_COMPOSE_EQUIVALENCE_DIR
 
-// Copy of the pre-LAB-739 algorithm: substitute into raw YAML text, then parse.
+// Copy of the algorithm before #7: substitute into raw YAML text, then parse.
 function oldLoad(file: string) {
   const content = fs.readFileSync(file, 'utf8')
   const out = content.replace(/\$\{([^}]+)\}/g, (_, name) => process.env[name] ?? '')

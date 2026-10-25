@@ -41,7 +41,7 @@ export function readGlobalEnv(ctx: Context): Promise<Record<string, string>> {
   return read
 }
 
-/** Global keys left by dokku-compose before LAB-757, which tracked backups as a hash. */
+/** Global keys dokku-compose used to track backups as a hash, before #27. */
 export const BACKUP_HASH_PREFIX = 'DOKKU_COMPOSE_BACKUP_HASH_'
 
 async function planGlobalEnv(

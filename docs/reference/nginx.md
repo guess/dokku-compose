@@ -1,13 +1,13 @@
 # Nginx
 
 Dokku docs: https://dokku.com/docs/networking/proxies/nginx/
-Module: `lib/nginx.sh`
+Module: `src/resources/properties.ts` (per app), `src/modules/nginx.ts` (global)
 
-Configure Nginx proxy settings for apps and globally. All standard `nginx:set` properties are supported via a map passthrough — no fixed list of allowed keys.
+Configure Nginx proxy settings for apps and globally. Each entry is passed to `nginx:set`; only the properties `nginx:set` accepts are allowed.
 
 ## `apps.<app>.nginx`
 
-Sets per-app Nginx properties. Each key-value pair maps to a `nginx:set <app>` call. Only the 31 properties `nginx:set` accepts in Dokku 0.38.31 pass `validate`, including `nginx-conf-sigil-path` and `nginx-service-command`; any other key is rejected. The same keys are valid at the top level.
+Sets per-app Nginx properties. `up` reads `nginx:report <app>` and runs `nginx:set <app>` only for the entries that differ, then `proxy:build-config <app>` once (a failure on an app that was never deployed is only a warning). Only the 31 properties `nginx:set` accepts in Dokku 0.38.31 pass `validate`, including `nginx-conf-sigil-path` and `nginx-service-command`; any other key is rejected. The same keys are valid at the top level.
 
 ```yaml
 apps:
@@ -20,10 +20,8 @@ apps:
 
 | Value | Dokku command |
 |-------|---------------|
-| map of `key: value` pairs | `nginx:set <app> <key> <value>` for each entry |
+| map of `key: value` pairs | `nginx:set <app> <key> <value>` for each entry that differs<br>`proxy:build-config <app>` (after any change) |
 | absent | no action |
-
-On `down`: each configured property is reset to Dokku's default via `nginx:set <app> <key>` with an empty value.
 
 ## `nginx` (top-level)
 

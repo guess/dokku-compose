@@ -1,19 +1,19 @@
 # datastore subcommand	postgres status	postgres note	redis status	redis note
 # status as in commands.tsv; '-' when that plugin has no such subcommand; a redis note starting 'Same' reuses the postgres note
-create	P	`postgres.<name>` / `redis.<name>` with `image`, `version`; create only, later changes ignored (F2); other create flags missing (F8)	P	Same as postgres (F2, F8)
+create	P	`postgres.<name>` / `redis.<name>` with `image`, `version`; create only; a later `version`/`image` change is shown as drift and warned about, not applied (F2); other create flags missing (F8)	P	Same as postgres (F2, F8)
 destroy	Y	`down`	Y	`down`
-info	R	`export` (version, image)	R	`export` (version, image)
+info	R	`diff`, `up` and `export`: version, image and backup settings	R	`diff`, `up` and `export`: version, image
 list	R	`export`	R	`export`
 exists	R	Before create and in `diff`	R	Before create and in `diff`
 logs	X	Read-only	X	Read-only
-link	P	`apps.<app>.links`; no `--alias`, `--env-var`, `--querystring` (F6)	P	Same (F6)
+link	Y	`apps.<app>.links` with `--alias`, `--env-var`, `--querystring`	Y	Same as postgres
 unlink	Y	`links` removal, `down`	Y	`links` removal, `down`
-set	N	F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; F3: `backup-*`	N	F8, F7
+set	P	`backup.bucket` alone (`backup-bucket`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose	N	F8, F7
 mount	N	F8	N	F8
 unmount	N	F8	N	F8
 connect	X	Interactive	X	Interactive
 enter	X	Interactive	X	Interactive
-expose	N	F8 (low: one production setup avoids it on Docker 29)	N	F8
+expose	N	F8 (low: its ambassador container breaks on Docker 29)	N	F8
 unexpose	N	F8	N	F8
 reexpose	X	Maintenance	X	Maintenance
 promote	X	One-shot action	X	One-shot action
@@ -21,7 +21,7 @@ start	X	Runtime action	X	Runtime action
 stop	X	Runtime action	X	Runtime action
 pause	X	Runtime action	X	Runtime action
 restart	X	Runtime action	X	Runtime action
-upgrade	N	F2: apply a changed `version`/`image`	N	F2
+upgrade	X	Data operation: can need a dump and downtime, so `diff` shows a changed `version`/`image` and `up` warns (F2)	X	Same as postgres
 upgrade-cleanup	X	Maintenance	-	—
 app-links	X	Read-only	X	Read-only
 clone	X	One-shot action	X	One-shot action
@@ -30,15 +30,15 @@ links	X	Read-only	X	Read-only
 import	X	Data operation	X	Data operation
 export	X	Data operation	X	Data operation
 reset	X	Destructive one-shot	X	Destructive one-shot
-backup-auth	P	`postgres.<name>.backup.auth`; state kept as a hash in a global env var (F3)	N	F7
-backup-deauth	N	F3: when `backup:` leaves the file	N	F7
+backup-auth	Y	`postgres.<name>.backup.auth`, when `backup-auth-fingerprint`, region, signature version or endpoint differ	N	F7
+backup-deauth	Y	`backup: false`	N	F7
 backup	X	One-shot backup	X	One-shot backup
 backup-set-encryption	N	F3	N	F7
 backup-set-public-key-encryption	N	F3	N	F7
 backup-unset-encryption	N	F3	N	F7
 backup-unset-public-key-encryption	N	F3	N	F7
-backup-schedule	P	`postgres.<name>.backup.schedule`, `bucket`; server-side changes unseen (F3)	N	F7
+backup-schedule	Y	`postgres.<name>.backup.schedule` and `bucket`, when the schedule differs	N	F7
 backup-schedule-cat	R	Verifies the schedule landed; `export`	N	F7
-backup-unschedule	N	F3: when `backup:` leaves the file	N	F7
+backup-unschedule	Y	`backup: false`, when a schedule is installed	N	F7
 backup-logs	X	Read-only	X	Read-only
 certificate	X	Read-only	-	—

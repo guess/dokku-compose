@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/configuration/environment-variables/
 
-Code: `src/resources/config.ts` (apps), `src/modules/config.ts` (global)
+Module: `src/resources/config.ts` (apps), `src/modules/config.ts` (global)
 
 ## How It Works
 
@@ -14,7 +14,7 @@ On each `up`, for an app:
 2. **Unset** marked keys that are no longer in `env:`.
 3. **Set** the keys in `env:` and rewrite the marker to exactly those keys.
 
-All commands use `--no-restart`, so the app needs `dokku ps:restart <app>`; `up` lists it at the end (the top-level `env:` lists every app). Values containing `${VAR}` are interpolated from your shell environment when the file is loaded; there is no key prefix.
+All commands use `--no-restart`, so the app needs `dokku ps:restart <app>`; `up` lists it at the end (the top-level `env:` lists every app). Values containing `${VAR}` are interpolated from your shell environment when the file is loaded; there is no key prefix. A `${VAR}` that is unset or empty in your shell stops the load with an error naming it; write `$${` for a literal `${`.
 
 ## App Environment (`apps.<app>.env`)
 
@@ -54,7 +54,7 @@ apps:
       - SET_BY_SCRIPT
 ```
 
-`env_external:` lists keys that exist on the app and are made by something else, like docker-compose's `external: true`. Names only; dokku-compose never sets, unsets or reads these keys; diff stops noting them. Entries are exact names, with no globs, so a new, unexpected key is still noted. `validate` rejects a key that is also in the app's `env:`, an entry listed twice, and `DOKKU_COMPOSE_MANAGED_KEYS`, naming the app and the key.
+`env_external:` lists keys that exist on the app and are made by something else, like docker-compose's `external: true`. Names only; dokku-compose never sets, unsets or reads these keys; diff stops noting them. Entries are exact names, with no globs, so a new, unexpected key is still noted. With the key absent, every unaccounted key is noted. `validate` rejects a key that is also in the app's `env:`, an entry listed twice, and `DOKKU_COMPOSE_MANAGED_KEYS`, naming the app and the key.
 
 ## Failures
 

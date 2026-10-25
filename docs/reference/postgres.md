@@ -1,6 +1,6 @@
 # Postgres
 
-Dokku docs: https://dokku.com/docs/community/plugins/#official-plugins-beta
+Dokku docs: https://github.com/dokku/dokku-postgres
 
 Module: `src/modules/postgres.ts`
 
@@ -24,7 +24,7 @@ postgres:
 | `version` | `postgres:create <name> --image-version <version>` |
 | `image` | `postgres:create <name> --image <image>` |
 
-Service creation is idempotent — if the service already exists, it is skipped.
+Service creation is idempotent — if the service already exists, it is skipped. With `postgres:` absent, `up` does nothing for Postgres services. `down` runs `postgres:destroy <name> --force` for each declared service that exists, after the apps are gone.
 
 ### Automated Backups (`postgres.<name>.backup`)
 
@@ -43,16 +43,19 @@ postgres:
         region: "auto"
         signature_version: "s3v4"
         endpoint: "${R2_SCHEME}://${R2_HOST}"
+
+  old-db:
+    backup: false                                    # remove the schedule and credentials
 ```
 
 | Key | Dokku Command |
 |-----|---------------|
 | `backup.auth.*` | `postgres:backup-auth <name> <key> <secret> <region> <sig_version> <endpoint>` |
 | `backup.schedule` (with `backup.bucket`) | `postgres:backup-schedule <name> <schedule> <bucket>` |
-| `backup.bucket` alone | `postgres:set <name> backup-bucket <bucket>` |
-| `backup: false` | `postgres:backup-unschedule <name>`, then `postgres:backup-deauth <name>` |
+| `backup.bucket` (only the bucket differs) | `postgres:set <name> backup-bucket <bucket>` |
+| `backup: false` | `postgres:backup-unschedule <name>` (only if scheduled), then `postgres:backup-deauth <name>`; nothing when the server has no backup |
 
-All `backup.auth` fields are required when backup is configured.
+`schedule`, `bucket` and all five `backup.auth` fields are required when `backup` is a map. With `backup:` absent, `up` leaves any backup alone (see Removal below). A service created in the same `--dry-run` is planned with `:backup-auth` and `:backup-schedule`, since a new service has no backup.
 
 How each setting is compared:
 
@@ -66,10 +69,10 @@ Needs dokku-postgres 2.3.1 or later (the `backup-*` keys in `postgres:info --for
 
 Earlier versions tracked backups as a hash in the global env var `DOKKU_COMPOSE_BACKUP_HASH_<SERVICE>`. `up` unsets every such key once (`config:unset --global --no-restart`, which restarts no app), and `diff` lists them under `global / backup_hash` until it has.
 
-### Export
-
 ### Changing `version` or `image` later
 
 `up` creates a service with them and never changes an existing one: an upgrade can need a dump and downtime, so run `postgres:upgrade` yourself. When the declared value differs from `postgres:info <name> --format json` (`image-version`, `image`), `up` logs one warning per service with both values of each field, and `diff` shows `~ version` or `~ image` and exits non-zero. A field the file does not declare never drifts; a declared `image: postgres` equals the default.
 
-`dokku-compose export` discovers Postgres services by querying `postgres:list` and `postgres:info` on the server. Custom images (e.g., `postgis/postgis`) are included when they differ from the default `postgres` image.
+### Export
+
+`dokku-compose export` discovers Postgres services by querying `postgres:list` and `postgres:info` on the server. Custom images (e.g., `postgis/postgis`) are included when they differ from the default `postgres` image. A service with a backup schedule is exported with `schedule` and `bucket` from `postgres:backup-schedule-cat` and every `auth` field set to `REPLACE_ME`: credentials are never read back.

@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/deployment/application-management/
 
-Module: `lib/apps.sh`
+Module: `src/resources/lifecycle.ts` (`up`), `src/modules/apps.ts` (`down`, `export`)
 
 ## YAML Keys
 
@@ -18,31 +18,11 @@ apps:
     # ...
 ```
 
-During `up`, apps are created if they don't already exist. During `down --force`, apps are destroyed.
+During `up`, `apps:exists <app>` is checked first: an app that exists is skipped, a missing one is created. `down` unlinks the services in the app's `links:` (when the file declares `postgres:` or `redis:`), then destroys the app if it exists. If creating the app fails, `up` skips that app's other resources.
 
-```
-dokku apps:create <app>
-dokku apps:destroy <app> --force
-```
+| Phase | Dokku Commands |
+|-------|----------------|
+| up | `apps:create <app>` (if missing) |
+| down | `apps:destroy <app> --force` (if it exists) |
 
-### `locked`
-
-Lock or unlock an app to prevent/allow deploys. When the key is absent, no lock state is changed.
-
-```yaml
-apps:
-  api:
-    locked: true    # apps:lock — prevent deploys
-
-  staging:
-    locked: false   # apps:unlock — allow deploys
-
-  worker:
-    # locked key absent — no change to lock state
-```
-
-| Value | Command |
-|-------|---------|
-| `true` | `apps:lock <app>` |
-| `false` | `apps:unlock <app>` |
-| absent | no action |
+`apps:lock` / `apps:unlock` are not managed: a `locked:` key is not part of the schema and is ignored.

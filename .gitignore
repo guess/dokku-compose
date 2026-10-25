@@ -4,3 +4,4 @@
 node_modules/
 dist/
 .agent-state/
+docs/plans/

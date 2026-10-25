@@ -2,7 +2,7 @@
 
 Dokku docs: https://dokku.com/docs/deployment/logs/
 
-Module: `lib/logs.sh`
+Module: `src/resources/properties.ts` (per app), `src/modules/logs.ts` (global)
 
 ## YAML Keys
 
@@ -54,6 +54,7 @@ Audited against Dokku 0.38.31. Per-app `logs:` takes `app-label-alias`, `max-siz
 | `max-size` | global + per-app | Docker log retention size (default: `10m`) |
 | `vector-sink` | global + per-app | Log sink destination in DSN format |
 | `vector-image` | global only | Vector container image version |
+| `vector-networks` | global only | Docker networks for Vector to join (comma-separated) |
 | `app-label-alias` | global + per-app | Label name for the app identifier |
 | `vector-cron-sink` | global + per-app | Log sink for cron task output |
 

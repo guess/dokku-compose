@@ -77,7 +77,7 @@ apps:
   })
 })
 
-describe('loadConfig parse-then-substitute (LAB-739)', () => {
+describe('loadConfig parse-then-substitute (#7)', () => {
   let tmpDir: string
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dc-test-'))
