@@ -5,7 +5,7 @@ import { runUp, UpFailedError } from './up.js'
 import { loadConfig } from '../core/config.js'
 import { ConfigSchema } from '../core/schema.js'
 import path from 'path'
-import { emptyAnswer, gitReport } from '../tests/fake-server.js'
+import { emptyAnswer, gitReport, globalReportJson } from '../tests/fake-server.js'
 
 const FIXTURES = path.join(import.meta.dirname, '../tests/fixtures')
 
@@ -396,45 +396,100 @@ describe('runUp --prune', () => {
 })
 
 describe('runUp — git properties removed from the file', () => {
-  function gitBox() {
+  /** An app `web` whose own git settings are the given report rows; the global ones are `globalRows`. */
+  function gitBox(rows: Record<string, string> = {}, globalRows: Record<string, string> = {}) {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
     const read = async (...a: string[]) =>
       a[0] === 'version' ? 'dokku version 0.38.32'
-        : a[0] === 'git:report' ? gitReport(a[1], { 'Git deploy branch': 'main', 'Git keep git dir': 'true', 'Git rev env var': 'GIT_REV', 'Git source image': 'web:1' })
+        : a.join(' ') === 'git:report --global --format json' ? globalReportJson('git', globalRows)
+        : a[0] === 'git:report' ? gitReport(a[1], { 'Git deploy branch': 'main', 'Git keep git dir': 'true', 'Git rev env var': 'GIT_REV', 'Git source image': 'web:1', ...rows })
         : a[0] === 'plugin:list' ? '[]' : emptyAnswer(...a) ?? ''
     runner.query = vi.fn(read)
     runner.queryStrict = vi.fn(read)
     runner.run = vi.fn()
     return createContext(runner)
   }
-  const configs = {
-    'a git block': { apps: { web: { git: { deploy_branch: 'main' } } } },
-    'a top-level default': { git: { deploy_branch: 'main' }, apps: { web: {} } },
-  } as Record<string, any>
+  const warnings = () => vi.spyOn(console, 'warn').mockImplementation(() => {})
 
-  for (const [name, config] of Object.entries(configs)) {
-    it(`--prune resets a removed keep_git_dir and never the Dokku-written keys (${name})`, async () => {
-      const ctx = gitBox()
-      await runUp(ctx, config, [], { prune: true })
-      expect(ctx.commands).toContainEqual(['git:set', 'web', 'keep-git-dir'])
-      for (const key of ['deploy-branch', 'source-image', 'rev-env-var']) {
-        expect(ctx.commands).not.toContainEqual(['git:set', 'web', key])
-      }
+  it('--prune resets a removed keep_git_dir and never the Dokku-written keys', async () => {
+    const ctx = gitBox()
+    await runUp(ctx, { apps: { web: { git: { deploy_branch: 'main' } } } } as any, [], { prune: true })
+    expect(ctx.commands).toContainEqual(['git:set', 'web', 'keep-git-dir'])
+    for (const key of ['deploy-branch', 'source-image', 'rev-env-var']) {
+      expect(ctx.commands).not.toContainEqual(['git:set', 'web', key])
+    }
+  })
+
+  it('plain up leaves it and counts it as a leftover', async () => {
+    const ctx = gitBox()
+    const warn = warnings()
+    try {
+      await runUp(ctx, { apps: { web: { git: { deploy_branch: 'main' } } } } as any, [])
+      expect(ctx.commands).not.toContainEqual(['git:set', 'web', 'keep-git-dir'])
+      const lines = warn.mock.calls.map(c => String(c[0]))
+      expect(lines).toHaveLength(1)
+      expect(lines[0]).toContain('1 setting(s)')
+    } finally {
+      warn.mockRestore()
+    }
+  })
+
+  describe('the top-level git: is --global, so what the old behaviour copied onto an app is a leftover', () => {
+    const top = { deploy_branch: 'main' }
+
+    it('sets the global value and never copies it onto the app', async () => {
+      const ctx = gitBox({ 'Git deploy branch': '', 'Git keep git dir': '' })
+      await runUp(ctx, { git: top, apps: { web: {} } } as any, [])
+      expect(ctx.commands).toEqual([['git:set', '--global', 'deploy-branch', 'main']])
     })
 
-    it(`plain up leaves it and counts it as a leftover (${name})`, async () => {
-      const ctx = gitBox()
-      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    it('--prune clears a copied keep-git-dir and a per-app deploy-branch equal to the top-level one', async () => {
+      const ctx = gitBox({}, { 'deploy-branch': 'main' })
+      await runUp(ctx, { git: top, apps: { web: {} } } as any, [], { prune: true })
+      expect(ctx.commands).toEqual([['git:set', 'web', 'deploy-branch'], ['git:set', 'web', 'keep-git-dir']])
+    })
+
+    it('plain up leaves both, and counts them only for an app whose own git: block is declared', async () => {
+      const ctx = gitBox({}, { 'deploy-branch': 'main' })
+      const warn = warnings()
       try {
-        await runUp(ctx, config, [])
-        expect(ctx.commands).not.toContainEqual(['git:set', 'web', 'keep-git-dir'])
+        await runUp(ctx, { git: top, apps: { web: {} } } as any, [])
+        expect(ctx.commands).toEqual([])
+        expect(warn.mock.calls).toEqual([])
+        const own = gitBox({}, { 'deploy-branch': 'main' })
+        await runUp(own, { git: top, apps: { web: { git: { rev_env_var: 'GIT_REV' } } } } as any, [])
+        expect(own.commands).toEqual([])
         const lines = warn.mock.calls.map(c => String(c[0]))
         expect(lines).toHaveLength(1)
-        expect(lines[0]).toContain('1 setting(s)')
+        expect(lines[0]).toContain('2 setting(s)')
       } finally {
         warn.mockRestore()
       }
     })
-  }
+
+    it('a per-app deploy-branch that differs is an override and stays; so do source-image and rev-env-var', async () => {
+      const ctx = gitBox({ 'Git deploy branch': 'release', 'Git keep git dir': '' }, { 'deploy-branch': 'main' })
+      await runUp(ctx, { git: top, apps: { web: {} } } as any, [], { prune: true })
+      expect(ctx.commands).toEqual([])
+    })
+
+    it('an app that declares its own deploy_branch keeps it, equal to the global one or not', async () => {
+      const ctx = gitBox({ 'Git keep git dir': '' }, { 'deploy-branch': 'main' })
+      await runUp(ctx, { git: top, apps: { web: { git: { deploy_branch: 'main' } } } } as any, [], { prune: true })
+      expect(ctx.commands).toEqual([])
+    })
+
+    it('an app whose own git: omits deploy_branch loses an equal copy', async () => {
+      const ctx = gitBox({ 'Git keep git dir': '' }, { 'deploy-branch': 'main' })
+      await runUp(ctx, { git: top, apps: { web: { git: { keep_git_dir: false } } } } as any, [], { prune: true })
+      expect(ctx.commands).toContainEqual(['git:set', 'web', 'deploy-branch'])
+    })
+
+    it('without a top-level deploy_branch nothing is a copy', async () => {
+      const ctx = gitBox({ 'Git keep git dir': '' }, { 'deploy-branch': 'main' })
+      await runUp(ctx, { git: { keep_git_dir: true }, apps: { web: {} } } as any, [], { prune: true })
+      expect(ctx.commands.filter(c => c[0] === 'git:set' && c[1] === 'web')).toEqual([])
+    })
+  })
 })

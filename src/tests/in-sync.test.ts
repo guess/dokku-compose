@@ -12,6 +12,12 @@ import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReport
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
 const SINK = 'console://?encoding[codec]=json'
+/** `git:report <app>` rows of an app with no git settings of its own: it computes the global ones. */
+const INHERITED_GIT = {
+  'Git global deploy branch': 'main', 'Git computed deploy branch': 'main',
+  'Git global keep git dir': 'true', 'Git computed keep git dir': 'true',
+  'Git global archive max files': '20000', 'Git computed archive max files': '20000',
+}
 
 /** The reads that look for removed settings on an app whose file declares none of these blocks. */
 function nothingSet(name: string): Record<string, string> {
@@ -108,6 +114,7 @@ function inSyncServer(): FakeServer {
       'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
       'app-json:report --global --format json': globalReportJson('app-json', { 'appjson-path': 'app.json' }),
       'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal' }),
+      'git:report --global --format json': globalReportJson('git', { 'deploy-branch': 'main', 'keep-git-dir': 'true', 'archive-max-files': '20000' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -184,7 +191,8 @@ function inSyncServer(): FakeServer {
         ],
         'deploy-list': ['--shm-size 256m'],
       }),
-      [`git:report ${app}`]: gitReport(app, { 'Git deploy branch': 'main' }),
+      // No own git settings: the app inherits the global ones (`git:set --global`).
+      [`git:report ${app}`]: gitReport(app, INHERITED_GIT),
 
       // myapp-worker: no cert, all checks disabled, its own deploy branch
       [`certs:report ${worker} --ssl-enabled`]: 'false',
@@ -202,7 +210,7 @@ function inSyncServer(): FakeServer {
       [`certs:report ${edge} --ssl-enabled`]: 'true',
       [`certs:show ${edge} crt`]: CRT,
       [`config:get ${edge} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
-      [`git:report ${edge}`]: gitReport(edge, { 'Git deploy branch': 'main' }),
+      [`git:report ${edge}`]: gitReport(edge, INHERITED_GIT),
       [`config:export --format json ${edge}`]: JSON.stringify({ SET_BY_SCRIPT: 'listed-value' }),
       [`checks:report ${edge}`]: report(edge, 'checks', { 'Checks disabled list': 'none', 'Checks skipped list': 'none' }),
       ...nothingSet(edge),
@@ -812,5 +820,42 @@ describe('top-level global blocks', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, config, [], { prune: true })
     expect(runner.dryRunLog).toEqual(['network:set --global initial-network'])
+  })
+
+  it('git: a changed global value is set, including the limits that exist only globally; a dropped key is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['git:report --global --format json'] = globalReportJson('git', {
+      'deploy-branch': 'master', 'keep-git-dir': 'true', 'archive-max-files': '5000', 'archive-max-size': '1073741824',
+    })
+    expect((await up(server)).log).toEqual([
+      'git:set --global deploy-branch main',
+      'git:set --global archive-max-files 20000',
+    ])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'git:set --global deploy-branch main',
+      'git:set --global archive-max-files 20000',
+      'git:set --global archive-max-size',
+    ])
+  })
+
+  it('git migration: what the old top-level git: copied onto an app is a diff removal and --prune clears it', async () => {
+    const server = inSyncServer()
+    // The old behaviour wrote the top-level block onto every app that had no git: of its own.
+    server.queries['git:report myapp'] = gitReport('myapp', { ...INHERITED_GIT, 'Git deploy branch': 'main', 'Git keep git dir': 'true' })
+    // An app with a different deploy branch chose it: an override, not a copy.
+    server.queries['git:report myapp-edge'] = gitReport('myapp-edge', { ...INHERITED_GIT, 'Git deploy branch': 'release', 'Git keep git dir': 'true' })
+
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps.myapp.git).toMatchObject({ status: 'extra', removed: ['deploy_branch', 'keep_git_dir'] })
+    expect(diff.apps['myapp-edge'].git).toMatchObject({ status: 'extra', removed: ['keep_git_dir'] })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('not in the file: deploy_branch, keep_git_dir')
+
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'git:set myapp deploy-branch',
+      'git:set myapp keep-git-dir',
+      'git:set myapp-edge keep-git-dir',
+    ])
   })
 })

@@ -68,6 +68,8 @@ build:
 
 git:
   deploy_branch: main
+  keep_git_dir: true
+  archive_max_files: 20000
 
 postgres:
   myapp-db:

@@ -160,9 +160,6 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       let desired: unknown
       if (resource.key === 'proxy') {
         desired = appConfig.proxy?.enabled
-      } else if (resource.key === 'git') {
-        // `up` applies the top-level `git:` to an app that declares none.
-        desired = appConfig.git ?? config.git
       } else if (resource.key === 'proxy_props') {
         desired = proxyProps(appConfig.proxy)
       } else if (resource.key === 'storage') {
@@ -170,6 +167,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       } else {
         desired = (appConfig as any)[resource.key]
       }
+      // The top-level block of the same name is Dokku's `--global` setting, which the app inherits.
+      const inherited = resource.inheritsGlobal ? (config as any)[resource.key] : undefined
       // A block gone from the file can still leave settings on the box.
       const checkRemovalsOnly = desired === undefined
       if (checkRemovalsOnly && (!resource.removals || !appExists.get(app))) continue
@@ -197,7 +196,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
           result.readWarnings.push(`could not read '${resource.key}' for app '${app}' to look for removed settings: ${err instanceof Error ? err.message : String(err)}`)
           continue
         }
-        const removed = resource.removals!(current as any, undefined)
+        const removed = resource.removals!(current as any, undefined, inherited)
         if (removed.length > 0) {
           appDiff[resource.key] = { status: 'extra', current, removed }
           result.inSync = false
@@ -216,7 +215,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
       if (resource.inSync) {
         // The server's state has its own shape (certs, checks): the resource compares.
-        const removedHere = resource.removals ? resource.removals(current as any, desired as any) : []
+        const removedHere = resource.removals ? resource.removals(current as any, desired as any, inherited) : []
         let status: DiffStatus
         if (current === undefined) {
           status = 'unknown'
@@ -236,7 +235,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
 
       let removed: string[] = resource.removals
-        ? resource.removals(current as any, desired as any)
+        ? resource.removals(current as any, desired as any, inherited)
         : []
 
       if (resource.forceApply) {

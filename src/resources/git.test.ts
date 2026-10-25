@@ -32,3 +32,27 @@ describe('Git.readAll (bulk)', () => {
     expect(result.get('app1')).toEqual({ deploy_branch: undefined })
   })
 })
+
+describe('Git.removals: a per-app deploy-branch the top-level git: also declares', () => {
+  const removals = Git.removals!
+  const copy = { deploy_branch: 'main', keep_git_dir: 'true', source_image: 'web:1', rev_env_var: 'GIT_REV' }
+
+  it('is a removal when it equals the top-level one and the app does not declare its own', () => {
+    expect(removals(copy, undefined, { deploy_branch: 'main' })).toEqual(['deploy_branch', 'keep_git_dir'])
+    expect(removals(copy, { keep_git_dir: true }, { deploy_branch: 'main' })).toEqual(['deploy_branch'])
+  })
+
+  it('is an override when it differs, and never a removal without a top-level deploy_branch', () => {
+    expect(removals(copy, undefined, { deploy_branch: 'release' })).toEqual(['keep_git_dir'])
+    expect(removals(copy, undefined, { keep_git_dir: true })).toEqual(['keep_git_dir'])
+    expect(removals(copy, undefined, undefined)).toEqual(['keep_git_dir'])
+  })
+
+  it('is not a removal when the app declares deploy_branch itself', () => {
+    expect(removals(copy, { deploy_branch: 'main' }, { deploy_branch: 'main' })).toEqual(['keep_git_dir'])
+  })
+
+  it('never lists source-image or rev-env-var', () => {
+    expect(removals({ source_image: 'x', rev_env_var: 'R' }, undefined, { deploy_branch: 'main' })).toEqual([])
+  })
+})
