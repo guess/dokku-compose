@@ -24,7 +24,96 @@ postgres:
 | `version` | `postgres:create <name> --image-version <version>` |
 | `image` | `postgres:create <name> --image <image>` |
 
-Service creation is idempotent — if the service already exists, it is skipped. With `postgres:` absent, `up` does nothing for Postgres services. `down` runs `postgres:destroy <name> --force` for each declared service that exists, after the apps are gone.
+Service creation is idempotent — if the service already exists, it is skipped (its `properties` and `mounts` are then reconciled, see below). With `postgres:` absent, `up` does nothing for Postgres services. `down` runs `postgres:destroy <name> --force` for each declared service that exists, after the apps are gone.
+
+### Service Properties (`postgres.<name>.properties`)
+
+Settings of a service after it exists. Each key is the plugin's own `postgres:set` property name, with the value the plugin documents. `up` reads `postgres:info <name> --format json`, compares each declared key, and runs `postgres:set <name> <key> -- <value>` for the ones that differ (the value follows `--` because a config option or a password can start with `-`).
+
+```yaml
+postgres:
+  api-db:
+    properties:
+      memory: 512                        # container limit in MB
+      shm-size: 256m
+      restart-policy: unless-stopped
+      log-driver: json-file
+      log-opt: [max-size=10m, max-file=3]          # list, joined with ","
+      wait-timeout: 120                  # seconds, greater than 0
+      initial-network: myapp-net
+      post-create-network: [myapp-net, other-net]  # list, joined with ","
+      post-start-network: [myapp-net]
+      config-options: "-c max_connections=200"     # one line
+      custom-env:                                  # map, joined as KEY=value;KEY=value
+        TZ: UTC
+      password: ${DB_PASSWORD}                    # managed, see below
+```
+
+| Key | Dokku command |
+|-----|---------------|
+| `properties.<key>: <value>` (differs) | `postgres:set <name> <key> -- <value>` |
+| `properties.password` (fingerprint differs) | `postgres:set --no-restart <name> password -- <value>` |
+| `properties.<key>` (service created in this run, key is a create flag) | `postgres:create <name> --<flag> <value>` |
+| a known key removed from the file, with `--prune` | `postgres:set <name> <key>` (no value clears it) |
+
+Values are strings or numbers (a number is written as its decimal string). A key the file does not declare is left alone. `diff` shows `~ properties.<key>` for a difference, and `- properties.<key>` for a known key that the server holds with a non-default value and the file omits; both count as drift, and only `up --prune` clears a `-`. A service that does not exist yet is planned with its create flags on the `:create` line (in `--dry-run` too) and its other keys as `postgres:set` lines, so it is not restarted for them. After a `postgres:set`, the info read is not reused: the next comparison reads again.
+
+**Compared as the plugin reports them.** The info JSON reports what was set, not the plugin's default, so an unset key reads empty (`memory` reads `0`, which equals an absent or `0` value). A declared value equal to the default (`restart-policy: always`) differs once, is set, and then matches. Network and `log-opt` lists compare as sets, since order does not matter to the plugin; `custom-env` compares as a set of `KEY=value` pairs (the server reads it back joined with `;`). Every other key, including a key with no built-in entry, compares as an exact string: write the value exactly as `postgres:info` prints it (`512`, not `512m`).
+
+**Keys with built-in handling.** dokku-compose carries a small table of the keys below, and of every other key the plugin lists as settable (the known keys). A key outside the table is passed to `postgres:set` unchanged.
+
+| Key | Handling |
+|-----|----------|
+| `password` | Secret. Compared by the sha256 fingerprint `postgres:info` reports as `password-fingerprint`; applied with `--no-restart`, and every app linked to the service (from `postgres:links <name>`; in `--dry-run`, from the file's `links:`) is then added to the restart summary, because the plugin rewrites the url they hold. Letters, digits, `.`, `_`, `~` and `-` only. A `:create` flag. Never pruned (a password cannot be cleared), with no warning. On a stopped service the plugin refuses before changing anything and that service's step fails with its message |
+| `custom-env` | Takes a map of names to values (a plain `;`-joined string also works). A value containing `;` or a newline is a `validate` error. Values are masked. Stop and start. A `:create` flag |
+| `config-options` | One line only. Stop and start. A `:create` flag |
+| `memory`, `shm-size` | Stop and start. `:create` flags |
+| `initial-network`, `post-create-network`, `post-start-network` | The last two take a list. Stop and start. `:create` flags |
+| `log-driver`, `log-opt`, `restart-policy` | Stop and start. `:create` flags (`restart-policy` is `--restart`). `log-opt` takes a list |
+| `wait-timeout` | Immediate. A `:create` flag. `0` is rejected by the plugin |
+| `backup-*` | Rejected: use [`backup`](#automated-backups-postgresnamebackup) |
+| `expose-host`, `expose-mode`, `port-bind-address`, `port-source-range` | Rejected: reserved for a future `expose` key |
+| `export-args`, `import-args` | Rejected: not managed (extra arguments for ad-hoc exports and imports) |
+| `root-password` | Rejected: postgres has no root password |
+| `volume-targets`, `service-memory` | Rejected: rarely needed |
+| `image`, `image-version`, `definition`, `mounts`, `backup-schedule` | Rejected: the plugin refuses them in `:set` (`version` and `image` are declared beside `properties`, `mounts` is its own key) |
+
+"Stop and start" keys take effect only after the container is made again.
+
+**Restarts.** `up` never restarts a service. A stop-and-start key that changed on an existing service is set, and `up` adds a line to its restart summary, once per service with the reasons after it:
+
+```
+dokku postgres:stop api-db && dokku postgres:start api-db  # memory, custom-env
+dokku ps:restart myapp  # api-db password changed
+```
+
+A service created in the same run needs no restart. A key with no built-in entry adds nothing: read the `postgres:set` output.
+
+**Masking.** Secrets and `custom-env` values (keys are shown) are masked in `diff`, logs, dry-run and error output unless `--sensitive` is given, like app `env:`. The masked commands are `postgres:set <name> password -- <value>` (positional value), `postgres:create ... --password <value>` and the `custom-env` values in `postgres:set` and `postgres:create --custom-env`. The literal `REPLACE_ME` is a `validate` error as the value of `password` or of a `custom-env` entry (export writes it as a placeholder).
+
+**Unknown keys.** `validate` warns about a key that the plugin version dokku-compose is tested with (dokku-postgres 2.4.0) does not list, and `up` passes it on anyway. If the server's plugin rejects a key or a value, that service's step fails: it is reported, the run goes on with the other services and apps, and `up` exits non-zero.
+
+**Removal.** A missing `properties:` block or key is no action. With `--prune`, `up` reads the service once and clears every known key (the table above, from the plugin's settable list) that the file does not declare and the server holds with a non-default value, with an empty `postgres:set <name> <key>` (`memory` then reads `0`). The info JSON also carries about fifty read-only keys, so a key outside the known list is never pruned. `password` is never pruned, and keys owned by another block (`backup-*`, `expose-*`) and rejected keys are left alone.
+
+### Mounts (`postgres.<name>.mounts`)
+
+Host paths and Docker volumes mounted into the service container.
+
+```yaml
+postgres:
+  api-db:
+    mounts:
+      - /var/lib/dokku/data/storage/myapp-extra:/opt/extra   # <source>:<container-dir>[:<options>]
+      - dbvol:/opt/data:ro                                   # docker volume, read only
+```
+
+| Value | Dokku command |
+|-------|---------------|
+| list differs from the server's | `postgres:mount --replace <name> <spec>...` |
+| `mounts: []` (and the server has mounts) | `postgres:unmount --all <name>` |
+| absent | no action, with or without `--prune` |
+
+The list is the whole set: `--replace` drops a mount that is not declared. A spec must not contain whitespace (`validate` rejects it). `postgres:info` reports mounts as one space-joined string of normalised specs, so each declared spec is normalised the same way before the set comparison: `ro` first, `rw` and a trailing `:` dropped, then other options, then `volume-subpath=` and `volume-chown=`. Order does not matter. A service created in the same run gets `--volume <spec>` on `:create`. Mounts reach the container after stop and start, so a change adds the same line to the restart summary as a property. A host source path must already exist (see [Storage](storage.md)). Like `domains`, `ports` and `networks`, a whole list is never cleared because its key is missing: only `mounts: []` clears the mounts.
 
 ### Automated Backups (`postgres.<name>.backup`)
 
@@ -112,3 +201,5 @@ Earlier versions tracked backups as a hash in the global env var `DOKKU_COMPOSE_
 `dokku-compose export` discovers Postgres services by querying `postgres:list` and `postgres:info` on the server. Custom images (e.g., `postgis/postgis`) are included when they differ from the default `postgres` image. Backups are read from `postgres:info <name> --format json`. A service with a default schedule is exported with `schedule` and `bucket` and every `auth` field set to `REPLACE_ME`: credentials are never read back. When encryption is on, `encryption` is exported as `passphrase: REPLACE_ME` (a passphrase is never read back) or with the real `public_key_id` and `keyserver`; `storage_class`, `object_name`, `mailto` and `timestamp: false` are exported with the server's values. A service with encryption or settings but no default schedule gets no `backup:` block, because a map needs `schedule`, `bucket` and `auth`; `export` and `diff` note it.
 
 `export` writes `REPLACE_ME` for every secret. `validate` rejects the literal `REPLACE_ME` as the value of `encryption.passphrase` and of `auth.access_key_id` and `auth.secret_access_key` ("replace the REPLACE_ME placeholder written by export"), so an exported file cannot be applied before its secrets are filled in.
+
+Export writes `properties` from `postgres:info` for the known keys with a non-default value (`memory` of `0` is skipped), with `custom-env` as a map, every value written as `REPLACE_ME`, and the network and `log-opt` keys as lists. `password` is never written. Mounts become `mounts:`.
