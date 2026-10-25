@@ -103,6 +103,7 @@ function inSyncServer(): FakeServer {
         'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'true',
       }),
       'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
+      'ps:report --global --format json': globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'stop-timeout-seconds': '45' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -722,5 +723,19 @@ describe('top-level global blocks', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, config, [], { prune: true })
     expect(runner.dryRunLog).toEqual(['checks:set --global wait-to-retire'])
+  })
+
+  it('ps: a changed restart policy is set without a restart listing; a dropped skip-deploy is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['ps:report --global --format json'] = globalReportJson('ps', {
+      'restart-policy': 'always', 'stop-timeout-seconds': '45', 'skip-deploy': 'true',
+    })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['ps:set --global restart-policy on-failure:5'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+    expect((await up(server, { prune: true })).log).toEqual([
+      'ps:set --global restart-policy on-failure:5',
+      'ps:set --global skip-deploy',
+    ])
   })
 })

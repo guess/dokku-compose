@@ -50,6 +50,10 @@ registry:
 checks:
   wait-to-retire: 30
 
+ps:
+  restart-policy: "on-failure:5"
+  stop-timeout-seconds: 45
+
 git:
   deploy_branch: main
 
