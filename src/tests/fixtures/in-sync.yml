@@ -41,6 +41,8 @@ logs:
   max-size: "50m"
   vector-sink: "console://?encoding[codec]=json"
 
+scheduler: docker-local
+
 git:
   deploy_branch: main
 

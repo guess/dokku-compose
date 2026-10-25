@@ -26,8 +26,7 @@ import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
-import { ensureGlobalLogs } from '../modules/logs.js'
-import { ensureGlobalNginx } from '../modules/nginx.js'
+import { ensureGlobal, GLOBAL_UP_ORDER } from '../modules/global.js'
 import { logError, logWarn } from '../core/logger.js'
 import type { AppConfig } from '../core/schema.js'
 import { declaredMounts, type MountItem } from '../core/volume-rules.js'
@@ -195,8 +194,9 @@ async function runUpPhases(
   // The top-level blocks are Dokku's own `--global` settings. A block the file does not
   // declare is never read, so settings made outside the file stay (even under --prune).
   const globalOpts = { prune: opts.prune, apps: apps.filter(app => config.apps[app]), appConfigs: config.apps }
-  if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs, globalOpts)
-  if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx, globalOpts)
+  for (const name of GLOBAL_UP_ORDER) {
+    if (config[name] !== undefined) await ensureGlobal(ctx, name, config[name], globalOpts)
+  }
 
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)

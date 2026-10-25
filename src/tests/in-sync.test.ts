@@ -7,7 +7,7 @@ import { createHash } from 'crypto'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, globalReportJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -98,6 +98,7 @@ function inSyncServer(): FakeServer {
         'global-vector-sink': SINK, 'logs-global-vector-sink': SINK, 'computed-vector-sink': SINK, 'logs-computed-vector-sink': SINK,
       }),
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
+      'scheduler:report --global --format json': globalReportJson('scheduler', { selected: 'docker-local' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -648,5 +649,47 @@ describe('a server whose state equals the file', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
     expect(runner.dryRunLog).toEqual([])
+  })
+})
+
+// The top-level blocks are Dokku's own `--global` settings. Each test changes one value on the
+// in-sync server and checks that `up` sets exactly that, and that `--prune` clears a dropped key.
+describe('top-level global blocks', () => {
+  let log: ReturnType<typeof vi.spyOn>
+  let warn: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => { log.mockRestore(); warn.mockRestore() })
+
+  async function up(server: FakeServer, opts: { prune?: boolean } = {}, apps: string[] = []) {
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), apps, opts)
+    return { ctx, log: runner.dryRunLog }
+  }
+
+  it('nginx and logs: a key the declared block dropped is cleared by --prune and left otherwise', async () => {
+    const server = inSyncServer()
+    server.queries['nginx:report --global --format json'] = nginxGlobalJson({ 'global-client-max-body-size': '20m', 'global-hsts': 'true' })
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual(['nginx:set --global hsts'])
+    expect(warn.mock.calls.map(c => String(c[0])).some(l => l.includes('1 global nginx setting(s) no longer in the compose file'))).toBe(true)
+
+    const logs = inSyncServer()
+    logs.queries['logs:report --global --format json'] = logsGlobalJson({
+      'global-max-size': '50m', 'global-vector-sink': SINK, 'global-vector-image': 'timberio/vector:0.36.0-alpine',
+    })
+    expect((await up(logs, { prune: true })).log).toEqual(['logs:set --global vector-image'])
+  })
+
+  it('scheduler: a different global selected is set; a dropped shell is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null', shell: 'bash' })
+    expect((await up(server)).log).toEqual(['scheduler:set --global selected docker-local'])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'scheduler:set --global selected docker-local',
+      'scheduler:set --global shell',
+    ])
   })
 })

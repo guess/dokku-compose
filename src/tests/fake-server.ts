@@ -83,6 +83,8 @@ export function emptyAnswer(...args: string[]): string | undefined {
   if (key === 'config:export --global --format json') return '{}'
   if (/^config:export --format json \S+$/.test(key)) return '{}'
   if (key === 'nginx:report --global --format json') return nginxGlobalJson()
+  const global = key.match(/^(\S+):report --global --format json$/)
+  if (global && global[1] in GLOBAL_REPORTS) return globalReportJson(global[1])
   if (/^logs:report \S+ --format json$/.test(key)) return logsAppJson()
   if (/^checks:report \S+$/.test(key)) return '       Checks disabled list: none\n       Checks skipped list: none\n'
   return undefined
@@ -160,6 +162,48 @@ export function storageReportJson(attachments: FakeAttachment[] = []): string {
     }
   })
   return JSON.stringify(out)
+}
+
+/**
+ * The keys Dokku 0.38.31 prints for `<ns>:report --global --format json` (Dokku trims the
+ * `--<ns>-` prefix): the `global-` keys, and the `computed-` ones its report.go lists for
+ * `--global`. Source: `plugins/<ns>/report.go`.
+ */
+const GLOBAL_REPORTS: Record<string, { global: string[]; computed: string[] }> = {
+  scheduler: { global: ['selected', 'shell'], computed: ['selected', 'shell'] },
+  registry: {
+    global: ['auth-servers', 'push-on-release', 'server', 'image-repo-template', 'push-extra-tags'],
+    computed: ['auth-servers', 'push-on-release', 'server', 'image-repo-template', 'push-extra-tags'],
+  },
+  checks: { global: ['wait-to-retire'], computed: ['wait-to-retire'] },
+  ps: {
+    global: ['procfile-path', 'restart-policy', 'skip-deploy', 'stop-timeout-seconds'],
+    computed: ['procfile-path', 'restart-policy', 'skip-deploy', 'stop-timeout-seconds'],
+  },
+  builder: { global: ['selected', 'build-dir', 'skip-cleanup'], computed: ['skip-cleanup'] },
+  'builder-dockerfile': { global: ['dockerfile-path'], computed: ['dockerfile-path'] },
+  'app-json': { global: ['appjson-path'], computed: ['appjson-path'] },
+  network: {
+    global: ['attach-post-create', 'attach-post-deploy', 'bind-all-interfaces', 'initial-network', 'tld'],
+    computed: ['attach-post-create', 'attach-post-deploy', 'bind-all-interfaces', 'initial-network', 'tld'],
+  },
+  git: {
+    global: ['archive-max-files', 'archive-max-size', 'deploy-branch', 'keep-git-dir'],
+    computed: ['archive-max-files', 'archive-max-size', 'deploy-branch', 'keep-git-dir'],
+  },
+}
+
+/**
+ * `<ns>:report --global --format json`, every real key. `values` are the global settings by
+ * bare key (`'wait-to-retire': '30'`); the matching `computed-` key carries the same value.
+ */
+export function globalReportJson(ns: string, values: Record<string, string> = {}): string {
+  const spec = GLOBAL_REPORTS[ns]
+  for (const k of Object.keys(values)) if (!spec.global.includes(k)) throw new Error(`not a real ${ns} global key: ${k}`)
+  return JSON.stringify(Object.fromEntries([
+    ...spec.computed.map(k => [`computed-${k}`, values[k] ?? '']),
+    ...spec.global.map(k => [`global-${k}`, values[k] ?? '']),
+  ]))
 }
 
 /**
