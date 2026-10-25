@@ -822,6 +822,38 @@ describe('top-level global blocks', () => {
     expect(runner.dryRunLog).toEqual(['network:set --global initial-network'])
   })
 
+  it('a block the file does not declare is never read or touched, even under --prune', async () => {
+    const config = loadConfig(FIXTURE)
+    for (const name of ['scheduler', 'registry', 'checks', 'ps', 'build', 'network', 'git', 'nginx', 'logs'] as const) delete (config as any)[name]
+    const server = inSyncServer()
+    // Settings made outside the file.
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null' })
+    server.queries['git:report --global --format json'] = globalReportJson('git', { 'deploy-branch': 'master' })
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    const reads = (runner.queryStrict as any).mock.calls.map((c: string[]) => c.join(' '))
+    expect(reads.filter((r: string) => r.includes('--global') && /^(scheduler|registry|checks|ps|builder|network|git|nginx|logs):/.test(r))).toEqual([])
+    expect(runner.dryRunLog.filter(c => c.includes('--global'))).toEqual([])
+  })
+
+  it('a failing global step aborts the run before any app is processed', async () => {
+    const server = inSyncServer()
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null' })
+    const { ctx, runner } = fakeContext(server)
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'scheduler:set') throw new Error('dokku scheduler:set failed')
+    })
+    await expect(runUp(ctx, loadConfig(FIXTURE), [])).rejects.toThrow('scheduler:set failed')
+    expect((runner.run as any).mock.calls.filter((c: string[]) => c[0] === 'apps:create')).toEqual([])
+    expect(ctx.commands.some(c => c[0] === 'ports:set' || c[0] === 'git:set')).toBe(false)
+  })
+
+  it('an unreadable global report aborts the run too', async () => {
+    const server = inSyncServer()
+    server.queries['ps:report --global --format json'] = 'not json'
+    await expect(runUp(fakeContext(server).ctx, loadConfig(FIXTURE), [])).rejects.toThrow(/json/)
+  })
+
   describe('diff shows the global blocks under global', () => {
     const diffOf = (server: FakeServer, mutate: (c: ReturnType<typeof loadConfig>) => void = () => {}) => {
       const config = loadConfig(FIXTURE)

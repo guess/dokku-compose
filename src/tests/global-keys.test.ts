@@ -75,7 +75,7 @@ describe('validate: the schema takes what the tables list', () => {
     expect(message({ ps: { restore: true } })).toMatch(/restore.*per-app/)
     expect(message({ ps: { 'start-cmd': 'x' } })).toMatch(/start-cmd.*per-app/)
     expect(message({ checks: { disabled: ['web'] } })).toMatch(/disabled.*per-app/)
-    expect(message({ checks: false })).toMatch(/checks: false/)
+    expect(message({ checks: false })).toMatch(/false disables the checks/)
     expect(message({ build: { args: { A: 'b' } } })).toMatch(/args.*no global form/)
     expect(message({ network: { static_web_listener: 'x' } })).toMatch(/static_web_listener.*per-app/)
   })

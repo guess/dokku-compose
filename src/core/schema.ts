@@ -24,7 +24,7 @@ function withHints(hints: Record<string, string>, notAnObject?: (input: unknown)
   return {
     error: (iss: any): string | undefined => {
       if (iss.code === 'unrecognized_keys' && (iss.keys as string[]).some(k => k in hints)) {
-        return (iss.keys as string[]).map(k => `'${k}': ${hints[k] ?? 'unrecognized key'}`).join('; ')
+        return (iss.keys as string[]).map(k => `'${k}' ${hints[k] ?? 'is not a recognized key'}`).join('; ')
       }
       if (iss.code === 'invalid_type' && iss.expected === 'object') return notAnObject?.(iss.input)
       return undefined
@@ -98,7 +98,7 @@ const GlobalChecksSchema = z.strictObject({
 }, withHints({
   disabled: `${PER_APP_ONLY}.checks`,
   skipped: `${PER_APP_ONLY}.checks`,
-}, input => input === false ? 'checks: false disables the checks of one app; put it under apps.<app>.checks' : undefined))
+}, input => input === false ? 'false disables the checks of one app; put it under apps.<app>.checks' : undefined))
 
 const BuildSchema = z.object({
   dockerfile: z.string().optional(),
@@ -115,10 +115,10 @@ const GlobalBuildSchema = z.strictObject({
   context: z.string().optional(),
   selected: z.string().optional(),
   skip_cleanup: z.union([z.string(), z.boolean()]).optional(),
-}, withHints({ args: 'build args are docker options, which have no global form; put them under apps.<app>.build.args' }))
+}, withHints({ args: 'has no global form (build args are docker options); put them under apps.<app>.build.args' }))
 
-const NETWORK_LIST_HINT = 'networks: is the list of networks to attach; properties such as tld go under network:'
-const NETWORK_PROPS_HINT = 'network: takes properties (tld, bind_all_interfaces, ...); the list of networks to attach goes under networks:'
+const NETWORK_LIST_HINT = 'is the list of networks to attach; properties such as tld go under network:'
+const NETWORK_PROPS_HINT = 'takes properties (tld, bind_all_interfaces, ...); the list of networks to attach goes under networks:'
 
 const NetworkSchema = z.strictObject({
   attach_post_create: z.union([z.array(z.string()), z.literal(false)]).optional(),
@@ -127,8 +127,8 @@ const NetworkSchema = z.strictObject({
   static_web_listener: z.union([z.string(), z.literal(false)]).optional(),
   tld: z.union([z.string(), z.literal(false)]).optional(),
 }, withHints({
-  attach_post_deploy: 'per app, attach-post-deploy is the list under networks:',
-  networks: 'networks: sits beside network:, not inside it',
+  attach_post_deploy: 'is not a network: key; per app, attach-post-deploy is the list under networks:',
+  networks: 'is a sibling of network:, not a key inside it',
 }, input => Array.isArray(input) ? NETWORK_PROPS_HINT : undefined))
 
 // The top-level `network:` is `network:set --global`; the plural `networks:` stays the list to create.
@@ -140,9 +140,9 @@ const GlobalNetworkSchema = z.strictObject({
   tld: z.union([z.string(), z.literal(false)]).optional(),
 }, withHints({
   static_web_listener: `${PER_APP_ONLY}.network`,
-  networks: 'networks: is the list of shared networks to create; it sits beside network:, not inside it',
+  networks: 'is the list of shared networks to create; it sits beside network:, not inside it',
 }, input => Array.isArray(input)
-  ? 'network: takes global properties (tld, attach_post_deploy, ...); the list of shared networks to create goes under networks:'
+  ? 'takes global properties (tld, attach_post_deploy, ...); the list of shared networks to create goes under networks:'
   : undefined))
 
 const isMap = (input: unknown) => !!input && typeof input === 'object' && !Array.isArray(input)
@@ -151,7 +151,7 @@ const appNetworksList = z.array(z.string(), {
 })
 const sharedNetworksList = z.array(z.string(), {
   error: (iss: any) => iss.code === 'invalid_type' && isMap(iss.input)
-    ? 'networks: is the list of shared networks to create; global network properties go under network:' : undefined,
+    ? 'is the list of shared networks to create; global network properties go under network:' : undefined,
 })
 
 const LinkSchema = z.union([
