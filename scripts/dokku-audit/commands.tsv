@@ -201,7 +201,7 @@ ssh-keys:remove	N	A7
 storage:annotations:report	X	k3s only
 storage:annotations:set	X	k3s only
 storage:create	Y	`volumes:` (new entries, with `--chown`, `--mode`, a custom path)
-storage:destroy	N	F9
+storage:destroy	X	Destructive: an entry removed from the file is never destroyed
 storage:ensure-directory	X	Deprecated in Dokku: use `storage:create`
 storage:exec	X	Interactive
 storage:info	X	Read-only

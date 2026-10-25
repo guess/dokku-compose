@@ -23,6 +23,16 @@ docker_auth:
 networks:
   - backend-net
 
+# Storage entries: named host directories, mounted into apps by name.
+# See docs/reference/storage.md.
+volumes:
+  uploads: {}                      # /var/lib/dokku/data/storage/uploads, chowned to herokuish (32767)
+  reports:
+    chown: 1000                    # a preset (herokuish, heroku, paketo, root), a uid, or false
+    mode: "0750"                   # quoted octal
+  media:
+    path: /srv/media               # an existing directory; you manage its owner and mode
+
 # Postgres and Redis service instances, keyed by service name
 postgres:
   api-postgres:
@@ -55,6 +65,11 @@ apps:
       - api-postgres
       - api-redis
       - shared-cache
+    storage:
+      - uploads:/app/uploads
+      - entry: media
+        container_dir: /app/media
+        readonly: true
     nginx:
       client-max-body-size: "15m"
       proxy-buffer-size: "8k"

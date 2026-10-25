@@ -31,7 +31,7 @@ volumes:
 | entry present | | `storage:list-entries --format json` (check)<br>`storage:create <name> [<path>] [--chown <v>] [--mode <v>]` (if missing) |
 | `chown` | `herokuish`, `heroku`, `paketo`, `root`, or a uid 0-65535 | `storage:set <name> chown <value>` (if different from the entry's `chown`) |
 | `chown: false` | opt out of ownership changes | `storage:set <name> chown false` (if different; an entry with no stored `chown` already counts as `false`) |
-| `chown` absent | `herokuish` | as for `chown: herokuish`; `storage:create` always gets `--chown` |
+| `chown` absent | `herokuish` | as for `chown: herokuish`; `storage:create` always gets `--chown` (at the default location; a `path` entry is not chowned) |
 | `mode` | quoted octal, e.g. `"0750"` or `"750"` | `storage:set <name> mode <value>` (if different from the entry's `mode`, compared in 4-digit form) |
 | `mode` absent | not managed | no action (a new directory keeps 0755) |
 | `path` | an absolute, normalised directory, or a Docker volume name | `storage:create <name> <path>` (only when the entry is missing) |

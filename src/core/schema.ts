@@ -279,13 +279,17 @@ export const ConfigSchema = z.object({
 }).strict().superRefine((config, ctx) => {
   // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
   for (const [app, appConfig] of Object.entries(config.apps)) {
-    const mounts = declaredMounts(appConfig.storage as (string | MountItem)[] | undefined)
-    mounts.forEach((m, i) => {
-      const where = ['apps', app, 'storage', i]
+    // Keep each mount's position in the list, so a message names the item it is about.
+    const mounts = (appConfig.storage ?? []).flatMap((item, index) => {
+      const [mount] = declaredMounts([item as string | MountItem])
+      return mount ? [{ mount, index }] : []
+    })
+    mounts.forEach(({ mount: m, index }, i) => {
+      const where = ['apps', app, 'storage', index]
       if (!config.volumes || !(m.entry in config.volumes)) {
         ctx.addIssue({ code: 'custom', path: where, message: `entry '${m.entry}' is not declared under volumes:` })
       }
-      mounts.slice(0, i).forEach(earlier => {
+      mounts.slice(0, i).forEach(({ mount: earlier }) => {
         if (earlier.container_dir !== m.container_dir || !scopesOverlap(earlier.process_type, m.process_type)) return
         const how = earlier.process_type === m.process_type
           ? `twice in ${m.process_type === DEFAULT_SCOPE ? 'every process' : `process type ${m.process_type}`}`
