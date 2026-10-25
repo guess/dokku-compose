@@ -102,6 +102,7 @@ function inSyncServer(): FakeServer {
       'registry:report --global --format json': globalReportJson('registry', {
         'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'true',
       }),
+      'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -707,5 +708,19 @@ describe('top-level global blocks', () => {
       'registry:set --global push-on-release true',
       'registry:set --global image-repo-template',
     ])
+  })
+
+  it('checks: a changed global wait-to-retire is set and lists no restart; an empty declared block prunes it', async () => {
+    const server = inSyncServer()
+    server.queries['checks:report --global --format json'] = globalReportJson('checks', { 'wait-to-retire': '20' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['checks:set --global wait-to-retire 30'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+
+    const config = loadConfig(FIXTURE)
+    config.checks = {}
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    expect(runner.dryRunLog).toEqual(['checks:set --global wait-to-retire'])
   })
 })

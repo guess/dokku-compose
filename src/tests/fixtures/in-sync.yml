@@ -47,6 +47,9 @@ registry:
   server: registry.example.com
   push-on-release: true
 
+checks:
+  wait-to-retire: 30
+
 git:
   deploy_branch: main
 
