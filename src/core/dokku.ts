@@ -20,11 +20,11 @@ export class DokkuCommandError extends Error {
     public readonly exitCode: number,
     public readonly stderr: string
   ) {
-    const { masked, secrets } = maskSensitiveArgsList(args)
+    const { masked, secrets, opaque } = maskSensitiveArgsList(args)
     const maskedCmd = masked.join(' ')
     // Mask dokku's own stderr too: a command that echoes an argument back
     // (e.g. on validation failure) must not leak the secret it was given.
-    const stderrTail = maskSecretsInText(stderr.trim(), secrets)
+    const stderrTail = maskSecretsInText(stderr.trim(), secrets, opaque)
     super(
       `dokku ${maskedCmd} failed (exit ${exitCode})` +
       (stderrTail ? `: ${stderrTail}` : '')

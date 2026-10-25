@@ -1,15 +1,36 @@
-const SENSITIVE_RE = /(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)/i
+const SENSITIVE_RE = /(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)/i
 
-function maskValue(value: string): string {
-  if (value.length <= 4) return '****'
+/** Names that contain KEY but hold no secret: a GPG public key id and the keyserver it is fetched from. */
+const NOT_SECRET_KEYS = new Set(['public_key_id', 'keyserver'])
+
+/** What `export` writes in place of a secret it cannot read back. */
+const PLACEHOLDER = 'REPLACE_ME'
+
+/** A passphrase is shown as nothing at all: unlike a token, its last characters are worth hiding. */
+const OPAQUE_RE = /PASSPHRASE/i
+
+function maskValue(value: string, opaque = false): string {
+  if (opaque || value.length <= 4) return '****'
   return `****${value.slice(-4)}`
 }
 
 /** Mask KEY=VALUE pairs in a command string */
 export function maskSensitiveArgs(cmd: string): string {
-  let masked = cmd.replace(/([^\s=]*(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)[^\s=]*)=(\S+)/gi, (_, key, value) => {
-    return `${key}=${maskValue(value)}`
+  let masked = cmd.replace(/([^\s=]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s=]*)=(\S+)/gi, (_, key, value) => {
+    return `${key}=${maskValue(value, OPAQUE_RE.test(key))}`
   })
+
+  // `<plugin>:set <name> backup-encryption-passphrase <passphrase>` and
+  // `<plugin>:backup-set-encryption <name> <passphrase>`: the passphrase is positional
+  // (and may be shell-quoted when it holds spaces).
+  masked = masked.replace(
+    /^(\S+:set\s+\S+\s+backup-encryption-passphrase\s+)('[^']*'|\S+)/,
+    (_, prefix) => `${prefix}****`
+  )
+  masked = masked.replace(
+    /^(\S+:backup-set-encryption\s+\S+\s+)('[^']*'|\S+)/,
+    (_, prefix) => `${prefix}****`
+  )
 
   // Special-case `registry:login [--global] <server> <username> <password>` —
   // password is a positional arg, not KEY=VALUE, so the regex above can't catch it.
@@ -37,23 +58,28 @@ export function maskSensitiveArgs(cmd: string): string {
  * a joined string — is what makes this reliable when a value itself
  * contains whitespace.
  */
-export function maskSensitiveArgsList(args: string[]): { masked: string[]; secrets: string[] } {
+export function maskSensitiveArgsList(args: string[]): { masked: string[]; secrets: string[]; opaque: string[] } {
   const secrets: string[] = []
+  // Secrets that are masked completely, wherever they are scrubbed from.
+  const opaque: string[] = []
   const masked = [...args]
 
-  const mark = (index: number) => {
+  const mark = (index: number, completely = false) => {
     const value = masked[index]
     if (value === undefined || value === '') return
     secrets.push(value)
-    masked[index] = maskValue(value)
+    if (completely) opaque.push(value)
+    masked[index] = maskValue(value, completely)
   }
 
   // KEY=VALUE pairs, wherever they appear.
   for (let i = 0; i < masked.length; i++) {
-    const m = masked[i].match(/^([^\s=]*(?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)[^\s=]*)=(.+)$/i)
+    const m = masked[i].match(/^([^\s=]*(?:TOKEN|SECRET|PASSWORD|PASSPHRASE|KEY|AUTH|CREDENTIAL)[^\s=]*)=(.+)$/i)
     if (m) {
       secrets.push(m[2])
-      masked[i] = `${m[1]}=${maskValue(m[2])}`
+      const completely = OPAQUE_RE.test(m[1])
+      if (completely) opaque.push(m[2])
+      masked[i] = `${m[1]}=${maskValue(m[2], completely)}`
     }
   }
 
@@ -70,15 +96,20 @@ export function maskSensitiveArgsList(args: string[]): { masked: string[]; secre
     mark(3)
   }
 
-  return { masked, secrets }
+  // `<plugin>:set <name> backup-encryption-passphrase <passphrase>` and
+  // `<plugin>:backup-set-encryption <name> <passphrase>`.
+  if (/^\S+:set$/.test(masked[0] ?? '') && masked[2] === 'backup-encryption-passphrase') mark(3, true)
+  if (/^\S+:backup-set-encryption$/.test(masked[0] ?? '')) mark(2, true)
+
+  return { masked, secrets, opaque }
 }
 
 /** Scrub any of the given secret values out of free-form text (e.g. stderr). */
-export function maskSecretsInText(text: string, secrets: string[]): string {
+export function maskSecretsInText(text: string, secrets: string[], opaque: string[] = []): string {
   let masked = text
   for (const secret of secrets) {
     if (!secret) continue
-    masked = masked.split(secret).join(maskValue(secret))
+    masked = masked.split(secret).join(maskValue(secret, opaque.includes(secret)))
   }
   return masked
 }
@@ -92,8 +123,10 @@ export function maskSensitiveData(data: unknown): unknown {
     const result: Record<string, unknown> = {}
     for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
       // A log sink is a DSN that can carry credentials (logs `vector-sink`, `vector-cron-sink`).
-      if (typeof value === 'string' && (SENSITIVE_RE.test(key) || /sink/i.test(key))) {
-        result[key] = maskValue(value)
+      if (NOT_SECRET_KEYS.has(key.toLowerCase()) || value === PLACEHOLDER) {
+        result[key] = value
+      } else if (typeof value === 'string' && (SENSITIVE_RE.test(key) || /sink/i.test(key))) {
+        result[key] = maskValue(value, OPAQUE_RE.test(key))
       } else if (typeof value === 'object' && value !== null) {
         result[key] = maskSensitiveData(value)
       } else {
