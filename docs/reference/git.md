@@ -57,4 +57,4 @@ apps:
 
 `diff` shows a property set on the server but absent from the effective `git:` block as a red `-` and counts it as drift. Only `keep-git-dir` can be a removal. `deploy-branch`, `source-image` and `rev-env-var` are never removals, because Dokku writes them itself (on push and `git:sync`, on `git:from-image`, and with a default of `GIT_REV`); they are compared only when the file declares them.
 
-`up --prune` does not reset git properties today. Git is reconciled without the prune flag, so a `keep-git-dir` removed from the file stays on the server and `up` does not count it among the leftovers. Reset it by hand with `dokku git:set <app> keep-git-dir`.
+`up` leaves a removed `keep-git-dir` on the server and counts it among the leftovers it reports. `up --prune` resets it with `dokku git:set <app> keep-git-dir` (no value), for an app with its own `git:` block, for an app that takes the top-level `git:` default, and for an app whose `git:` block is gone. `--prune` never resets `deploy-branch`, `source-image` or `rev-env-var`.

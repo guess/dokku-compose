@@ -5,7 +5,7 @@ import { runUp, UpFailedError } from './up.js'
 import { loadConfig } from '../core/config.js'
 import { ConfigSchema } from '../core/schema.js'
 import path from 'path'
-import { emptyAnswer } from '../tests/fake-server.js'
+import { emptyAnswer, gitReport } from '../tests/fake-server.js'
 
 const FIXTURES = path.join(import.meta.dirname, '../tests/fixtures')
 
@@ -353,4 +353,48 @@ describe('runUp --prune', () => {
     await runUp(ctx, config, [], { prune: true })
     expect(ctx.commands.filter(c => /destroy|scale/.test(c[0]))).toEqual([])
   })
+})
+
+describe('runUp — git properties removed from the file', () => {
+  function gitBox() {
+    const runner = createRunner({ dryRun: false })
+    runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
+    const read = async (...a: string[]) =>
+      a[0] === 'version' ? 'dokku version 0.38.31'
+        : a[0] === 'git:report' ? gitReport(a[1], { 'Git deploy branch': 'main', 'Git keep git dir': 'true', 'Git rev env var': 'GIT_REV', 'Git source image': 'web:1' })
+        : a[0] === 'plugin:list' ? '[]' : emptyAnswer(...a) ?? ''
+    runner.query = vi.fn(read)
+    runner.queryStrict = vi.fn(read)
+    runner.run = vi.fn()
+    return createContext(runner)
+  }
+  const configs = {
+    'a git block': { apps: { web: { git: { deploy_branch: 'main' } } } },
+    'a top-level default': { git: { deploy_branch: 'main' }, apps: { web: {} } },
+  } as Record<string, any>
+
+  for (const [name, config] of Object.entries(configs)) {
+    it(`--prune resets a removed keep_git_dir and never the Dokku-written keys (${name})`, async () => {
+      const ctx = gitBox()
+      await runUp(ctx, config, [], { prune: true })
+      expect(ctx.commands).toContainEqual(['git:set', 'web', 'keep-git-dir'])
+      for (const key of ['deploy-branch', 'source-image', 'rev-env-var']) {
+        expect(ctx.commands).not.toContainEqual(['git:set', 'web', key])
+      }
+    })
+
+    it(`plain up leaves it and counts it as a leftover (${name})`, async () => {
+      const ctx = gitBox()
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        await runUp(ctx, config, [])
+        expect(ctx.commands).not.toContainEqual(['git:set', 'web', 'keep-git-dir'])
+        const lines = warn.mock.calls.map(c => String(c[0]))
+        expect(lines).toHaveLength(1)
+        expect(lines[0]).toContain('1 setting(s)')
+      } finally {
+        warn.mockRestore()
+      }
+    })
+  }
 })
