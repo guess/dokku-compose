@@ -43,6 +43,10 @@ logs:
 
 scheduler: docker-local
 
+registry:
+  server: registry.example.com
+  push-on-release: true
+
 git:
   deploy_branch: main
 

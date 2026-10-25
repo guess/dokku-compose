@@ -99,6 +99,9 @@ function inSyncServer(): FakeServer {
       }),
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
       'scheduler:report --global --format json': globalReportJson('scheduler', { selected: 'docker-local' }),
+      'registry:report --global --format json': globalReportJson('registry', {
+        'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'true',
+      }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -690,6 +693,19 @@ describe('top-level global blocks', () => {
     expect((await up(server, { prune: true })).log).toEqual([
       'scheduler:set --global selected docker-local',
       'scheduler:set --global shell',
+    ])
+  })
+
+  it('registry: a changed push-on-release is set; a dropped template is pruned; auth-servers is never touched', async () => {
+    const server = inSyncServer()
+    server.queries['registry:report --global --format json'] = globalReportJson('registry', {
+      'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'false',
+      'image-repo-template': 'example/{{ .AppName }}',
+    })
+    expect((await up(server)).log).toEqual(['registry:set --global push-on-release true'])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'registry:set --global push-on-release true',
+      'registry:set --global image-repo-template',
     ])
   })
 })

@@ -96,7 +96,7 @@ export const GLOBAL_NAMES = Object.keys(GLOBAL_SPECS) as GlobalName[]
  * The order `up` applies the top-level blocks in, after the global domains and env and before
  * any app. `network` is not here: it runs right after the shared `networks:` are created.
  */
-export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler']
+export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler', 'registry']
 
 /** The compose-file keys a top-level block takes. */
 export const globalYamlKeys = (name: GlobalName): string[] => GLOBAL_SPECS[name].keys.map(k => k.yaml)
