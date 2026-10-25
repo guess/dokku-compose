@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { ensureRedis, destroyRedis, exportRedis } from './redis.js'
+import { serviceInfoJson } from '../tests/fake-server.js'
 
 describe('ensureRedis', () => {
   it('creates service that does not exist', async () => {
@@ -51,6 +52,7 @@ describe('exportRedis', () => {
       if (args[0] === 'redis:info') return '=====> api-cache\n       Version:             redis:7.2-alpine'
       return ''
     })
+    runner.queryStrict = vi.fn().mockResolvedValue(serviceInfoJson('api-cache', 'redis', '7.2-alpine'))
     const ctx = createContext(runner)
     const result = await exportRedis(ctx)
     expect(result).toEqual({ 'api-cache': { version: '7.2-alpine' } })
