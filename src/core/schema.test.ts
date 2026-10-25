@@ -117,3 +117,23 @@ describe('parseConfig', () => {
     expect(result.apps['myapp'].env).toBe(false)
   })
 })
+
+describe('dokku.version', () => {
+  const parse = (version: unknown) => parseConfig({ dokku: { version }, apps: {} })
+
+  it.each(['0.38.31', '0.38.31-rc1', '10.0.0'])('accepts %s', (v) => {
+    expect(parse(v).dokku?.version).toBe(v)
+  })
+
+  it.each(['0.38', 'latest', 'v0.38.31', '', '0.38.x'])('rejects %j with a clear message', (v) => {
+    expect(() => parse(v)).toThrow(/dokku\.version must start with X\.Y\.Z/)
+  })
+
+  it('rejects a YAML number such as 0.38', () => {
+    expect(() => parse(0.38)).toThrow(/dokku.version must be a quoted string starting with X.Y.Z/)
+  })
+
+  it('accepts a missing version', () => {
+    expect(parseConfig({ dokku: {}, apps: {} }).dokku?.version).toBeUndefined()
+  })
+})

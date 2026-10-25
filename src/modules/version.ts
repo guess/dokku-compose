@@ -21,7 +21,8 @@ import { logWarn } from '../core/logger.js'
  */
 export const MIN_DOKKU_VERSION = '0.38.29'
 
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/
+/** What parseSemver reads: a leading X.Y.Z (a suffix such as `-rc1` is ignored). The schema checks `dokku.version` with this same pattern. */
+export const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/
 
 function parseSemver(input: string): [number, number, number] {
   const m = input.match(SEMVER_RE)
