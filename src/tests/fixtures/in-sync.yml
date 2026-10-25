@@ -54,6 +54,12 @@ ps:
   restart-policy: "on-failure:5"
   stop-timeout-seconds: 45
 
+build:
+  selected: dockerfile
+  skip_cleanup: true
+  dockerfile: Dockerfile
+  app_json: app.json
+
 git:
   deploy_branch: main
 

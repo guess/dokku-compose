@@ -96,7 +96,7 @@ export const GLOBAL_NAMES = Object.keys(GLOBAL_SPECS) as GlobalName[]
  * The order `up` applies the top-level blocks in, after the global domains and env and before
  * any app. `network` is not here: it runs right after the shared `networks:` are created.
  */
-export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler', 'registry', 'checks', 'ps']
+export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler', 'registry', 'checks', 'ps', 'build']
 
 /** The compose-file keys a top-level block takes. */
 export const globalYamlKeys = (name: GlobalName): string[] => GLOBAL_SPECS[name].keys.map(k => k.yaml)
@@ -165,7 +165,7 @@ export function planGlobal(name: GlobalName, block: GlobalBlock | undefined, cur
   const declared = declaredMap(name, block)
   const keys = GLOBAL_SPECS[name].keys
   const plan: GlobalPlan = { changes: [], removals: [] }
-  // Changes follow the order of the file, removals the order of the table.
+  // Changes follow the key order of the declared block, removals the order of the table.
   for (const yaml of Object.keys(declared)) {
     const gk = keys.find(k => k.yaml === yaml)
     if (!gk || declared[yaml] === undefined) continue

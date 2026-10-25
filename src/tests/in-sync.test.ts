@@ -104,6 +104,9 @@ function inSyncServer(): FakeServer {
       }),
       'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
       'ps:report --global --format json': globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'stop-timeout-seconds': '45' }),
+      'builder:report --global --format json': globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true' }),
+      'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
+      'app-json:report --global --format json': globalReportJson('app-json', { 'appjson-path': 'app.json' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -737,5 +740,31 @@ describe('top-level global blocks', () => {
       'ps:set --global restart-policy on-failure:5',
       'ps:set --global skip-deploy',
     ])
+  })
+
+  it('build: a changed global key sets it with its own command and lists the apps that do not set it for rebuild', async () => {
+    const server = inSyncServer()
+    server.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'pack', 'skip-cleanup': 'true' })
+    server.queries['builder-dockerfile:report --global --format json'] = globalReportJson('builder-dockerfile', { 'dockerfile-path': 'old/Dockerfile' })
+    const changed = await up(server, {}, ['myapp', 'myapp-worker'])
+    expect(changed.log).toEqual([
+      'builder-dockerfile:set --global dockerfile-path Dockerfile',
+      'builder:set --global selected dockerfile',
+    ])
+    // myapp sets build.dockerfile itself, so only `selected` reaches it; both reach the worker.
+    expect([...changed.ctx.rebuilds.keys()].sort()).toEqual(['myapp', 'myapp-worker'])
+    const skip = inSyncServer()
+    skip.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'dockerfile' })
+    const cleanup = await up(skip, {}, ['myapp'])
+    expect(cleanup.log).toEqual(['builder:set --global skip-cleanup true'])
+    expect(cleanup.ctx.rebuilds.size).toBe(0)
+  })
+
+  it('build: --prune clears a dropped key with its own command', async () => {
+    const server = inSyncServer()
+    server.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true', 'build-dir': 'apps/api' })
+    server.queries['app-json:report --global --format json'] = globalReportJson('app-json', { 'appjson-path': 'app.json' })
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual(['builder:set --global build-dir'])
   })
 })
