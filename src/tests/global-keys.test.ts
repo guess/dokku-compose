@@ -27,7 +27,7 @@ function message(cfg: object): string {
 describe('the tables equal the keys a real Dokku 0.38.31 reports with --global', () => {
   it.each([
     ['nginx', 'nginx'], ['logs', 'logs'], ['scheduler', 'scheduler'], ['ps', 'ps'], ['network', 'network'],
-    ['git', 'git'], ['checks', 'checks'], ['build', 'builder'],
+    ['git', 'git'], ['checks', 'checks'], ['build', 'builder'], ['proxy', 'proxy'],
   ] as const)('%s', (name, report) => {
     expect(sorted(dokkuKeys(name, report))).toEqual(sorted(globalKeys(report)))
   })
@@ -42,9 +42,10 @@ describe('the tables equal the keys a real Dokku 0.38.31 reports with --global',
     expect(dokkuKeys('build', 'app-json')).toEqual(['appjson-path'])
   })
 
-  it('there is no table for proxy: dokku-compose runs the nginx proxy only', () => {
-    expect(GLOBAL_NAMES).not.toContain('proxy')
-    expect(message({ proxy: { type: 'nginx' } })).toMatch(/proxy/)
+  it('proxy has no global enabled: it is per app', () => {
+    expect(globalYamlKeys('proxy')).toEqual(['type', 'proxy_port', 'proxy_ssl_port'])
+    expect(message({ proxy: { enabled: true } })).toMatch(/enabled.*per-app/)
+    expect(message({ proxy: { type: 'nginx', proxy_port: 80, proxy_ssl_port: '443' } })).toBe('')
   })
 })
 

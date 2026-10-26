@@ -44,7 +44,7 @@ export interface GlobalSpec {
 }
 
 export type GlobalName =
-  | 'nginx' | 'logs' | 'scheduler' | 'registry' | 'checks' | 'ps' | 'build' | 'network' | 'git'
+  | 'nginx' | 'logs' | 'scheduler' | 'registry' | 'checks' | 'ps' | 'build' | 'network' | 'proxy' | 'git'
 
 const same = (name: string, cmd: string, keys: readonly string[], kind: GlobalKind = 'scalar'): GlobalKey[] =>
   keys.map(key => ({ yaml: key, cmd, key, report: name, kind }))
@@ -79,6 +79,12 @@ export const GLOBAL_SPECS: Record<GlobalName, GlobalSpec> = {
       { yaml: 'tld', cmd: 'network:set', key: 'tld', report: 'network', kind: 'clearable', effect: 'restart' },
     ],
   },
+  // `enabled` (`proxy:enable`/`proxy:disable`) has no global form.
+  proxy: { name: 'proxy', keys: [
+    { yaml: 'type', cmd: 'proxy:set', key: 'type', report: 'proxy', kind: 'scalar' },
+    { yaml: 'proxy_port', cmd: 'proxy:set', key: 'proxy-port', report: 'proxy', kind: 'scalar' },
+    { yaml: 'proxy_ssl_port', cmd: 'proxy:set', key: 'proxy-ssl-port', report: 'proxy', kind: 'scalar' },
+  ] },
   git: {
     name: 'git',
     keys: [
@@ -96,7 +102,7 @@ export const GLOBAL_NAMES = Object.keys(GLOBAL_SPECS) as GlobalName[]
  * The order `up` applies the top-level blocks in, after the global domains and env and before
  * any app. `network` is not here: it runs right after the shared `networks:` are created.
  */
-export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler', 'registry', 'checks', 'ps', 'build', 'git']
+export const GLOBAL_UP_ORDER: GlobalName[] = ['logs', 'nginx', 'scheduler', 'registry', 'checks', 'ps', 'build', 'proxy', 'git']
 
 /** The compose-file keys a top-level block takes. */
 export const globalYamlKeys = (name: GlobalName): string[] => GLOBAL_SPECS[name].keys.map(k => k.yaml)

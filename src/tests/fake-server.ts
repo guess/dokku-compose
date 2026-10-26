@@ -187,6 +187,7 @@ const GLOBAL_REPORTS: Record<string, { global: string[]; computed: string[] }> =
     global: ['attach-post-create', 'attach-post-deploy', 'bind-all-interfaces', 'initial-network', 'tld'],
     computed: ['attach-post-create', 'attach-post-deploy', 'bind-all-interfaces', 'initial-network', 'tld'],
   },
+  proxy: { global: ['proxy-port', 'proxy-ssl-port', 'type'], computed: ['proxy-port', 'proxy-ssl-port', 'type'] },
   git: {
     global: ['archive-max-files', 'archive-max-size', 'deploy-branch', 'keep-git-dir'],
     computed: ['archive-max-files', 'archive-max-size', 'deploy-branch', 'keep-git-dir'],

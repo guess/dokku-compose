@@ -145,6 +145,13 @@ const GlobalNetworkSchema = z.strictObject({
   ? 'takes global properties (tld, attach_post_deploy, ...); the list of shared networks to create goes under networks:'
   : undefined))
 
+// The top-level `proxy:` is `proxy:set --global`; `enabled` (proxy:enable/disable) has no global form.
+const GlobalProxySchema = z.strictObject({
+  type: z.string().optional(),
+  proxy_port: StringOrNumber.optional(),
+  proxy_ssl_port: StringOrNumber.optional(),
+}, withHints({ enabled: `${PER_APP_ONLY}.proxy` }))
+
 const isMap = (input: unknown) => !!input && typeof input === 'object' && !Array.isArray(input)
 const appNetworksList = z.array(z.string(), {
   error: (iss: any) => iss.code === 'invalid_type' && isMap(iss.input) ? NETWORK_LIST_HINT : undefined,
@@ -367,6 +374,7 @@ export const ConfigSchema = z.object({
   ps: GlobalPsSchema.optional(),
   build: GlobalBuildSchema.optional(),
   network: GlobalNetworkSchema.optional(),
+  proxy: GlobalProxySchema.optional(),
   git: GlobalGitSchema.optional(),
 }).strict().superRefine((config, ctx) => {
   // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.

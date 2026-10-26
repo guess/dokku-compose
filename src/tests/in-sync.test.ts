@@ -114,6 +114,7 @@ function inSyncServer(): FakeServer {
       'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
       'app-json:report --global --format json': globalReportJson('app-json', { 'appjson-path': 'app.json' }),
       'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal' }),
+      'proxy:report --global --format json': globalReportJson('proxy', { type: 'nginx', 'proxy-port': '80' }),
       'git:report --global --format json': globalReportJson('git', { 'deploy-branch': 'main', 'keep-git-dir': 'true', 'archive-max-files': '20000' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
@@ -824,7 +825,7 @@ describe('top-level global blocks', () => {
 
   it('a block the file does not declare is never read or touched, even under --prune', async () => {
     const config = loadConfig(FIXTURE)
-    for (const name of ['scheduler', 'registry', 'checks', 'ps', 'build', 'network', 'git', 'nginx', 'logs'] as const) delete (config as any)[name]
+    for (const name of ['scheduler', 'registry', 'checks', 'ps', 'build', 'network', 'proxy', 'git', 'nginx', 'logs'] as const) delete (config as any)[name]
     const server = inSyncServer()
     // Settings made outside the file.
     server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null' })
@@ -832,7 +833,7 @@ describe('top-level global blocks', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, config, [], { prune: true })
     const reads = (runner.queryStrict as any).mock.calls.map((c: string[]) => c.join(' '))
-    expect(reads.filter((r: string) => r.includes('--global') && /^(scheduler|registry|checks|ps|builder|network|git|nginx|logs):/.test(r))).toEqual([])
+    expect(reads.filter((r: string) => r.includes('--global') && /^(scheduler|registry|checks|ps|builder|network|proxy|git|nginx|logs):/.test(r))).toEqual([])
     expect(runner.dryRunLog.filter(c => c.includes('--global'))).toEqual([])
   })
 
@@ -921,6 +922,17 @@ describe('top-level global blocks', () => {
       expect(diff.global.logs).toMatchObject({ status: 'changed' })
       expect(JSON.stringify(maskDiffResult(diff))).not.toContain('secret')
     })
+  })
+
+  it('proxy: a changed type or port is set and lists no restart; a dropped key is pruned; enabled stays per app', async () => {
+    const server = inSyncServer()
+    server.queries['proxy:report --global --format json'] = globalReportJson('proxy', { type: 'caddy', 'proxy-port': '80', 'proxy-ssl-port': '443' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['proxy:set --global type nginx'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+    expect((await up(server, { prune: true })).log).toEqual(['proxy:set --global type nginx', 'proxy:set --global proxy-ssl-port'])
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.global.proxy).toMatchObject({ status: 'changed', removed: ['proxy_ssl_port'] })
   })
 
   it('git: a changed global value is set, including the limits that exist only globally; a dropped key is pruned', async () => {

@@ -173,6 +173,7 @@ describe('runExport', () => {
         'builder:report --global --format json': globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true' }),
         'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
         'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net worker-net', 'bind-all-interfaces': 'false', tld: 'internal' }),
+        'proxy:report --global --format json': globalReportJson('proxy', { type: 'nginx', 'proxy-port': '80' }),
         'git:report --global --format json': globalReportJson('git', { 'deploy-branch': 'main', 'keep-git-dir': 'true', 'archive-max-files': '20000' }),
         'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '50m' }),
       }), {})
@@ -182,6 +183,7 @@ describe('runExport', () => {
       expect(result.ps).toEqual({ 'restart-policy': 'on-failure:5', 'skip-deploy': false })
       expect(result.build).toEqual({ selected: 'dockerfile', skip_cleanup: true, dockerfile: 'Dockerfile' })
       expect(result.network).toEqual({ attach_post_deploy: ['backend-net', 'worker-net'], bind_all_interfaces: false, tld: 'internal' })
+      expect(result.proxy).toEqual({ type: 'nginx', proxy_port: '80' })
       expect(result.git).toEqual({ deploy_branch: 'main', keep_git_dir: true, archive_max_files: '20000' })
       expect(result.nginx).toEqual({ 'client-max-body-size': '50m' })
       expect(result.logs).toBeUndefined()

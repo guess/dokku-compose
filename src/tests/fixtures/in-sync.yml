@@ -66,6 +66,10 @@ build:
   dockerfile: Dockerfile
   app_json: app.json
 
+proxy:
+  type: nginx
+  proxy_port: 80
+
 git:
   deploy_branch: main
   keep_git_dir: true
