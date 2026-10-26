@@ -51,7 +51,8 @@ describe('the tables equal the keys a real Dokku 0.38.31 reports with --global',
 
 describe('validate: the schema takes what the tables list', () => {
   const sample = (name: GlobalName): object => Object.fromEntries(GLOBAL_SPECS[name].keys.map(k => [k.yaml,
-    k.kind === 'list' ? ['backend-net']
+    k.yaml === 'wait-to-retire' ? 30
+      : k.kind === 'list' ? ['backend-net']
       : k.kind === 'flag' || k.yaml === 'skip_cleanup' || k.yaml === 'keep_git_dir' || k.yaml === 'skip-deploy' || k.yaml === 'push-on-release' ? true
         : 'x']))
 
@@ -79,6 +80,15 @@ describe('validate: the schema takes what the tables list', () => {
     expect(message({ checks: false })).toMatch(/false disables the checks/)
     expect(message({ build: { args: { A: 'b' } } })).toMatch(/args.*no global form/)
     expect(message({ network: { static_web_listener: 'x' } })).toMatch(/static_web_listener.*per-app/)
+  })
+
+  it('wait-to-retire is a number of seconds, globally and per app: a boolean or text is refused, a quoted whole number is read as a number', () => {
+    for (const bad of [true, false, 'soon', 1.5, -1]) {
+      expect(message({ checks: { 'wait-to-retire': bad } }), String(bad)).toMatch(/wait-to-retire/)
+      expect(message({ apps: { myapp: { checks: { 'wait-to-retire': bad } } } }), String(bad)).toMatch(/wait-to-retire/)
+    }
+    expect(message({ checks: { 'wait-to-retire': 60 } })).toBe('')
+    expect(parseConfig({ apps: { myapp: { checks: { 'wait-to-retire': '60' } } } }).apps.myapp.checks).toEqual({ 'wait-to-retire': 60 })
   })
 
   it('takes the global-only git limits at the top level and refuses them per app', () => {

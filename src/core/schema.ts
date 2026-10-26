@@ -44,13 +44,19 @@ const EnvMapSchema = z.union([
   z.literal(false)
 ])
 
+/** `checks:set wait-to-retire` takes seconds: a whole number, or a quoted one (`"60"`); `true` and `false` are refused. */
+const WaitToRetire = z.preprocess(
+  v => (typeof v === 'string' && /^\s*\d+\s*$/.test(v) ? Number(v) : v),
+  z.number({ error: 'wait-to-retire is a number of seconds' }).int().min(0)
+)
+
 const ChecksSchema = z.union([
   z.literal(false),
   z.object({
     disabled: z.array(z.string()).optional(),
     skipped: z.array(z.string()).optional(),
     // The only `checks:set` key (Dokku 0.38.31); anything else is refused.
-    'wait-to-retire': z.union([z.string(), z.number(), z.boolean()]).optional(),
+    'wait-to-retire': WaitToRetire.optional(),
   }).strict()
 ])
 
@@ -94,7 +100,7 @@ const GlobalPsSchema = z.strictObject({
 
 const GlobalChecksSchema = z.strictObject({
   // The only `checks:set` key (Dokku 0.38.31), and the only one with a global form.
-  'wait-to-retire': z.union([z.string(), z.number(), z.boolean()]).optional(),
+  'wait-to-retire': WaitToRetire.optional(),
 }, withHints({
   disabled: `${PER_APP_ONLY}.checks`,
   skipped: `${PER_APP_ONLY}.checks`,

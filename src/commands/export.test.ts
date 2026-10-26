@@ -155,7 +155,7 @@ describe('runExport', () => {
     function globalRunner(answers: Record<string, string>) {
       const runner = createRunner({ dryRun: false })
       runner.query = vi.fn(async (...args: string[]) => {
-        if (args[0] === 'version') return 'dokku version 0.38.31'
+        if (args[0] === 'version') return 'dokku version 0.38.32'
         if (args[0] === 'apps:list') return 'myapp'
         return answers[args.join(' ')] ?? emptyAnswer(...args) ?? ''
       })

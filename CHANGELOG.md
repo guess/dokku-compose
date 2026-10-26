@@ -45,6 +45,7 @@ The top-level `git:` of an existing file now runs `git:set --global`, and the pe
 
 ### Fixed
 
+- **`checks.wait-to-retire` accepted `true`, `false` and any text.** `validate` passed them and `checks:set` then failed on the server. It is now a number of seconds (a whole number, or a quoted one such as `"60"`), for an app and for the top-level `checks:`; anything else is rejected with `wait-to-retire is a number of seconds`.
 - **`up --prune` never reset git properties.** A `keep_git_dir` removed from the file stayed on the server, and plain `up` did not count it among the leftovers it reports, although 0.14.0 said `--prune` covers git. `up --prune` now runs `git:set <app> keep-git-dir` with no value, and `up` counts it. `deploy-branch`, `source-image` and `rev-env-var` are written by Dokku and are still never reset.
 - **`false` on a `network` property did nothing.** `attach_post_create`, `initial_network`, `static_web_listener` and `tld` accept `false`, but `up` ran no command for it. `false` now clears the property (`network:set <app> <property>` with no value) when the server has one, does nothing when it is already unset, and `diff` shows the difference. `up` also stops re-setting declared `network` keys that already match.
 - **`validate` accepted a `dokku.version` that is not `X.Y.Z`**, such as `0.38`, `latest` or `v0.38.31`, and `up` and `diff` then failed with `Cannot parse version`. `validate` now rejects it with `dokku.version must start with X.Y.Z`, using the same pattern the version check reads. Plugin `version` pins are unchanged.
