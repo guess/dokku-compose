@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  MANAGED_PROPERTIES, PLUGIN_SET_KEYS, MANAGED_NOT_IN_TESTED_VERSION, targetPairs, rejectedReason, PRUNABLE_PROPERTIES, propertyString, sameProperty,
+  MANAGED_PROPERTIES, PLUGIN_SET_KEYS, targetPairs, rejectedReason, PRUNABLE_PROPERTIES, propertyString, sameProperty,
   isDefaultProperty, normalizeMount, parseInfoMounts, mountSet, type ServicePlugin,
 } from './service-property-keys.js'
 
@@ -25,22 +25,14 @@ describe.each(['postgres', 'redis'] as const)('%s 2.4.0 settable keys', plugin =
   })
 
   it('every managed key is a key the plugin sets, and none is also rejected', () => {
-    for (const key of Object.keys(MANAGED_PROPERTIES).filter(k => !MANAGED_NOT_IN_TESTED_VERSION.includes(k))) {
+    for (const key of Object.keys(MANAGED_PROPERTIES)) {
       expect(set).toContain(key)
     }
     for (const key of Object.keys(MANAGED_PROPERTIES)) expect(rejectedReason(key)).toBeUndefined()
   })
 
-  it('the managed keys the plugin does not list are only those a datastore definition has to declare', () => {
-    expect(MANAGED_NOT_IN_TESTED_VERSION).toEqual(['service-memory'])
-    for (const key of MANAGED_NOT_IN_TESTED_VERSION) {
-      expect(set).not.toContain(key)
-      expect(MANAGED_PROPERTIES[key]).toBeDefined()
-    }
-  })
-
   it('every create flag in the table is a flag the plugin has', () => {
-    for (const [key, spec] of Object.entries(MANAGED_PROPERTIES).filter(([k]) => !MANAGED_NOT_IN_TESTED_VERSION.includes(k))) {
+    for (const [key, spec] of Object.entries(MANAGED_PROPERTIES)) {
       expect(create, `${key} -> --${spec.createFlag}`).toContain(spec.createFlag)
     }
   })
@@ -65,7 +57,7 @@ describe('the table', () => {
 
   it('marks the stop-and-start keys', () => {
     const restart = Object.entries(MANAGED_PROPERTIES).filter(([, s]) => s.restart).map(([k]) => k).sort()
-    expect(restart).toEqual(['config-options', 'custom-env', 'initial-network', 'log-driver', 'log-opt', 'memory', 'post-create-network', 'post-start-network', 'restart-policy', 'service-memory', 'shm-size', 'volume-targets'])
+    expect(restart).toEqual(['config-options', 'custom-env', 'initial-network', 'log-driver', 'log-opt', 'memory', 'post-create-network', 'post-start-network', 'restart-policy', 'shm-size', 'volume-targets'])
   })
 })
 
@@ -93,7 +85,6 @@ describe('values', () => {
     expect(sameProperty('volume-targets', 'b=/b a=/a', 'a=/a b=/b')).toBe(true)
     expect(sameProperty('volume-targets', 'a=/a', 'a=/other')).toBe(false)
     expect(targetPairs('b=/b a=/a')).toEqual([['a', '/a'], ['b', '/b']])
-    expect(isDefaultProperty('service-memory', '')).toBe(true)
     expect(isDefaultProperty('volume-targets', 'a=/a')).toBe(false)
   })
 

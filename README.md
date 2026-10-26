@@ -141,7 +141,11 @@ A top-level (global) change also reaches apps that are not in the file or that t
 
 `diff` marks with a red `-` every setting the server still has that the file no longer declares
 (managed env keys, nginx, logs, registry, scheduler, checks, `ps`, network, proxy and git
+<<<<<<< HEAD
 properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. A key set globally on the server that a declared top-level block (`nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:`, `proxy:`, `git:`) no longer lists is shown too, under `global`; a top-level block that is absent from the file is never read, so settings made outside the file stay. Only
+=======
+properties, build settings and args, postgres/redis `properties`, and entries missing from a declared list), including when the whole block is gone. Only
+>>>>>>> 147f824 (fix(services): Reject service-memory, plan pass-through keys in dry-run, read linked apps from info (F8))
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 

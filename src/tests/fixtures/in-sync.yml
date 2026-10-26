@@ -110,7 +110,6 @@ redis:
       log-opt: [max-size=10m, max-file=3]
       wait-timeout: 90
       config-options: "--maxmemory-policy allkeys-lru"
-      service-memory: 64
     mounts: []
     backup:
       schedule: "0 * * * *"

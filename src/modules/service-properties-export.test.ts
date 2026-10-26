@@ -45,9 +45,9 @@ describe.each(['postgres', 'redis'] as const)('%s export of properties and mount
     expect(out).toEqual({})
   })
 
-  it('writes volume-targets as a map and service-memory as a number', async () => {
-    expect(await exported({ 'volume-targets': 'data=/var/lib/x backups=/srv/b', 'service-memory': '256' })).toEqual({
-      properties: { 'volume-targets': { backups: '/srv/b', data: '/var/lib/x' }, 'service-memory': 256 },
+  it('writes volume-targets as a map', async () => {
+    expect(await exported({ 'volume-targets': 'data=/var/lib/x backups=/srv/b' })).toEqual({
+      properties: { 'volume-targets': { backups: '/srv/b', data: '/var/lib/x' } },
     })
   })
 

@@ -15,7 +15,7 @@ describe('service properties', () => {
       'log-opt': ['max-size=10m', 'max-file=3'], 'wait-timeout': 120, 'initial-network': 'myapp-net',
       'post-create-network': ['myapp-net', 'other-net'], 'post-start-network': 'myapp-net',
       'config-options': '-c max_connections=200', 'custom-env': { TZ: 'UTC', N: 1, ON: true }, password: 'hunter2.ok_~-',
-      'volume-targets': { data: '/var/lib/data', backups: '/srv/backups/' }, 'service-memory': 256,
+      'volume-targets': { data: '/var/lib/data', backups: '/srv/backups/' },
     }
     expect(issues(props)).toBe('')
     expect(issues(props, 'redis')).toBe('')
@@ -31,6 +31,7 @@ describe('service properties', () => {
     expect(issues({ 'port-bind-address': '127.0.0.1' })).toContain('not managed yet')
     expect(issues({ 'port-source-range': '10.0.0.0/8' })).toContain('not managed yet')
     expect(issues({ 'root-password': 'x' })).toContain('no root password')
+    expect(issues({ 'service-memory': 64 }, 'redis')).toContain('no service memory')
     expect(issues({ 'export-args': '--x' })).toContain('not managed')
     expect(issues({ mounts: '/a:/b' })).toContain('mounts:')
     expect(issues({ version: '17' })).toContain('beside `properties`')
@@ -54,12 +55,6 @@ describe('service properties', () => {
     expect(issues({ 'volume-targets': 'a=/x a=/y' })).toContain('more than once')
     expect(issues({ 'volume-targets': 'a' })).toContain('container path')
     expect(issues({ 'volume-targets': ['a=/x'] })).toContain('map')
-  })
-
-  it('checks service-memory: a whole number of megabytes greater than 0', () => {
-    expect(issues({ 'service-memory': 64 }, 'redis')).toBe('')
-    expect(issues({ 'service-memory': 0 }, 'redis')).toContain('greater than 0')
-    expect(issues({ 'service-memory': 'big' }, 'redis')).toContain('greater than 0')
   })
 
   it('checks the password: allowed characters, not empty, not the placeholder', () => {

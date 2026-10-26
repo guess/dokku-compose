@@ -68,7 +68,7 @@ const DB_PROPERTIES = {
 }
 const REDIS_PROPERTIES = {
   memory: '128', 'log-driver': 'json-file', 'log-opt': 'max-file=3,max-size=10m', 'wait-timeout': '90',
-  'config-options': '--maxmemory-policy allkeys-lru', mounts: '', 'service-memory': '64',
+  'config-options': '--maxmemory-policy allkeys-lru', mounts: '',
 }
 
 function inSyncServer(): FakeServer {
@@ -104,7 +104,6 @@ function inSyncServer(): FakeServer {
         { name: 'redis', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
       ]),
       'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', DB_PROPERTIES),
-      'postgres:links myapp-db': 'myapp',
       'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES }),
       'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17', REPORTS_BACKUP),
       'redis:backup-schedule-cat myapp-redis': '0 * * * * dokku /usr/bin/dokku redis:backup myapp-redis backups/myapp-redis',

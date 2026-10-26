@@ -106,11 +106,11 @@ export function mountMismatches(plugin: ServicePlugin, info: ServiceInfo, mounts
 }
 
 /**
- * The apps linked to a service, from `<plugin>:links <svc>`. A dry run adds the apps whose
- * `links:` name the service, which a service planned for creation has not linked yet.
+ * The apps linked to a service, from the `links` field of `<plugin>:info` (comma-joined). A dry run adds
+ * the apps whose `links:` name the service.
  */
-export async function linkedApps(ctx: Context, plugin: ServicePlugin, name: string, config: Config, dryRun = false): Promise<string[]> {
-  const apps = new Set((await ctx.query(`${plugin}:links`, name)).split('\n').map(l => l.trim()).filter(l => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(l)))
+export function linkedApps(info: ServiceInfo, name: string, config: Config, dryRun = false): string[] {
+  const apps = new Set(field(info, 'links').split(/[\s,]+/).filter(a => a !== ''))
   if (dryRun) {
     for (const [app, appConfig] of Object.entries(config.apps)) {
       if ((appConfig.links ?? []).some(l => normalizeLink(l).service === name)) apps.add(app)
@@ -145,7 +145,14 @@ export async function ensureServiceProperties(
   const failures: { service: string; error: unknown }[] = []
   for (const [name, declared] of Object.entries(services)) {
     if (declared.properties === undefined && declared.mounts === undefined && !opts.prune) continue
-    if (opts.dryRunCreated?.has(name)) continue
+    if (opts.dryRunCreated?.has(name)) {
+      // Every managed key and each mount is on the planned :create line; a key with no built-in entry is not a
+      // create flag, so a real run sets it once the service exists: plan the same.
+      for (const [key, value] of declaredEntries(declared.properties)) {
+        if (!MANAGED_PROPERTIES[key]) await ctx.run(`${plugin}:set`, name, key, '--', value)
+      }
+      continue
+    }
     try {
       const info = await readServiceInfo(ctx, plugin, name)
       const changes = propertyChanges(plugin, info, declared.properties, opts.prune ?? false)
@@ -157,7 +164,7 @@ export async function ensureServiceProperties(
         forgetServiceInfo(ctx, plugin, name)
         if (change.restart) ctx.needsServiceRestart(plugin, name, change.key)
         // the plugin rewrites the url every linked app holds: they pick it up when they restart
-        if (change.password) for (const app of await linkedApps(ctx, plugin, name, config, opts.dryRun)) ctx.needsRestart(app, `${name} ${change.key} changed`)
+        if (change.password) for (const app of linkedApps(info, name, config, opts.dryRun)) ctx.needsRestart(app, `${name} ${change.key} changed`)
       }
       if (mount) {
         await ctx.run(...mount)

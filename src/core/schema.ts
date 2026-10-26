@@ -390,8 +390,6 @@ const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superR
       if (text === EXPORT_PLACEHOLDER) issue(key, placeholderMessage)
     } else if (key === 'memory') {
       if (!/^\d+$/.test(text.trim())) issue(key, 'memory is a whole number of megabytes (0 for no limit)')
-    } else if (key === 'service-memory') {
-      if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'service-memory is a whole number of megabytes greater than 0')
     } else if (key === 'wait-timeout') {
       if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'wait-timeout is a whole number of seconds greater than 0')
     }

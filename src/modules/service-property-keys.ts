@@ -38,9 +38,6 @@ export const MANAGED_PROPERTIES: Record<string, PropertySpec> = {
   'config-options': { kind: 'string', createFlag: 'config-options', restart: true },
   'custom-env': { kind: 'map', createFlag: 'custom-env', restart: true },
   memory: { kind: 'number', createFlag: 'memory', restart: true },
-  // The memory the datastore itself is told to use. A datastore whose definition applies a change to a running
-  // service takes it at once; the others need stop and start. The table cannot tell, so it lists the service.
-  'service-memory': { kind: 'number', createFlag: 'service-memory', restart: true },
   'shm-size': { kind: 'string', createFlag: 'shm-size', restart: true },
   password: { kind: 'secret', createFlag: 'password', restart: false },
 }
@@ -64,13 +61,6 @@ export const PLUGIN_SET_KEYS: Record<ServicePlugin, readonly string[]> = {
 /** The plugin version the lists above were taken from. */
 export const TESTED_PLUGIN_VERSION = '2.4.0'
 
-/**
- * Managed keys the 2.4.0 postgres and redis do not list: dokku-datastore takes `service-memory` only for a
- * datastore whose definition declares one, and neither definition does. `validate` warns about it and the
- * plugin refuses it there.
- */
-export const MANAGED_NOT_IN_TESTED_VERSION: readonly string[] = ['service-memory']
-
 /** Keys rejected in `properties:`, with what to do instead. `undefined` for a key that is allowed. */
 export function rejectedReason(key: string): string | undefined {
   if (key.startsWith('backup-')) return 'backup settings belong to the `backup:` block'
@@ -83,6 +73,8 @@ export function rejectedReason(key: string): string | undefined {
       return 'arguments for ad-hoc exports and imports are not managed'
     case 'root-password':
       return 'postgres and redis have no root password'
+    case 'service-memory':
+      return 'postgres and redis have no service memory'
     case 'image':
     case 'image-version':
     case 'version':

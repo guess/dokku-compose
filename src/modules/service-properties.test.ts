@@ -43,14 +43,13 @@ describe.each(['postgres', 'redis'] as const)('%s properties', plugin => {
     ])
   })
 
-  it('sets volume-targets as one sorted space-joined value and service-memory, both listed for stop and start', async () => {
-    const { ctx, runner } = setup(plugin, { 'volume-targets': 'data=/old', 'service-memory': '' })
-    await ensureServiceProperties(ctx, plugin, { db: { properties: { 'volume-targets': { data: '/var/lib/x', backups: '/srv/b' }, 'service-memory': 256 } } }, config)
+  it('sets volume-targets as one sorted space-joined value listed for stop and start', async () => {
+    const { ctx, runner } = setup(plugin, { 'volume-targets': 'data=/old' })
+    await ensureServiceProperties(ctx, plugin, { db: { properties: { 'volume-targets': { data: '/var/lib/x', backups: '/srv/b' } } } }, config)
     expect(runner.dryRunLog).toEqual([
       `${plugin}:set db volume-targets -- 'backups=/srv/b data=/var/lib/x'`,
-      `${plugin}:set db service-memory -- 256`,
     ])
-    expect(ctx.serviceRestarts.get(`${plugin}:db`)?.reasons).toEqual(['volume-targets', 'service-memory'])
+    expect(ctx.serviceRestarts.get(`${plugin}:db`)?.reasons).toEqual(['volume-targets'])
   })
 
   it('volume-targets in another order is the same set', async () => {
@@ -59,10 +58,10 @@ describe.each(['postgres', 'redis'] as const)('%s properties', plugin => {
     expect(runner.dryRunLog).toEqual([])
   })
 
-  it('--prune clears volume-targets and service-memory the file dropped', async () => {
-    const { ctx, runner } = setup(plugin, { 'volume-targets': 'a=/a', 'service-memory': '64' })
+  it('--prune clears volume-targets the file dropped', async () => {
+    const { ctx, runner } = setup(plugin, { 'volume-targets': 'a=/a' })
     await ensureServiceProperties(ctx, plugin, { db: {} }, config, { prune: true })
-    expect(runner.dryRunLog).toEqual([`${plugin}:set db volume-targets`, `${plugin}:set db service-memory`])
+    expect(runner.dryRunLog).toEqual([`${plugin}:set db volume-targets`])
   })
 
   it('a key that takes effect at once adds no restart; an unknown key is set and compared as an exact string', async () => {

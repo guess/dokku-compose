@@ -46,7 +46,6 @@ redis:
       config-options: "-c max_connections=200"     # one line
       volume-targets:                              # map: the plugin's volume name to the container path it is mounted at
         data: /var/lib/data
-      service-memory: 256                          # MB the datastore itself is told to use (needs a datastore that declares one)
       custom-env:                                  # map, joined as KEY=value;KEY=value
         TZ: UTC
       password: ${DB_PASSWORD}                    # managed, see below
@@ -59,7 +58,7 @@ redis:
 | `properties.<key>` (service created in this run, key is a create flag) | `redis:create <name> --<flag> <value>` |
 | a known key removed from the file, with `--prune` | `redis:set <name> <key>` (no value clears it) |
 
-Values are strings or numbers (a number is written as its decimal string). A key the file does not declare is left alone. `diff` shows `~ properties.<key>` for a difference, and `- properties.<key>` for a known key that the server holds with a non-default value and the file omits; both count as drift, and only `up --prune` clears a `-`. A service that does not exist yet is planned with its create flags on the `:create` line (in `--dry-run` too) and its other keys as `redis:set` lines, so it is not restarted for them. After a `redis:set`, the info read is not reused: the next comparison reads again.
+Values are strings or numbers (a number is written as its decimal string). A key the file does not declare is left alone. `diff` shows `~ properties.<key>` for a difference, and `- properties.<key>` for a known key that the server holds with a non-default value and the file omits; both count as drift, and only `up --prune` clears a `-`. A service that does not exist yet is planned with its create flags on the `:create` line (in `--dry-run` too); a key with no built-in entry follows as a `redis:set` line, since it is not a create flag. Neither restarts the service. After a `redis:set`, the info read is not reused: the next comparison reads again.
 
 **Compared as the plugin reports them.** The info JSON reports what was set, not the plugin's default, so an unset key reads empty (`memory` reads `0`, which equals an absent or `0` value). A declared value equal to the default (`restart-policy: always`) differs once, is set, and then matches. Network and `log-opt` lists compare as sets, since order does not matter to the plugin; `custom-env` compares as a set of `KEY=value` pairs (the server reads it back joined with `;`). Every other key, including a key with no built-in entry, compares as an exact string: write the value exactly as `redis:info` prints it (`512`, not `512m`).
 
@@ -72,12 +71,12 @@ Values are strings or numbers (a number is written as its decimal string). A key
 | `config-options` | One line only. Stop and start. A `:create` flag |
 | `memory`, `shm-size` | Stop and start. `:create` flags |
 | `volume-targets` | Takes a map of the plugin's volume names to absolute container paths (a plain `volume=path volume=path` string also works); `validate` rejects a relative path, a path with a colon, comma or space, `/`, and a volume named twice. Compared as a set. Stop and start. A `:create` flag, given once per entry (`--volume-target <volume>=<path>`) |
-| `service-memory` | A whole number of megabytes greater than 0. Only a datastore whose definition declares a service memory takes it (neither 2.4.0 postgres nor redis does: `validate` warns and the plugin refuses it there). Whether a running service takes the change at once depends on the datastore, so the service is listed for stop and start. A `:create` flag |
 | `initial-network`, `post-create-network`, `post-start-network` | The last two take a list. Stop and start. `:create` flags |
 | `log-driver`, `log-opt`, `restart-policy` | Stop and start. `:create` flags (`restart-policy` is `--restart`). `log-opt` takes a list |
 | `wait-timeout` | Immediate. A `:create` flag. `0` is rejected by the plugin |
 | `backup-*` | Rejected: use [`backup`](#automated-backups-redisnamebackup) |
 | `expose-host`, `expose-mode`, `port-bind-address`, `port-source-range` | Rejected: reserved for a future `expose` key |
+| `service-memory` | Rejected: redis has no service memory |
 | `root-password` | Rejected: redis has no root password |
 | `image`, `image-version`, `definition`, `mounts`, `backup-schedule` | Rejected: the plugin refuses them in `:set` (`version` and `image` are declared beside `properties`, `mounts` is its own key) |
 

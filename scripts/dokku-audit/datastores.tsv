@@ -8,7 +8,7 @@ exists	R	Before create and in `diff`	R	Before create and in `diff`
 logs	X	Read-only	X	Read-only
 link	Y	`apps.<app>.links` with `--alias`, `--env-var`, `--querystring`	Y	Same as postgres
 unlink	Y	`links` removal, `down`	Y	`links` removal, `down`
-set	P	`properties:` (memory, shm-size, custom-env, config-options, networks, restart-policy, log options, wait-timeout, volume-targets, service-memory, password), `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); expose F12; `backup-use-iam` F11	P	Same as postgres
+set	P	`properties:` (memory, shm-size, custom-env, config-options, networks, restart-policy, log options, wait-timeout, volume-targets, password), `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); expose F12; `backup-use-iam` F11	P	Same as postgres
 mount	Y	`mounts:` (`--replace`, the whole set)	Y	Same as postgres
 unmount	Y	`mounts: []` (`--all`)	Y	Same as postgres
 connect	X	Interactive	X	Interactive
@@ -26,7 +26,7 @@ upgrade-cleanup	X	Maintenance	-	—
 app-links	X	Read-only	X	Read-only
 clone	X	One-shot action	X	One-shot action
 linked	R	`links` read	R	`links` read
-links	R	`up`: the apps linked to a service whose password changed, for the restart summary	R	Same as postgres
+links	X	Read-only	X	Read-only
 import	X	Data operation	X	Data operation
 export	X	Data operation	X	Data operation
 reset	X	Destructive one-shot	X	Destructive one-shot

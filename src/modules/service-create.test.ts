@@ -23,9 +23,9 @@ describe('createArgs', () => {
     ])
   })
 
-  it('gives volume-targets one --volume-target per volume, sorted, and service-memory its own flag', () => {
-    expect(createArgs({ properties: { 'volume-targets': { data: '/var/lib/x', backups: '/srv/b' }, 'service-memory': 256 } })).toEqual([
-      '--volume-target', 'backups=/srv/b', '--volume-target', 'data=/var/lib/x', '--service-memory', '256',
+  it('gives volume-targets one --volume-target per volume, sorted', () => {
+    expect(createArgs({ properties: { 'volume-targets': { data: '/var/lib/x', backups: '/srv/b' } } })).toEqual([
+      '--volume-target', 'backups=/srv/b', '--volume-target', 'data=/var/lib/x',
     ])
   })
 
@@ -50,6 +50,12 @@ describe.each([['postgres', ensurePostgres], ['redis', ensureRedis]] as const)('
     await ensure(ctx, { db: { properties: { password: 'hunter2.zq7', 'custom-env': { TZ: 'UTC', API_KEY: 'zq7wxk9' } } } } as any)
     const shown = maskSensitiveArgs(runner.dryRunLog[0])
     expect(shown).toBe(`${plugin}:create db --password **** --custom-env TZ=****;API_KEY=****`)
+  })
+
+  it('a dry run of a new service also plans a key with no built-in entry as a :set after the :create', async () => {
+    const { ctx } = fakeContext({ checks: {}, queries: {} })
+    await ensureServiceProperties(ctx, plugin, { db: { properties: { memory: 512, 'some-future-key': 'x' } } }, { apps: {} } as Config, { dryRun: true, dryRunCreated: new Set(['db']) })
+    expect(ctx.commands).toEqual([[`${plugin}:set`, 'db', 'some-future-key', '--', 'x']])
   })
 
   it('changes nothing about an existing service: its properties are reconciled by set, not create', async () => {

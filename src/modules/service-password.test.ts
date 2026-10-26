@@ -7,11 +7,10 @@ import type { Config } from '../core/schema.js'
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex')
 const config = { apps: { myapp: { links: ['db'] }, worker: { links: [{ service: 'db', alias: 'MAIN' }] }, other: { links: ['cache'] } } } as unknown as Config
 
-function setup(plugin: 'postgres' | 'redis', fingerprint: string, links = 'myapp\nbilling\n') {
+function setup(plugin: 'postgres' | 'redis', fingerprint: string, links = 'myapp,billing') {
   return fakeContext({
     queries: {
-      [`${plugin}:info db --format json`]: serviceInfoJson('db', plugin, '17', { 'password-fingerprint': fingerprint }),
-      [`${plugin}:links db`]: links,
+      [`${plugin}:info db --format json`]: serviceInfoJson('db', plugin, '17', { 'password-fingerprint': fingerprint, links }),
     },
     checks: {},
   })
@@ -46,7 +45,9 @@ describe.each(['postgres', 'redis'] as const)('%s password', plugin => {
   })
 
   it('a real run lists only the linked apps the server reports', async () => {
-    expect(await linkedApps(setup(plugin, '').ctx, plugin, 'db', config)).toEqual(['myapp', 'billing'])
+    const info = JSON.parse(serviceInfoJson('db', plugin, '17', { links: 'myapp,billing' }))
+    expect(linkedApps(info, 'db', config)).toEqual(['myapp', 'billing'])
+    expect(linkedApps(JSON.parse(serviceInfoJson('db', plugin, '17', { links: '' })), 'db', config)).toEqual([])
   })
 
   it('a stopped service fails that service with the plugin message, and lists no app', async () => {
