@@ -100,23 +100,40 @@ A service created in the same run needs no restart. A key with no built-in entry
 
 ### Mounts (`postgres.<name>.mounts`)
 
-Host paths and Docker volumes mounted into the service container.
+Storage entries mounted into the service container. An entry is declared once under the top-level [`volumes:`](storage.md) and named here, as for an app's `storage:`; dokku-compose resolves it to its host path.
 
 ```yaml
+volumes:
+  api-db-data:
+    chown: "999"                  # the user the database container runs as (see below)
+  api-db-dumps:
+    path: /srv/dumps              # an existing directory; you manage its owner and mode
+
 postgres:
   api-db:
     mounts:
-      - /var/lib/dokku/data/storage/myapp-extra:/opt/extra   # <source>:<container-dir>[:<options>]
-      - dbvol:/opt/data:ro                                   # docker volume, read only
+      - api-db-data:/opt/extra            # short form: <entry>:<container-dir>
+      - entry: api-db-dumps               # long form
+        container_dir: /opt/dumps
+        readonly: true                   # ro
+        options: [z]                     # Docker mount options, passed through
 ```
 
 | Value | Dokku command |
 |-------|---------------|
-| list differs from the server's | `postgres:mount --replace <name> <spec>...` |
+| list differs from the server's | `postgres:mount --replace <name> <host-path>:<container-dir>[:<options>]...` |
 | `mounts: []` (and the server has mounts) | `postgres:unmount --all <name>` |
 | absent | no action, with or without `--prune` |
 
-The list is the whole set: `--replace` drops a mount that is not declared. A spec must not contain whitespace (`validate` rejects it). `postgres:info` reports mounts as one space-joined string of normalised specs, so each declared spec is normalised the same way before the set comparison: `ro` first, `rw` and a trailing `:` dropped, then other options, then `volume-subpath=` and `volume-chown=`. Order does not matter. A service created in the same run gets `--volume <spec>` on `:create`. Mounts reach the container after stop and start, so a change adds the same line to the restart summary as a property. A host source path must already exist (see [Storage](storage.md)). Like `domains`, `ports` and `networks`, a whole list is never cleared because its key is missing: only `mounts: []` clears the mounts.
+The short form is exactly `<entry>:<container-dir>`; `readonly` and `options` need the long form (the same rule as an app's `storage:`). `validate` rejects an entry not declared under `volumes:`, a host path (`/srv/dumps:/opt/dumps`, with a hint to declare the directory as an entry's `path:`), a container dir that is not absolute and normalised or contains `:`, a container dir used twice in one service, and `options` that are empty or hold `ro`, `rw`, a comma, `=`, `:` or whitespace. `subpath` and `volume_chown` are not mounts options here.
+
+**Resolution.** An entry's host path is its `path:`, or `/var/lib/dokku/data/storage/<entry>` when it has none (a `legacy-<hash>` entry declared as `{}` uses the path the server holds). `up` passes `<host-path>:<container-dir>[:ro,<options>]` to `postgres:mount --replace`, and `--volume` with the same value to `postgres:create`. `volumes:` entries are converged before services, so the directory exists; a service that mounts an entry that failed to converge fails its step with the entry's name.
+
+**Comparison.** `postgres:info` reports the mounts as one space-joined string of normalised specs, so each resolved spec is normalised the same way before a set comparison: `ro` first, `rw` and a trailing `:` dropped, then other options. Order does not matter, and `diff` compares the resolved host paths. A change adds `dokku postgres:stop <name> && dokku postgres:start <name>` to the restart summary, like a property. A service created in the same run needs no restart.
+
+**Ownership.** An entry at the default location is chowned to `herokuish` (uid 32767) unless it says otherwise, and a database container usually does not run as that user (the official images use 999, for example). Set `chown:` on the entry to the container's uid, as in the example, or the service cannot write to the directory.
+
+Like `domains`, `ports` and `networks`, a whole list is never cleared because its key is missing: only `mounts: []` clears the mounts.
 
 ### Automated Backups (`postgres.<name>.backup`)
 
@@ -205,4 +222,4 @@ Earlier versions tracked backups as a hash in the global env var `DOKKU_COMPOSE_
 
 `export` writes `REPLACE_ME` for every secret. `validate` rejects the literal `REPLACE_ME` as the value of `encryption.passphrase` and of `auth.access_key_id` and `auth.secret_access_key` ("replace the REPLACE_ME placeholder written by export"), so an exported file cannot be applied before its secrets are filled in.
 
-Export writes `properties` from `postgres:info` for the known keys with a non-default value (`memory` of `0` is skipped), with `custom-env` as a map, every value written as `REPLACE_ME`, and the network and `log-opt` keys as lists. `password` is never written. Mounts become `mounts:`.
+Export writes `properties` from `postgres:info` for the known keys with a non-default value (`memory` of `0` is skipped), with `custom-env` as a map, every value written as `REPLACE_ME`, and the network and `log-opt` keys as lists. `password` is never written. Each mount becomes a `mounts:` item on a `volumes:` entry: the declared or exported entry at that host path when there is one, otherwise a new entry named after the directory (the naming rules of [Storage](storage.md#diff-and-export)) with `path:`. A mount whose host path cannot be an entry's `path:` or gets no valid name is left out with a warning.

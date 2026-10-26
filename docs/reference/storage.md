@@ -6,7 +6,7 @@ Module: `src/modules/volumes.ts` (top-level `volumes`), `src/resources/storage.t
 
 Needs Dokku >= 0.38.32 (named storage entries need 0.38.0 and `storage:mount --replace` with per-mount options 0.38.30). See [dokku](dokku.md).
 
-Storage has two parts. A top-level `volumes:` block declares **entries**: named host directories with an owner and permissions. Each app then mounts entries **by name** in `apps.<app>.storage`. A host path such as `/var/lib/dokku/data/storage/myapp/uploads:/app/uploads` is no longer accepted in `storage:`; point an entry at the directory with `path:` instead (see [Migrating](#migrating-host-path-mounts)).
+Storage has two parts. A top-level `volumes:` block declares **entries**: named host directories with an owner and permissions. Each app then mounts entries **by name** in `apps.<app>.storage`, and each postgres or redis service in `<plugin>.<name>.mounts` (see [Postgres](postgres.md#mounts-postgresnamemounts)). Entries are the one way to declare host storage. A host path such as `/var/lib/dokku/data/storage/myapp/uploads:/app/uploads` is no longer accepted in `storage:`; point an entry at the directory with `path:` instead (see [Migrating](#migrating-host-path-mounts)).
 
 dokku-compose takes one path for the common case: Dockerfile images whose app user is uid 32767. Entries are owned by `herokuish` (32767:32767) unless you say otherwise.
 
@@ -73,7 +73,7 @@ With `--dry-run`, an entry or an app that does not exist yet is planned: the `st
 
 ### Removal
 
-An entry removed from `volumes:` is never destroyed, with or without `--prune`: `storage:destroy` can delete data, so it stays a manual step. For the same reason `--prune` does not clear a `chown` or `mode` that was removed from a declared entry. `diff` lists an entry the file does not declare as a note (`entry not in the compose file; left alone`) that does not count as drift. `legacy-*` entries and entries of another scheduler are never listed.
+An entry removed from `volumes:` while an app or a service still mounts it is a `validate` error. An entry removed from `volumes:` is never destroyed, with or without `--prune`: `storage:destroy` can delete data, so it stays a manual step. For the same reason `--prune` does not clear a `chown` or `mode` that was removed from a declared entry. `diff` lists an entry the file does not declare as a note (`entry not in the compose file; left alone`) that does not count as drift. `legacy-*` entries and entries of another scheduler are never listed.
 
 ## `apps.<app>.storage`
 
