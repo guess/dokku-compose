@@ -1,5 +1,5 @@
 dokku:
-  version: "0.38.31"
+  version: "0.38.32"
 
 plugins:
   postgres:
@@ -16,6 +16,11 @@ docker_auth:
 networks:
   - studio-net
   - backend-net
+
+volumes:
+  uploads:
+    chown: herokuish
+    mode: "0750"
 
 postgres:
   myapp-db:
@@ -52,7 +57,7 @@ apps:
     checks:
       wait-to-retire: 60
     storage:
-      - "/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"
+      - uploads:/app/uploads
     registry:
       push-on-release: true
       server: registry.example.com

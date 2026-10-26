@@ -1,6 +1,10 @@
 import { z } from 'zod'
 import { SEMVER_RE } from '../modules/version.js'
 import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resources/properties.js'
+import {
+  entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation,
+  parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
+} from './volume-rules.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V) {
@@ -55,6 +59,61 @@ const LinkSchema = z.union([
   }).strict().refine(l => !(l.alias && l.env_var), { message: '`alias` and `env_var` cannot be combined' }),
 ])
 
+const VolumeSchema = z.object({
+  // Checked below, so a wrong type gets a message that says how to write it.
+  chown: z.union([z.literal(false), z.string(), z.number()]).optional(),
+  mode: z.union([z.string(), z.number()]).optional(),
+  path: z.string().optional(),
+}).strict()
+
+/** Entries by name. A `legacy-<hash>` name may appear only as `{}`: an entry Dokku made, declared so apps can mount it. */
+const VolumesSchema = z.record(z.string(), VolumeSchema).superRefine((volumes, ctx) => {
+  const bad = (name: string, key: string | undefined, message: string) =>
+    ctx.addIssue({ code: 'custom', path: key ? [name, key] : [name], message })
+  for (const [name, v] of Object.entries(volumes)) {
+    if (isLegacyName(name)) {
+      if (Object.keys(v).length > 0) bad(name, undefined, `'${name}' starts with 'legacy-', which Dokku reserves for entries it made from old host-path mounts: declare such an entry as {}, or give a new entry another name`)
+      continue
+    }
+    const nameError = entryNameError(name)
+    if (nameError) bad(name, undefined, nameError)
+    if (v.mode !== undefined) { const e = modeError(v.mode); if (e) bad(name, 'mode', e) }
+    if (v.chown !== undefined) { const e = chownError(v.chown); if (e) bad(name, 'chown', e) }
+    if (v.path !== undefined) {
+      const e = pathError(v.path)
+      if (e) bad(name, 'path', e)
+      else if (!usesDefaultLocation(name, v.path)) {
+        // Dokku manages owner and mode only under its default storage location.
+        if (v.mode !== undefined) bad(name, 'mode', `mode needs the default location: Dokku refuses it on a custom path. Drop path, or manage '${v.path}' yourself`)
+        if (v.chown !== undefined && v.chown !== false) bad(name, 'chown', `chown needs the default location: Dokku refuses it on a custom path. Drop path, use chown: false, or manage '${v.path}' yourself`)
+      }
+    }
+  }
+})
+
+const unsupportedMountKey = (key: string) => z.any().optional().refine(v => v === undefined, {
+  message: `${key} is not supported: on docker-local Dokku stores it but never applies it`,
+})
+
+const MountObjectSchema = z.object({
+  entry: z.string().min(1),
+  container_dir: z.string().min(1),
+  readonly: z.boolean().optional(),
+  phases: z.array(z.enum(['deploy', 'run'])).min(1).optional(),
+  process_type: z.string().optional(),
+  options: z.array(z.string()).optional(),
+  subpath: unsupportedMountKey('subpath'),
+  volume_chown: unsupportedMountKey('volume_chown'),
+}).strict().superRefine((m, ctx) => {
+  for (const message of mountIssues(m as MountItem)) ctx.addIssue({ code: 'custom', message })
+})
+
+const MountStringSchema = z.string().superRefine((s, ctx) => {
+  const parsed = parseMountString(s)
+  if (typeof parsed === 'string') ctx.addIssue({ code: 'custom', message: parsed })
+  else for (const message of mountIssues(parsed)) ctx.addIssue({ code: 'custom', message })
+})
+
 const AppSchema = z.object({
   domains: z.union([z.array(z.string()), z.literal(false)]).optional(),
   links: z.array(LinkSchema).optional(),
@@ -67,7 +126,7 @@ const AppSchema = z.object({
     z.literal(true),
     z.object({ certfile: z.string(), keyfile: z.string() }).strict()
   ]).optional(),
-  storage: z.array(z.string()).optional(),
+  storage: z.array(z.union([MountStringSchema, MountObjectSchema])).optional(),
   proxy: z.object({
     enabled: z.boolean().optional(),
     type: z.string().optional(),
@@ -207,6 +266,7 @@ export const ConfigSchema = z.object({
   plugins: z.record(z.string(), PluginSchema).optional(),
   docker_auth: z.record(z.string(), DockerAuthEntrySchema).optional(),
   networks: z.array(z.string()).optional(),
+  volumes: VolumesSchema.optional(),
   postgres: z.record(z.string(), PostgresSchema).optional(),
   redis: z.record(z.string(), RedisSchema).optional(),
   apps: z.record(z.string(), AppSchema),
@@ -216,7 +276,29 @@ export const ConfigSchema = z.object({
   // The top-level block is also applied with `--global`, which takes two more keys.
   logs: propertyMap('logs', LOGS_GLOBAL_KEYS, StringOrNumber).optional(),
   git: GitSchema.optional(),
-}).strict()
+}).strict().superRefine((config, ctx) => {
+  // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
+  for (const [app, appConfig] of Object.entries(config.apps)) {
+    // Keep each mount's position in the list, so a message names the item it is about.
+    const mounts = (appConfig.storage ?? []).flatMap((item, index) => {
+      const [mount] = declaredMounts([item as string | MountItem])
+      return mount ? [{ mount, index }] : []
+    })
+    mounts.forEach(({ mount: m, index }, i) => {
+      const where = ['apps', app, 'storage', index]
+      if (!config.volumes || !(m.entry in config.volumes)) {
+        ctx.addIssue({ code: 'custom', path: where, message: `entry '${m.entry}' is not declared under volumes:` })
+      }
+      mounts.slice(0, i).forEach(({ mount: earlier }) => {
+        if (earlier.container_dir !== m.container_dir || !scopesOverlap(earlier.process_type, m.process_type)) return
+        const how = earlier.process_type === m.process_type
+          ? `twice in ${m.process_type === DEFAULT_SCOPE ? 'every process' : `process type ${m.process_type}`}`
+          : 'in the default scope and in a named process type, which Dokku forbids'
+        ctx.addIssue({ code: 'custom', path: where, message: `container_dir '${m.container_dir}' is mounted ${how}` })
+      })
+    })
+  }
+})
 
 export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>

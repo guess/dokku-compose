@@ -3,7 +3,8 @@ import type { Config } from '../core/schema.js'
 import { reconcile } from '../core/reconcile.js'
 import type { Resource } from '../core/reconcile.js'
 import { Apps } from '../resources/lifecycle.js'
-import { Domains, Ports, Storage } from '../resources/lists.js'
+import { Domains, Ports } from '../resources/lists.js'
+import { Storage, desiredSpecs } from '../resources/storage.js'
 import { Nginx, Logs, Registry, Scheduler } from '../resources/properties.js'
 import { Proxy, ProxyProps, proxyProps } from '../resources/toggle.js'
 import { Config as ConfigResource } from '../resources/config.js'
@@ -19,6 +20,7 @@ import { ensureDockerAuth, pruneDockerAuth } from '../modules/docker-auth.js'
 import { ensureNetworks } from '../modules/network.js'
 import { ensurePostgres, removeBackupHashKeys } from '../modules/postgres.js'
 import { ensureServiceBackups } from '../modules/service-backup.js'
+import { ensureVolumes } from '../modules/volumes.js'
 import { ensureRedis } from '../modules/redis.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
@@ -28,6 +30,7 @@ import { ensureGlobalLogs } from '../modules/logs.js'
 import { ensureGlobalNginx } from '../modules/nginx.js'
 import { logError, logWarn } from '../core/logger.js'
 import type { AppConfig } from '../core/schema.js'
+import { declaredMounts, type MountItem } from '../core/volume-rules.js'
 
 export interface RunUpOptions {
   /** Stop at the first per-app failure instead of continuing to the next app. */
@@ -76,7 +79,8 @@ class AppStepsError extends AggregateError {
 }
 
 async function processApp(
-  ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false, prune = false
+  ctx: Context, config: Config, app: string, appConfig: AppConfig, failFast = false, prune = false,
+  failedVolumes: Map<string, string> = new Map()
 ): Promise<void> {
   // A resource that throws is recorded and the rest of the app still runs,
   // so one broken resource cannot hide another (e.g. env never being reached).
@@ -115,7 +119,14 @@ async function processApp(
 
   // Configuration
   await step(() => reconcile(Certs, ctx, app, appConfig.ssl))
-  await step(() => reconcile(Storage, ctx, app, appConfig.storage))
+  await step(async () => {
+    // An entry that could not be created or converged cannot be mounted.
+    const failedEntries = [...new Set(declaredMounts(appConfig.storage as (string | MountItem)[] | undefined).map(m => m.entry))].filter(e => failedVolumes.has(e))
+    if (failedEntries.length > 0) {
+      throw new Error(`storage skipped: ${failedEntries.map(e => `entry '${e}' failed (${failedVolumes.get(e)})`).join('; ')}`)
+    }
+    await reconcile(Storage, ctx, app, desiredSpecs(appConfig.storage))
+  })
   await step(() => reconcile(Nginx, ctx, app, appConfig.nginx, count, prune))
   await step(() => reconcile(Checks, ctx, app, appConfig.checks, undefined, prune))
   await step(() => reconcile(Logs, ctx, app, appConfig.logs, count, prune))
@@ -187,6 +198,10 @@ async function runUpPhases(
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)
 
+  // Storage entries, before any app mounts one. An entry that fails is logged
+  // and the run goes on; the apps that mount it report it themselves.
+  const failedVolumes = config.volumes ? await ensureVolumes(ctx, config.volumes, opts.failFast) : new Map<string, string>()
+
   // Phase 4: Services
   const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
   const createdRedis = config.redis ? await ensureRedis(ctx, config.redis) : new Set<string>()
@@ -215,7 +230,7 @@ async function runUpPhases(
     if (!appConfig) continue
 
     try {
-      await processApp(ctx, config, app, appConfig, opts.failFast, opts.prune)
+      await processApp(ctx, config, app, appConfig, opts.failFast, opts.prune, failedVolumes)
     } catch (error) {
       if (opts.failFast) throw error
       // Failures from individual steps were already logged by processApp.
@@ -228,5 +243,9 @@ async function runUpPhases(
 
   if (failures.length > 0) {
     throw new UpFailedError(failures)
+  }
+  // An entry that failed and that no processed app reported (it is already logged).
+  if (failedVolumes.size > 0) {
+    throw new Error(`up failed for storage entr${failedVolumes.size === 1 ? 'y' : 'ies'}: ${[...failedVolumes.keys()].join(', ')}`)
   }
 }

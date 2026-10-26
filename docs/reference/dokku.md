@@ -7,16 +7,19 @@ Module: `src/modules/version.ts`
 ## Supported Dokku versions
 
 dokku-compose never installs or upgrades Dokku and never pins an exact version.
-It has a built-in minimum, **Dokku 0.38.29**: the first release with
-`registry:auth-status`, which `docker_auth:` uses to skip a login that already
-matches. Every command dokku-compose reads as JSON (`plugin:list`, `ps:scale`,
-`config:export`, `ps:report`) accepts `--format json` from 0.38.22 on.
+It has a built-in minimum, **Dokku 0.38.32**: the first release with per-entry
+cron `MAILTO`. It also covers `storage:mount --replace` with per-mount options
+(0.38.30), which `storage:` uses to converge an app's mounts in one call, and
+`registry:auth-status` (0.38.29), which `docker_auth:` uses to skip a login
+that already matches. Every command dokku-compose reads as JSON (`plugin:list`,
+`ps:scale`, `config:export`, `ps:report`, `storage:report`,
+`storage:list-entries`) accepts `--format json` from 0.38.22 on.
 
 Every command that talks to a server (`up`, `diff`, `down`, `export`, `ps`)
 runs `dokku version` before any other Dokku call and stops on an older server:
 
 ```
-dokku-compose 0.14.0 needs Dokku >= 0.38.29; this server runs 0.37.9. Upgrade Dokku first.
+dokku-compose 0.14.0 needs Dokku >= 0.38.32; this server runs 0.37.9. Upgrade Dokku first.
 ```
 
 `validate` and `init` never touch a server and are not checked.
@@ -36,7 +39,7 @@ floor without manual effort.
 
 ```yaml
 dokku:
-  version: "0.38.31"         # up stops if the server is < 0.38.31
+  version: "0.38.32"         # up stops if the server is < 0.38.32
 ```
 
 | Server vs. file | `up` | `diff` |

@@ -21,6 +21,10 @@ docker_auth:
     username: "${GITHUB_USER}"
     password: "${GITHUB_TOKEN}"
 
+volumes:
+  uploads:
+    path: "/var/lib/dokku/data/storage/${STORAGE_NAME}/uploads"
+
 apps:
   web:
     ports: ["http:5000:5000"]
@@ -34,4 +38,4 @@ apps:
         SENTRY_AUTH_TOKEN: "${SENTRY_AUTH_TOKEN}"
         APP_NAME: web
     storage:
-      - "/var/lib/dokku/data/storage/${STORAGE_NAME}/uploads:/app/uploads"
+      - uploads:/app/uploads

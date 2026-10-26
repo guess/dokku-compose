@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { reconcile } from '../core/reconcile.js'
-import { Ports, Domains, Storage } from './lists.js'
+import { Ports, Domains } from './lists.js'
 
 describe('Ports resource', () => {
   function makeCtx(queryResult: string) {
@@ -117,34 +117,6 @@ describe('Domains resource', () => {
   })
 })
 
-describe('Storage resource', () => {
-  function makeCtx(queryResult: string) {
-    const runner = createRunner({ dryRun: false })
-    runner.query = vi.fn().mockResolvedValue(queryResult)
-    runner.run = vi.fn()
-    return createContext(runner)
-  }
-
-  it('mounts new and unmounts removed storage', async () => {
-    const ctx = makeCtx('-v /old:/app/old')
-    await reconcile(Storage, ctx, 'myapp', ['/new:/app/new'])
-    expect(ctx.commands).toContainEqual(['storage:unmount', 'myapp', '/old:/app/old'])
-    expect(ctx.commands).toContainEqual(['storage:mount', 'myapp', '/new:/app/new'])
-  })
-
-  it('skips when storage matches', async () => {
-    const ctx = makeCtx('-v /data:/app/data')
-    await reconcile(Storage, ctx, 'myapp', ['/data:/app/data'])
-    expect(ctx.commands).toEqual([])
-  })
-
-  it('parses multiple `-v` mounts on one line', async () => {
-    const ctx = makeCtx('-v /a:/app/a -v /b:/app/b')
-    await reconcile(Storage, ctx, 'myapp', ['/a:/app/a', '/b:/app/b'])
-    expect(ctx.commands).toEqual([])
-  })
-})
-
 describe('readAll (bulk)', () => {
   function makeCtx(queryResult: string) {
     const runner = createRunner({ dryRun: false })
@@ -181,17 +153,6 @@ describe('readAll (bulk)', () => {
     expect(result.get('app1')).toEqual(['example.com'])
     expect(result.get('app2')).toEqual(['foo.com', 'bar.com'])
     expect(result.get('app3')).toBe(false)
-  })
-
-  it('Storage.readAll returns per-app mount arrays', async () => {
-    const ctx = makeCtx(
-      '=====> app1 storage information\n' +
-      '       Storage build mounts:\n' +
-      '       Storage deploy mounts:        -v /data:/app/data -v /logs:/app/logs\n' +
-      '       Storage run mounts:           -v /data:/app/data -v /logs:/app/logs\n'
-    )
-    const result = await Storage.readAll!(ctx)
-    expect(result.get('app1')).toEqual(['/data:/app/data', '/logs:/app/logs'])
   })
 
   it('handles empty field values as empty arrays', async () => {

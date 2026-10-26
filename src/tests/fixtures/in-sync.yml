@@ -2,7 +2,7 @@
 # pairs it with a fake server whose state equals it: `diff` must report the
 # box in sync and `up --dry-run` must run no command.
 dokku:
-  version: "0.38.31"
+  version: "0.38.32"
 
 plugins:
   postgres:
@@ -22,6 +22,14 @@ env:
 
 networks:
   - backend-net
+
+volumes:
+  uploads: {}               # default location, chowned to herokuish
+  data:
+    chown: 1000
+    mode: "0750"
+  media:
+    path: /srv/media        # an existing directory; owner and mode are left alone
 
 domains:
   - example.com
@@ -81,7 +89,15 @@ apps:
       certfile: src/tests/fixtures/certs/myapp.crt
       keyfile: src/tests/fixtures/certs/myapp.key
     storage:
-      - "/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"
+      - uploads:/app/uploads
+      - entry: data
+        container_dir: /app/data
+        readonly: true
+        phases: [deploy]
+      - entry: media
+        container_dir: /app/media
+        process_type: worker
+        options: [Z]
     proxy:
       enabled: true
     networks:

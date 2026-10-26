@@ -30,7 +30,7 @@ Like Docker Compose, but for Dokku.
 npm install -g dokku-compose
 ```
 
-Requires Node.js >= 20 and a server running Dokku >= 0.38.29 (every server command stops on an older one; dokku-compose never installs or upgrades Dokku). See the [Installation Reference](docs/reference/install.md) for details.
+Requires Node.js >= 20 and a server running Dokku >= 0.38.32 (every server command stops on an older one; dokku-compose never installs or upgrades Dokku). See the [Installation Reference](docs/reference/install.md) for details.
 
 ### 1. Export your existing server
 
@@ -58,7 +58,7 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
-When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks missing on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `logs:` and `nginx:` (under `global`; log sinks are masked), shared networks and storage entries (`volumes:`) missing or different on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
 
 ### 3. Preview changes
 
@@ -155,7 +155,7 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | `git` (only `keep_git_dir`; `deploy_branch`, `source_image` and `rev_env_var` are written by Dokku and never reset) | `git:set <app> keep-git-dir` with no value |
 | `build.args` | `docker-options:remove <app> build "--build-arg KEY=VALUE"` for each stale key, by the exact option text (every occurrence); other build options stay |
 
-It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service or network, never uninstalls a plugin, never changes `scale`, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
+It covers a block that is gone from the file as well as keys removed from a declared block, and it reads the app once more for a block the file no longer has. `--prune` never destroys an app, service, network or storage entry, never uninstalls a plugin, never changes `scale`, never clears a `chown` or `mode` removed from a `volumes:` entry, and does not clear whole `domains`, `ports`, `storage` or `networks` lists because their key is missing (those already prune inside a block the file declares). `proxy` is not a removal. `networks:` owns `attach-post-deploy`: `--prune` does not touch it, and a missing `networks:` key does not clear it (that could detach a running app from its network on the next deploy); `networks: []` does. After `up --prune`, `diff` shows no `-` for the resources above, except for checks that were skipped with a warning (their `-` lines stay).
 
 ### Errors
 
@@ -175,7 +175,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Feature | Description | Reference |
 |---------|-------------|-----------|
 | Apps | Create and destroy Dokku apps | [apps](docs/reference/apps.md) |
-| Dokku Version | Stop when the server runs Dokku older than 0.38.29; `dokku.version` in the file is a hard minimum for `up` | [dokku](docs/reference/dokku.md) |
+| Dokku Version | Stop when the server runs Dokku older than 0.38.32; `dokku.version` in the file is a hard minimum for `up` | [dokku](docs/reference/dokku.md) |
 | Environment Variables | Set config vars per app or globally, with full convergence (keys removed from the YAML are unset) | [config](docs/reference/config.md) |
 | Build | Dockerfile path, build context, app.json, build args | [builder](docs/reference/builder.md) |
 | Docker Options | Custom Docker options per phase (build/deploy/run) | [docker_options](docs/reference/docker_options.md) |
@@ -184,7 +184,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Port Mappings | Map external ports to container ports | [ports](docs/reference/ports.md) |
 | SSL Certificates | Add, replace or remove SSL certs | [certs](docs/reference/certs.md) |
 | Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
-| Storage | Persistent bind mounts with full convergence (keys removed from the YAML are unset) | [storage](docs/reference/storage.md) |
+| Storage | Named storage entries (`volumes:`) with owner and mode, mounted into apps by name and converged with `storage:mount --replace` | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
 | Scheduler | Select the scheduler and shell per app (`scheduler:set`) | [scheduler](docs/reference/scheduler.md) |
 | Registry | Image repo, template, push and server properties per app (`registry:set`) | [registry](docs/reference/registry.md) |
@@ -240,7 +240,8 @@ dokku-compose/
 │   │   └── logger.ts         # Colored output helpers
 │   ├── resources/            # Per-app resources, reconciled by core/reconcile.ts
 │   │   ├── lifecycle.ts      # dokku apps:create/destroy
-│   │   ├── lists.ts          # ports:*, domains:*, storage:*
+│   │   ├── lists.ts          # ports:*, domains:*
+│   │   ├── storage.ts        # storage:mount --replace, storage:unmount (per app)
 │   │   ├── properties.ts     # nginx:*, logs:*, registry:*, scheduler:*
 │   │   ├── toggle.ts         # proxy:*
 │   │   ├── network.ts        # network:*

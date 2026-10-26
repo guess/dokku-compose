@@ -4,6 +4,9 @@ import type { Config, AppConfig, PostgresConfig } from '../core/schema.js'
 import { computeChange, computeAdditiveChange } from '../core/change.js'
 import { ALL_APP_RESOURCES } from '../resources/index.js'
 import { proxyProps } from '../resources/toggle.js'
+import { desiredSpecs } from '../resources/storage.js'
+import { readEntries, desiredEntries, entryState, stateError } from '../modules/volumes.js'
+import { isLegacyName } from '../core/volume-rules.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
@@ -44,6 +47,10 @@ interface DiffResult {
   global: Record<string, FeatureDiff>
   /** Declared shared networks; only a network missing on the server is listed. */
   networks: Record<string, FeatureDiff>
+  /** Declared storage entries that are missing or differ; `up` creates or sets them. */
+  volumes: Record<string, FeatureDiff>
+  /** Entries on the server that a file declaring `volumes:` does not list. A note, never drift: `up` never destroys one. */
+  volumeNotes: string[]
   inSync: boolean
   /** Per app: env keys on the server the file does not account for. Names only; never drift. */
   envNotes: Record<string, EnvNote[]>
@@ -85,7 +92,7 @@ function isEmptyValue(value: unknown): boolean {
 }
 
 export async function computeDiff(ctx: Context, config: Config): Promise<DiffResult> {
-  const result: DiffResult = { apps: {}, services: {}, plugins: {}, global: {}, networks: {}, inSync: true, envNotes: {}, readWarnings: [] }
+  const result: DiffResult = { apps: {}, services: {}, plugins: {}, global: {}, networks: {}, volumes: {}, volumeNotes: [], inSync: true, envNotes: {}, readWarnings: [] }
   const appNames = Object.keys(config.apps)
 
   const serverVersion = await assertDokkuSupported(ctx)
@@ -158,6 +165,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
         desired = appConfig.git ?? config.git
       } else if (resource.key === 'proxy_props') {
         desired = proxyProps(appConfig.proxy)
+      } else if (resource.key === 'storage') {
+        desired = desiredSpecs(appConfig.storage)
       } else {
         desired = (appConfig as any)[resource.key]
       }
@@ -448,6 +457,39 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     result.inSync = false
   }
 
+  // Storage entries
+  if (config.volumes) {
+    try {
+      const server = await readEntries(ctx)
+      const declared = desiredEntries(config.volumes)
+      for (const d of declared) {
+        const state = entryState(d, server.get(d.name))
+        const problem = stateError(d, state)
+        if (state.kind === 'ok') continue
+        if (state.kind === 'missing' && !problem) {
+          result.volumes[d.name] = { status: 'missing' }
+        } else if (state.kind === 'changed') {
+          result.volumes[d.name] = {
+            status: 'changed',
+            desired: Object.fromEntries([...(state.chown ? [['chown', state.chown.want]] : []), ...(state.mode ? [['mode', state.mode.want]] : [])]),
+            current: Object.fromEntries([...(state.chown ? [['chown', state.chown.server || '(unset)']] : []), ...(state.mode ? [['mode', state.mode.server || '(unset)']] : [])]),
+          }
+        } else {
+          result.volumes[d.name] = { status: 'changed', note: `${problem}; up stops on it` }
+        }
+        result.inSync = false
+      }
+      const names = new Set(declared.map(d => d.name))
+      result.volumeNotes = [...server.values()]
+        .filter(e => e.scheduler === 'docker-local' && !isLegacyName(e.name) && !names.has(e.name))
+        .map(e => e.name)
+    } catch (err) {
+      result.readWarnings.push(`could not read the storage entries: ${err instanceof Error ? err.message : String(err)}`)
+      for (const name of Object.keys(config.volumes)) result.volumes[name] = { status: 'unknown' }
+      result.inSync = false
+    }
+  }
+
   // Compare services
   for (const [plugin, services] of [['postgres', config.postgres], ['redis', config.redis]] as const) {
     for (const [svc, declared] of Object.entries(services ?? {})) {
@@ -487,7 +529,7 @@ export function maskDiffResult(diff: DiffResult): DiffResult {
     global: Object.fromEntries(Object.entries(diff.global).map(([k, d]) => [k, {
       ...d, desired: maskSensitiveData(d.desired), current: maskSensitiveData(d.current),
     }])),
-    networks: diff.networks, inSync: diff.inSync, envNotes: diff.envNotes, readWarnings: diff.readWarnings,
+    networks: diff.networks, volumes: diff.volumes, volumeNotes: diff.volumeNotes, inSync: diff.inSync, envNotes: diff.envNotes, readWarnings: diff.readWarnings,
   }
   for (const [app, appDiff] of Object.entries(diff.apps)) {
     const maskedAppDiff: AppDiff = {}
@@ -514,6 +556,7 @@ function driftCount(diff: DiffResult): number {
     Object.values(diff.plugins).filter(d => d.status !== 'unknown').length +
     Object.keys(diff.global).length +
     Object.keys(diff.networks).length +
+    Object.keys(diff.volumes).length +
     (diff.dokku ? 1 : 0)
 }
 
@@ -555,6 +598,15 @@ export function formatSummary(diff: DiffResult): string {
     lines.push(`    ${chalk.green('+')} ${net}: not created`)
   }
 
+  for (const [name, d] of Object.entries(diff.volumes)) {
+    const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
+    lines.push(`  volumes:`)
+    lines.push(`    ${sym} ${name}: ${volumeSummary(d)}`)
+  }
+  if (diff.volumeNotes.length > 0) {
+    lines.push(`  note: storage entries not in the compose file (up leaves them): ${diff.volumeNotes.join(', ')}`)
+  }
+
   for (const [name, d] of Object.entries(diff.plugins)) {
     const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
     const detail = d.status === 'missing' ? `not installed (want ${d.desired ?? 'any'})` : `${d.current} → ${d.desired}`
@@ -590,6 +642,15 @@ export function formatSummary(diff: DiffResult): string {
   }
   lines.push('')
   return lines.join('\n')
+}
+
+function volumeSummary(d: FeatureDiff): string {
+  if (d.status === 'missing') return 'not created'
+  if (d.status === 'unknown') return '(could not read server state)'
+  if (d.note) return d.note
+  const cur = d.current as Record<string, string>
+  const want = d.desired as Record<string, string>
+  return Object.keys(want).map(k => `${k} ${cur[k]} → ${want[k]}`).join(', ')
 }
 
 function showNote(n: EnvNote): string {
@@ -674,6 +735,19 @@ export function formatVerbose(diff: DiffResult): string {
   for (const net of Object.keys(diff.networks)) {
     lines.push(`@@ networks @@`)
     lines.push(chalk.green(`+ ${net}`))
+  }
+
+  for (const [name, d] of Object.entries(diff.volumes)) {
+    lines.push(`@@ volumes / ${name} @@`)
+    if (d.status === 'missing') { lines.push(chalk.green(`+ ${name}`)); continue }
+    if (d.status === 'unknown') { lines.push(chalk.red(`  ? could not read server state`)); continue }
+    if (d.note) { lines.push(`  (${d.note})`); continue }
+    for (const [k, v] of Object.entries(d.current as Record<string, string>)) lines.push(chalk.red(`- ${k}: ${v}`))
+    for (const [k, v] of Object.entries(d.desired as Record<string, string>)) lines.push(chalk.green(`+ ${k}: ${v}`))
+  }
+  for (const name of diff.volumeNotes) {
+    lines.push(`@@ volumes / ${name} (note; up leaves it) @@`)
+    lines.push(`  entry not in the compose file`)
   }
 
   for (const [name, d] of Object.entries(diff.plugins)) {

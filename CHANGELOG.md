@@ -2,21 +2,37 @@
 
 ## [Unreleased]
 
+### Breaking
+
+- **Every command that loads the file now rejects an unknown key.** A typo such as `domain:` for `domains:`, or an unsupported key such as `locked: true`, used to be ignored without a word; it now stops with `ERROR: apps.<app>: Unrecognized key: "domain"` (`validate`) and a non-zero exit. This covers the top level and `apps.<app>`, plus `dokku`, `plugins.<name>`, `docker_auth.<registry>`, `postgres.<service>` (and its `backup`, `backup.auth`), `redis.<service>`, and an app's `ssl`, `network`, `build` and `docker_options`. Remove or fix the key to continue.
+- **`storage:` takes entry names, not host paths (F9).** `"/var/lib/dokku/data/storage/myapp/uploads:/app/uploads"` is rejected by `validate`, `up` and `diff`. Declare the entry under a new top-level `volumes:` block and mount it as `uploads:/app/uploads`; give an existing directory as `path:`. `export` writes the new form.
+- **Needs Dokku >= 0.38.32** (was 0.38.29), the first release with per-entry cron `MAILTO`; it also covers `storage:mount --replace` with per-mount options (0.38.30), which `storage:` now uses. Every server command stops on an older Dokku.
+- **`subpath` and `volume_chown` are not mount options.** On docker-local, Dokku stores them but never applies them; `validate` rejects them, and the next `--replace` clears one left on the server by hand.
+
+### Upgrading
+
+Moving an existing box off host-path mounts needs no copy and no downtime beyond the restart `up` may list. Dokku has already turned each host-path mount into a `legacy-<hash>` entry.
+
+1. Upgrade the server to Dokku >= 0.38.32.
+2. Run `dokku-compose export -o dokku-compose.yml`. Each `legacy-*` entry an app mounts becomes a `volumes:` entry named after its directory, with `path:`, and the app's `storage:` lists it by that name. Merge that into your file, or write it by hand: `volumes: { uploads: { path: /var/lib/dokku/data/storage/myapp/uploads } }` and `storage: ["uploads:/app/uploads"]`.
+3. Run `dokku-compose diff`. It shows `- legacy-3f9c1a2b7d:/app/uploads` against `+ uploads:/app/uploads`. A mount Dokku migrated from a deploy-phase-only `-v` line carries `phases: [deploy]`; write `phases: [deploy]` to keep it, or leave the default (both phases) and restart the app.
+4. Run `dokku-compose up`. It creates the entry on the existing directory (nothing is moved or chowned) and swaps the mount with one atomic `storage:mount --replace`. `up` lists the app for a restart only when what the container sees changes.
+5. Once no app mounts it, `dokku storage:destroy legacy-3f9c1a2b7d` removes the leftover entry; the directory stays. `up` and `diff` never touch it.
+
+An entry at the default location (`/var/lib/dokku/data/storage/<name>`, no `path:`) is chowned to `herokuish` (32767:32767) unless `chown:` says otherwise, and Dokku runs that recursively. Write `chown: false` on an entry whose directory already has the right owner. A `path:` entry is never chowned.
+
 ### Added
 
 - **Backup encryption for postgres and redis (F3).** `backup.encryption` is `{ passphrase }`, `{ public_key_id, keyserver? }` or `false`. It is applied with `<plugin>:set backup-encryption-passphrase`, `backup-public-key-id` and `backup-keyserver` and compared by `backup-encryption-fingerprint` and exact strings, so a rotated passphrase is picked up. An absent `encryption:` leaves the server alone (`diff` notes it, `up --prune` only warns); `false` clears it. `backup.storage_class`, `object_name`, `mailto` and `timestamp: false` are managed the same way, and `up --prune` clears one the file no longer declares. `validate` rejects both encryption forms, an empty `encryption`, bad storage classes and object names, and the literal `REPLACE_ME` that `export` writes for secrets. Passphrases are masked completely in logs, `diff` and `export`.
 - **Redis backups (F7).** `redis.<service>.backup` takes the same block as postgres, through the same code: `schedule`, `bucket`, `auth`, the keys above and `backup: false`. Needs dokku-redis 2.3.1 or later. `diff` and `export` cover redis backups too.
 - `diff` notes backup schedules other than `default` (plugin 2.5.0 and later), which `up` never touches.
+- **Named storage entries (F9).** A top-level `volumes:` block declares entries by name: `chown` (`herokuish` by default, a preset, a uid, or `false`), `mode` (a quoted octal string) and `path` (an existing directory or a Docker volume). `up` runs `storage:create` for a missing entry and `storage:set <name> chown|mode` for a difference; it never destroys an entry, `--prune` included. Apps mount entries by name, in the short form `entry:container-dir` or a map with `readonly`, `phases`, `options` and `process_type`, and `up` converges each process type with `storage:mount --replace` (a scope the file drops goes with `storage:unmount --all --process-type`). `diff` shows entries that are missing or differ and notes entries the file does not declare; `export` writes both blocks, naming `legacy-*` entries after their directory. See [storage](docs/reference/storage.md).
 
 ### Changed
 
 - `backup: false` unschedules with `<plugin>:backup-unschedule <service> --id default` (the plain command is refused when a service has other schedules) and also clears encryption and the backup settings, which `:backup-deauth` leaves behind. A bucket-only change re-runs `:backup-schedule` when another schedule exists, because `set backup-bucket` is refused then.
 - A service whose server holds encryption or backup settings the file leaves out now shows the backup note in `diff`, as a backup without a schedule always did.
 - The too-old plugin error names the plugin (`dokku-redis too old to report backup state (needs 2.3.1+)`).
-
-### Breaking
-
-- **Every command that loads the file now rejects an unknown key.** A typo such as `domain:` for `domains:`, or an unsupported key such as `locked: true`, used to be ignored without a word; it now stops with `ERROR: apps.<app>: Unrecognized key: "domain"` (`validate`) and a non-zero exit. This covers the top level and `apps.<app>`, plus `dokku`, `plugins.<name>`, `docker_auth.<registry>`, `postgres.<service>` (and its `backup`, `backup.auth`), `redis.<service>`, and an app's `ssl`, `network`, `build` and `docker_options`. Remove or fix the key to continue.
 
 ### Fixed
 

@@ -17,7 +17,7 @@ npm install -g dokku-compose@<version>   # e.g. dokku-compose@0.14.2
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | [Node.js](https://nodejs.org) | >= 20 | Runs dokku-compose |
-| [Dokku](https://dokku.com) | >= 0.38.29 | On the server; every server command stops on an older one |
+| [Dokku](https://dokku.com) | >= 0.38.32 | On the server; every server command stops on an older one |
 | SSH | | Key access to the Dokku server when `DOKKU_HOST` is set |
 
 dokku-compose never installs or upgrades Dokku. See [dokku](dokku.md).

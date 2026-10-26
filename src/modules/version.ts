@@ -4,9 +4,11 @@ import { logWarn } from '../core/logger.js'
 
 /**
  * The oldest Dokku this dokku-compose supports: the first release with
- * `registry:auth-status` (and `--password-stdin` on it), which `docker_auth:`
- * uses to skip an unchanged login. Every command read as JSON accepts
- * `--format json` from 0.38.22 on.
+ * per-entry cron `MAILTO` (0.38.32). It also covers `storage:mount --replace`
+ * with per-mount options (0.38.30, which `storage:` uses) and
+ * `registry:auth-status` (0.38.29, which `docker_auth:` uses to skip an
+ * unchanged login). Every command read as JSON accepts `--format json` from
+ * 0.38.22 on.
  *
  * Source (dokku/dokku release notes and tags, checked with `gh api`):
  * - `config:export --format json`: v0.15.5 (#3511)
@@ -17,9 +19,14 @@ import { logWarn } from '../core/logger.js'
  * - `registry:auth-status`: v0.38.29; plugins/registry/auth_status.go is
  *   absent at v0.38.28 and present at v0.38.29 (exit codes 0 match,
  *   1 missing, 2 differs, 3 invalid arguments, 4 unknown).
- * So 0.38.29 is the first release with all of them.
+ * - `storage:mount --replace` with per-mount options in the spec: v0.38.30
+ *   (docs/advanced-usage/persistent-storage.md, "Per-mount attributes in the
+ *   option list new as of 0.38.30"). `storage:report <app> --format json` and
+ *   `storage:list-entries --format json` are older.
+ * - per-entry cron `MAILTO`: v0.38.32, the floor.
+ * So 0.38.32 is the first release with all of them.
  */
-export const MIN_DOKKU_VERSION = '0.38.29'
+export const MIN_DOKKU_VERSION = '0.38.32'
 
 /** What parseSemver reads: a leading X.Y.Z (a suffix such as `-rc1` is ignored). The schema checks `dokku.version` with this same pattern. */
 export const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)/

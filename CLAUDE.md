@@ -43,7 +43,8 @@ bun run build
 **Resources** (`src/resources/`): per-app features as `Resource` objects (`key`, `read`, `onChange`, optional `readAll`, `removals`, `prune`), shared by `up`, `diff` and `export`. `index.ts` lists them in phases. Resources are built from the generic helpers in `lists.ts`, `properties.ts`, `toggle.ts` and `parsers.ts`:
 
 - `lifecycle.ts` — App create/destroy
-- `lists.ts` — Domains, ports, storage mounts
+- `lists.ts` — Domains, ports
+- `storage.ts` — An app's named storage mounts, converged per process type with `storage:mount --replace` (a mount is one `[scope=]entry:dir[:tokens]` string)
 - `properties.ts` — Nginx, logs, registry and scheduler properties (`<ns>:set`), with the settable key lists
 - `toggle.ts` — Proxy enable/disable and proxy properties
 - `network.ts` — App networks (attach) and network properties
@@ -64,6 +65,7 @@ bun run build
 - `service-drift.ts` — Service version and backup drift for `diff`
 - `links.ts` — Cross-plugin service link resolution and convergence
 - `network.ts` — Shared Docker networks
+- `volumes.ts` — Top-level `volumes:` storage entries (`storage:create`, `storage:set`), their `diff` state, and the `export` naming of `legacy-*` entries
 - `plugins.ts` — Plugin installation, version pins (forward-only updates), plugin:list parser
 - `env-notes.ts` — Notes for app env keys the file does not declare
 - `version.ts` — Dokku version floor and file version check
@@ -77,7 +79,7 @@ bun run build
 - `export.ts` — Query server state → emit YAML
 - `diff.ts` — Compare local YAML vs server state (summary + verbose modes)
 
-**Execution flow for `up`:** Version check → Plugins and Docker auth → Global config (domains, env, logs, nginx) → Networks → Postgres → Redis → Postgres backups → Per-app (create → domains → networks → network properties → proxy → proxy properties → ports → links → certs → storage → nginx → checks → logs → registry → scheduler → ps → scale → env vars → builder → git → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead). With `--prune`, the nginx, logs, registry, scheduler, ps, network, proxy-property, checks, build and git resources also reset the settings the file no longer declares (`Resource.prune`, run after the normal apply; a block absent from the file is read once to find them).
+**Execution flow for `up`:** Version check → Plugins and Docker auth → Global config (domains, env, logs, nginx) → Networks → Volumes → Postgres → Redis → Postgres backups → Per-app (create → domains → networks → network properties → proxy → proxy properties → ports → links → certs → storage (skipped when an entry it mounts failed in Volumes) → nginx → checks → logs → registry → scheduler → ps → scale → env vars → builder → git → docker options). Each per-app resource runs in its own step: a resource that throws is logged and the app's remaining resources still run; the run ends with `UpFailedError` listing every failing app (`--fail-fast` stops at the first failure instead). With `--prune`, the nginx, logs, registry, scheduler, ps, network, proxy-property, checks, build and git resources also reset the settings the file no longer declares (`Resource.prune`, run after the normal apply; a block absent from the file is read once to find them).
 
 **Version check:** every server command (`up`, `diff`, `down`, `export`, `ps`) calls `assertDokkuSupported` (`src/modules/version.ts`) first: below `MIN_DOKKU_VERSION` (0.38.29, the first Dokku with `registry:auth-status`) it throws before any other Dokku call. `dokku.version` in the file is a hard minimum for `up` (`enforceFileVersion`); `diff` reports any difference as a drift line and a newer server only makes `up` log a notice.
 

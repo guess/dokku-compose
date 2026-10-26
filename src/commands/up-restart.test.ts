@@ -3,9 +3,10 @@ import { createRunner, DokkuCommandError } from '../core/dokku.js'
 import { createContext } from '../core/context.js'
 import { reconcile } from '../core/reconcile.js'
 import { runUp, UpFailedError, markGlobalEnvRestart, printRestartSummary } from './up.js'
-import { emptyAnswer } from '../tests/fake-server.js'
+import { emptyAnswer, storageReportJson } from '../tests/fake-server.js'
 import { Config as Env } from '../resources/config.js'
-import { Storage, Ports, Domains } from '../resources/lists.js'
+import { Ports, Domains } from '../resources/lists.js'
+import { Storage } from '../resources/storage.js'
 import { Builder } from '../resources/builder.js'
 import { DockerOptions } from '../resources/docker-options.js'
 import { Networks, NetworkProps } from '../resources/network.js'
@@ -18,7 +19,7 @@ function makeCtx(opts: { dryRun?: boolean } = {}) {
   const runner = createRunner({ dryRun: opts.dryRun ?? false })
   runner.check = vi.fn().mockResolvedValue(false)
   runner.query = vi.fn(async (...args: string[]) =>
-    args[0] === 'version' ? 'dokku version 0.38.31' : (emptyAnswer(...args) ?? ''))
+    args[0] === 'version' ? 'dokku version 0.38.32' : (emptyAnswer(...args) ?? ''))
   runner.queryStrict = vi.fn(async (...args: string[]) => {
     const out = await runner.query(...args)
     return args[0] === 'plugin:list' && !out ? '[]' : out
@@ -42,11 +43,12 @@ describe('restart record, per resource', () => {
     expect(ctx.restarts.get('myapp')).toEqual(['env'])
   })
 
-  it('storage mount and unmount mark the app', async () => {
+  it('storage replace marks the app', async () => {
     const { runner, ctx } = makeCtx()
-    runner.query = vi.fn().mockResolvedValue('-v /a:/b')
-    await reconcile(Storage, ctx, 'myapp', ['/c:/d'])
-    expect(ctx.commands.map(c => c[0])).toEqual(['storage:unmount', 'storage:mount'])
+    runner.queryStrict = vi.fn(async (...a: string[]) =>
+      a[0] === 'storage:report' ? storageReportJson([{ entry: 'old', hostPath: '/old', containerPath: '/b' }]) : '[]')
+    await reconcile(Storage, ctx, 'myapp', ['new:/d'])
+    expect(ctx.commands).toEqual([['storage:mount', '--replace', 'myapp', 'new:/d']])
     expect(ctx.restarts.get('myapp')).toEqual(['storage'])
   })
 

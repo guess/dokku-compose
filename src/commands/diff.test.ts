@@ -9,7 +9,7 @@ function makeCtx(queryMap: Record<string, string>, checkMap: Record<string, bool
   return {
     query: vi.fn(async (...args: string[]) => {
       const key = args.join(' ')
-      if (key === 'version' && !(key in queryMap)) return 'dokku version 0.38.31'
+      if (key === 'version' && !(key in queryMap)) return 'dokku version 0.38.32'
       return queryMap[key] ?? emptyAnswer(...args) ?? ''
     }),
     queryStrict: vi.fn(async (...args: string[]) => {

@@ -10,7 +10,7 @@ function ctxWith(info: string | Error) {
   const runner = createRunner({ dryRun: true })
   runner.queryStrict = vi.fn(async () => { if (info instanceof Error) throw info; return info })
   runner.check = vi.fn(async () => true)
-  runner.query = vi.fn(async () => 'dokku version 0.38.31')
+  runner.query = vi.fn(async () => 'dokku version 0.38.32')
   return { ctx: createContext(runner), runner }
 }
 

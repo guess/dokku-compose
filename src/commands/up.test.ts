@@ -15,6 +15,9 @@ function stubStrict(runner: ReturnType<typeof createRunner>) {
   runner.queryStrict = vi.fn(async (...args: string[]) => {
     const out = await runner.query(...args)
     if (!out && args.join(' ') === 'config:export --global --format json') return '{}'
+    // A box with no storage entries prints an empty JSON list.
+    if (!out && args[0] === 'storage:list-entries') return '[]'
+    if (!out && args[0] === 'storage:report') return '{}'
     return args[0] === 'plugin:list' && !out ? '[]' : out
   })
   // No registry login stored yet; a login goes through runner.run like any other mutation.
@@ -27,7 +30,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
-    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
+    runner.query = vi.fn(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.32' : '')
     stubStrict(runner)
     const ctx = createContext(runner)
     const config = loadConfig(path.join(FIXTURES, 'simple.yml'))
@@ -49,7 +52,7 @@ describe('runUp', () => {
     })
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
       const cmd = args.join(' ')
-      if (cmd === 'version') return 'dokku version 0.38.31'
+      if (cmd === 'version') return 'dokku version 0.38.32'
       // App already has the right ports
       if (cmd === 'ports:report myapp --ports-map') return 'http:5000:5000'
       // Plugin already installed
@@ -74,7 +77,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: true })
     runner.check = vi.fn(async () => false)
     runner.query = vi.fn(async (...args: string[]) => {
-      if (args.join(' ') === 'version') return 'dokku version 0.38.31'
+      if (args.join(' ') === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn()
@@ -108,7 +111,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: true })
     runner.check = vi.fn(async () => false)
     runner.query = vi.fn(async (...args: string[]) => {
-      if (args.join(' ') === 'version') return 'dokku version 0.38.31'
+      if (args.join(' ') === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn()
@@ -146,7 +149,7 @@ describe('runUp', () => {
     runner.check = vi.fn().mockResolvedValue(false)
     runner.run = vi.fn()
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     stubStrict(runner)
@@ -161,7 +164,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
@@ -191,7 +194,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
@@ -212,7 +215,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
@@ -231,7 +234,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
@@ -259,7 +262,7 @@ describe('runUp', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockResolvedValue(false)
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       return emptyAnswer(...args) ?? ''
     })
     runner.run = vi.fn().mockImplementation(async (...args: string[]) => {
@@ -282,7 +285,7 @@ describe('runUp — settings removed from the file', () => {
     runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
     runner.run = vi.fn()
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       if (args[0] === 'nginx:report') return '       Nginx proxy read timeout: 60s\n       Nginx client max body size: 1m\n'
       if (args[0] === 'logs:report') return JSON.stringify({ 'max-size': '10m' })
       return emptyAnswer(...args) ?? ''
@@ -308,7 +311,7 @@ describe('runUp — settings removed from the file', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
     runner.run = vi.fn()
-    runner.query = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.31' : '')
+    runner.query = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'version' ? 'dokku version 0.38.32' : '')
     stubStrict(runner)
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
@@ -326,7 +329,7 @@ describe('runUp — hint scope', () => {
     runner.check = vi.fn().mockImplementation(async (...args: string[]) => args[0] === 'apps:exists')
     runner.run = vi.fn()
     runner.query = vi.fn().mockImplementation(async (...args: string[]) => {
-      if (args[0] === 'version') return 'dokku version 0.38.31'
+      if (args[0] === 'version') return 'dokku version 0.38.32'
       if (args[0] === 'nginx:report') return '       Nginx proxy read timeout: 60s\n'
       if (args[0] === 'checks:report') return '       Checks disabled list: none\n       Checks wait to retire: 30\n'
       return emptyAnswer(...args) ?? ''
@@ -360,7 +363,7 @@ describe('runUp --prune', () => {
     const runner = createRunner({ dryRun })
     runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
     const read = async (...a: string[]) =>
-      a[0] === 'version' ? 'dokku version 0.38.31' : a[0] === 'nginx:report' ? '       Nginx client max body size: 50m\n       Nginx proxy read timeout: 60s\n'
+      a[0] === 'version' ? 'dokku version 0.38.32' : a[0] === 'nginx:report' ? '       Nginx client max body size: 50m\n       Nginx proxy read timeout: 60s\n'
         : a[0] === 'plugin:list' ? '[]' : emptyAnswer(...a) ?? ''
     runner.query = vi.fn(read)
     runner.queryStrict = vi.fn(read)
@@ -397,7 +400,7 @@ describe('runUp — git properties removed from the file', () => {
     const runner = createRunner({ dryRun: false })
     runner.check = vi.fn(async (...a: string[]) => a[0] === 'apps:exists')
     const read = async (...a: string[]) =>
-      a[0] === 'version' ? 'dokku version 0.38.31'
+      a[0] === 'version' ? 'dokku version 0.38.32'
         : a[0] === 'git:report' ? gitReport(a[1], { 'Git deploy branch': 'main', 'Git keep git dir': 'true', 'Git rev env var': 'GIT_REV', 'Git source image': 'web:1' })
         : a[0] === 'plugin:list' ? '[]' : emptyAnswer(...a) ?? ''
     runner.query = vi.fn(read)

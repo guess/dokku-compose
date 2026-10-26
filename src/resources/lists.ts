@@ -90,37 +90,3 @@ export const Domains: Resource<string[] | false> = {
     await ctx.run('domains:set', target, ...after)
   },
 }
-
-function parseDeployMounts(raw: string): string[] {
-  // Dokku reports deploy mounts as space-separated `-v PATH:PATH` pairs on one line.
-  return raw.split(/\s+/).filter(s => s && s !== '-v')
-}
-
-export const Storage: Resource<string[]> = {
-  key: 'storage',
-  read: async (ctx, target) => {
-    const raw = await ctx.query('storage:report', target, '--storage-deploy-mounts')
-    return parseDeployMounts(raw)
-  },
-  readAll: async (ctx: Context) => {
-    const raw = await ctx.query('storage:report')
-    const bulk = parseBulkReport(raw, 'storage')
-    const result = new Map<string, string[]>()
-    for (const [app, report] of bulk) {
-      result.set(app, report['deploy-mounts'] ? parseDeployMounts(report['deploy-mounts']) : [])
-    }
-    return result
-  },
-  onChange: async (ctx, target, { added, removed }: ListChange) => {
-    // Dokku: "Once persistent storage is mounted/unmounted, the app requires a restart"
-    // (docs/advanced-usage/persistent-storage.md, v0.38.31).
-    for (const m of removed) {
-      await ctx.run('storage:unmount', target, m)
-      ctx.needsRestart(target, 'storage')
-    }
-    for (const m of added) {
-      await ctx.run('storage:mount', target, m)
-      ctx.needsRestart(target, 'storage')
-    }
-  },
-}

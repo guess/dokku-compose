@@ -128,6 +128,40 @@ export function nginxGlobalJson(values: Record<string, string> = {}): string {
   return fill(NGINX_PROPS.map(p => `global-${p}`), values)
 }
 
+/** One mount as `storage:report <app> --format json` prints it; unset fields are empty strings. */
+export interface FakeAttachment {
+  entry: string
+  hostPath: string
+  containerPath: string
+  phases?: string
+  processType?: string
+  subpath?: string
+  readonly?: boolean
+  volumeOptions?: string
+  volumeChown?: string
+}
+
+/**
+ * `storage:report <app> --format json` as Dokku 0.38.31 prints it: the three mount lines, and each
+ * attachment's fields twice, as `attachment.<n>.<field>` and `storage-attachment.<n>.<field>`
+ * (`EmitLegacyPrefix: true` in plugins/storage/report.go). Every value is a string.
+ */
+export function storageReportJson(attachments: FakeAttachment[] = []): string {
+  const out: Record<string, string> = { 'build-mounts': '', 'deploy-mounts': '', 'run-mounts': '' }
+  attachments.forEach((a, i) => {
+    const fields: Record<string, string> = {
+      'container-path': a.containerPath, 'entry-name': a.entry, 'host-path': a.hostPath,
+      phases: a.phases ?? 'deploy,run', 'process-type': a.processType ?? '_default_', readonly: String(a.readonly ?? false),
+      subpath: a.subpath ?? '', 'volume-chown': a.volumeChown ?? '', 'volume-options': a.volumeOptions ?? '',
+    }
+    for (const [k, v] of Object.entries(fields)) {
+      out[`attachment.${i + 1}.${k}`] = v
+      out[`storage-attachment.${i + 1}.${k}`] = v
+    }
+  })
+  return JSON.stringify(out)
+}
+
 /**
  * `<plugin>:info <svc> --format json` as dokku-postgres 2.4.0 and dokku-redis
  * 2.4.0 print it (a flat object; `image` and `image-version` are the pair
