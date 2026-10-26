@@ -115,6 +115,13 @@ export function createArgs(d: DesiredEntry): string[] {
   return args
 }
 
+const planned = new WeakMap<Context, Map<string, string>>()
+
+/** Host paths of the entries this run created (or, in a dry run, would create), by name. */
+export function plannedHostPaths(ctx: Context): Map<string, string> {
+  return planned.get(ctx) ?? new Map()
+}
+
 /**
  * Create the declared entries that are missing and converge `chown` and `mode`
  * of the ones that exist. An entry that cannot be converged is logged and
@@ -136,6 +143,7 @@ export async function ensureVolumes(
       if (problem) throw new Error(problem)
       if (state.kind === 'missing') {
         await ctx.run(...createArgs(d))
+        planned.set(ctx, new Map([...plannedHostPaths(ctx), [d.name, hostPathOf(d)]]))
         logDone()
       } else if (state.kind === 'changed') {
         // chown first: a mode change re-applies the stored chown, so it must already be the new one.

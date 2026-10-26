@@ -39,7 +39,7 @@ floor without manual effort.
 
 ```yaml
 dokku:
-  version: "0.38.31"         # up stops if the server is < 0.38.31
+  version: "0.38.32"         # up stops if the server is < 0.38.32
 ```
 
 | Server vs. file | `up` | `diff` |

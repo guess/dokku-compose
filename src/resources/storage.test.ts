@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { reconcile } from '../core/reconcile.js'
 import { fakeContext, storageReportJson, type FakeAttachment } from '../tests/fake-server.js'
+import { ensureVolumes } from '../modules/volumes.js'
 import { Storage, desiredSpecs, formatSpec, parseSpec, parseAttachments } from './storage.js'
 
 const LIST = 'storage:list-entries --format json'
@@ -216,5 +217,48 @@ describe('order of scopes', () => {
     )
     await expect(reconcile(Storage, ctx, 'myapp', ['b:/x', 'web=a:/y'])).rejects.toThrow(/Apply the change in two runs/)
     expect(ctx.commands).toEqual([])
+  })
+})
+
+describe('removing a scope', () => {
+  it('names the default scope, so the named scopes stay', async () => {
+    const { ctx } = box([att('a', '/a', '/x'), att('b', '/b', '/y', { processType: 'worker' })], [entry('a', '/a'), entry('b', '/b')])
+    await reconcile(Storage, ctx, 'myapp', ['worker=b:/y'])
+    expect(ctx.commands).toEqual([['storage:unmount', '--all', 'myapp', '--process-type', '_default_']])
+    expect(ctx.restarts.get('myapp')).toEqual(['storage'])
+  })
+
+  it('names a named scope, so the default scope stays', async () => {
+    const { ctx } = box([att('a', '/a', '/x'), att('b', '/b', '/y', { processType: 'worker' })], [entry('a', '/a'), entry('b', '/b')])
+    await reconcile(Storage, ctx, 'myapp', ['a:/x'])
+    expect(ctx.commands).toEqual([['storage:unmount', '--all', 'myapp', '--process-type', 'worker']])
+  })
+
+  it('removes everything with a bare --all for an empty list', async () => {
+    const { ctx } = box([att('a', '/a', '/x'), att('b', '/b', '/y', { processType: 'worker' })], [entry('a', '/a'), entry('b', '/b')])
+    await reconcile(Storage, ctx, 'myapp', [])
+    expect(ctx.commands).toEqual([['storage:unmount', '--all', 'myapp']])
+  })
+})
+
+describe('--dry-run with an entry that does not exist yet', () => {
+  const legacy = 'legacy-3f9c1a2b7d'
+
+  it('asks for no restart when the planned entry has the legacy path', async () => {
+    const { ctx } = box([att(legacy, '/srv/uploads', '/app/uploads')], [entry(legacy, '/srv/uploads')])
+    await ensureVolumes(ctx, { uploads: { path: '/srv/uploads' } })
+    await reconcile(Storage, ctx, 'myapp', ['uploads:/app/uploads'])
+    expect(ctx.commands).toEqual([
+      ['storage:create', 'uploads', '/srv/uploads'],
+      ['storage:mount', '--replace', 'myapp', 'uploads:/app/uploads'],
+    ])
+    expect(ctx.restarts.size).toBe(0)
+  })
+
+  it('asks for a restart when the planned entry has another path', async () => {
+    const { ctx } = box([att(legacy, '/srv/uploads', '/app/uploads')], [entry(legacy, '/srv/uploads')])
+    await ensureVolumes(ctx, { uploads: {} })
+    await reconcile(Storage, ctx, 'myapp', ['uploads:/app/uploads'])
+    expect(ctx.restarts.get('myapp')).toEqual(['storage'])
   })
 })

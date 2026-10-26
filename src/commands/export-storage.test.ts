@@ -112,6 +112,26 @@ describe('export: volumes and storage', () => {
     expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain('volume-subpath and volume-chown dropped')
   })
 
+  it('writes a stored chown of false or an empty one as false, and a stored uid as a number', async () => {
+    const config = await exportWith({ myapp: [] }, [e('a', { chown: 'false' }), e('b', { chown: '' }), e('c', { chown: '33' }), e('d', { chown: 'root' })])
+    expect(config.volumes).toEqual({ a: { chown: false }, b: { chown: false }, c: { chown: 33 }, d: { chown: 'root' } })
+  })
+
+  it("keeps Dokku's name, written as {}, when the host path is not a valid path:", async () => {
+    const config = await exportWith({
+      myapp: [{ entry: 'legacy-3f9c1a2b7d', hostPath: '/srv/data/', containerPath: '/app/x' }],
+    }, [e('legacy-3f9c1a2b7d', { host_path: '/srv/data/' })])
+    expect(config.volumes).toEqual({ 'legacy-3f9c1a2b7d': {} })
+  })
+
+  it('does not give a legacy entry the name of an entry already on the server', async () => {
+    const config = await exportWith({
+      myapp: [{ entry: 'legacy-3f9c1a2b7d', hostPath: '/srv/myapp/uploads', containerPath: '/app/x' }],
+    }, [e('legacy-3f9c1a2b7d', { host_path: '/srv/myapp/uploads' }), { name: 'uploads', scheduler: 'k3s' }])
+    expect(Object.keys(config.volumes ?? {})).toEqual(['myapp-uploads'])
+    expect(config.apps.myapp.storage).toEqual(['myapp-uploads:/app/x'])
+  })
+
   it('exports a file that passes the schema', async () => {
     const config = await exportWith({
       myapp: [

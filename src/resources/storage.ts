@@ -7,7 +7,7 @@ import type { Context } from '../core/context.js'
 import {
   ALL_PHASES, DEFAULT_SCOPE, declaredMounts, scopesOverlap, type Mount, type MountItem, type Phase,
 } from '../core/volume-rules.js'
-import { readEntries, type ServerEntry } from '../modules/volumes.js'
+import { readEntries, plannedHostPaths, type ServerEntry } from '../modules/volumes.js'
 
 /**
  * A mount as one string, so the generic list comparison, `diff` and `export`
@@ -164,7 +164,14 @@ function containerView(specs: string[], hosts: Map<string, ServerEntry> | undefi
 }
 
 async function entriesOrUndefined(ctx: Context): Promise<Map<string, ServerEntry> | undefined> {
-  try { return await readEntries(ctx) } catch { return undefined }
+  try {
+    const entries = await readEntries(ctx)
+    // An entry `up --dry-run` only planned is not on the server yet: use the path it will have.
+    for (const [name, host_path] of plannedHostPaths(ctx)) {
+      if (!entries.has(name)) entries.set(name, { name, scheduler: 'docker-local', host_path })
+    }
+    return entries
+  } catch { return undefined }
 }
 
 export const Storage: Resource<string[]> = {
@@ -200,9 +207,10 @@ export const Storage: Resource<string[]> = {
       await ctx.run('storage:unmount', '--all', target)
     } else {
       for (const { scope, specs } of orderActions(actions, before)) {
-        const scopeArgs = scope === DEFAULT_SCOPE ? [] : ['--process-type', scope]
-        if (specs.length === 0) await ctx.run('storage:unmount', '--all', target, ...scopeArgs)
-        else await ctx.run('storage:mount', '--replace', target, ...specs.map(replaceArg), ...scopeArgs)
+        // `--replace` without --process-type writes the default scope, but `unmount --all` without it
+        // removes every scope (plugins/storage/subcommands.go unmountAll, v0.38.31): name the scope.
+        if (specs.length === 0) await ctx.run('storage:unmount', '--all', target, '--process-type', scope)
+        else await ctx.run('storage:mount', '--replace', target, ...specs.map(replaceArg), ...(scope === DEFAULT_SCOPE ? [] : ['--process-type', scope]))
       }
     }
 
