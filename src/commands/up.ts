@@ -26,8 +26,7 @@ import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
 import { ensureGlobalConfig } from '../modules/config.js'
-import { ensureGlobalLogs } from '../modules/logs.js'
-import { ensureGlobalNginx } from '../modules/nginx.js'
+import { ensureGlobal, GLOBAL_UP_ORDER } from '../modules/global.js'
 import { logError, logWarn } from '../core/logger.js'
 import type { AppConfig } from '../core/schema.js'
 import { declaredMounts, type MountItem } from '../core/volume-rules.js'
@@ -138,7 +137,7 @@ async function processApp(
 
   // Build
   await step(() => reconcile(Builder, ctx, app, appConfig.build, count, prune))
-  await step(() => reconcile(Git, ctx, app, appConfig.git ?? config.git, count, prune))
+  await step(() => reconcile(Git, ctx, app, appConfig.git, count, prune, config.git))
   await step(() => reconcile(DockerOptions, ctx, app, appConfig.docker_options))
 
   if (leftOnServer > 0) {
@@ -192,11 +191,17 @@ async function runUpPhases(
   if (await ensureGlobalConfig(ctx, config.env)) {
     markGlobalEnvRestart(ctx, apps.filter(app => config.apps[app]))
   }
-  if (config.logs !== undefined) await ensureGlobalLogs(ctx, config.logs)
-  if (config.nginx !== undefined) await ensureGlobalNginx(ctx, config.nginx)
+  // The top-level blocks are Dokku's own `--global` settings. A block the file does not
+  // declare is never read, so settings made outside the file stay (even under --prune).
+  const globalOpts = { prune: opts.prune, apps: apps.filter(app => config.apps[app]), appConfigs: config.apps }
+  for (const name of GLOBAL_UP_ORDER) {
+    if (config[name] !== undefined) await ensureGlobal(ctx, name, config[name], globalOpts)
+  }
 
   // Phase 3: Networks
   if (config.networks) await ensureNetworks(ctx, config.networks)
+  // After the shared networks exist, so a global attach_post_deploy can name one of them.
+  if (config.network !== undefined) await ensureGlobal(ctx, 'network', config.network, globalOpts)
 
   // Storage entries, before any app mounts one. An entry that fails is logged
   // and the run goes on; the apps that mount it report it themselves.

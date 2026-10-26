@@ -10,8 +10,7 @@ import { isLegacyName } from '../core/volume-rules.js'
 import { maskSensitiveData } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
-import { readGlobalLogs } from '../modules/logs.js'
-import { readGlobalNginx } from '../modules/nginx.js'
+import { GLOBAL_NAMES, readGlobal, planGlobal } from '../modules/global.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceInfo, versionMismatches, type ServiceMismatch } from '../modules/service-drift.js'
 import { backupMismatches, backupNotes } from '../modules/service-backup.js'
@@ -43,7 +42,7 @@ interface DiffResult {
   plugins: Record<string, FeatureDiff>
   /** Set when the server's Dokku version differs from the file's `dokku.version`. */
   dokku?: { file: string; server: string }
-  /** Top-level settings: the declared keys of `logs:` and `nginx:` against the server's global values. */
+  /** Top-level settings: the declared top-level blocks against the server's global values. */
   global: Record<string, FeatureDiff>
   /** Declared shared networks; only a network missing on the server is listed. */
   networks: Record<string, FeatureDiff>
@@ -160,9 +159,6 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       let desired: unknown
       if (resource.key === 'proxy') {
         desired = appConfig.proxy?.enabled
-      } else if (resource.key === 'git') {
-        // `up` applies the top-level `git:` to an app that declares none.
-        desired = appConfig.git ?? config.git
       } else if (resource.key === 'proxy_props') {
         desired = proxyProps(appConfig.proxy)
       } else if (resource.key === 'storage') {
@@ -170,6 +166,8 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       } else {
         desired = (appConfig as any)[resource.key]
       }
+      // The top-level block of the same name is Dokku's `--global` setting, which the app inherits.
+      const inherited = resource.inheritsGlobal ? (config as any)[resource.key] : undefined
       // A block gone from the file can still leave settings on the box.
       const checkRemovalsOnly = desired === undefined
       if (checkRemovalsOnly && (!resource.removals || !appExists.get(app))) continue
@@ -197,7 +195,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
           result.readWarnings.push(`could not read '${resource.key}' for app '${app}' to look for removed settings: ${err instanceof Error ? err.message : String(err)}`)
           continue
         }
-        const removed = resource.removals!(current as any, undefined)
+        const removed = resource.removals!(current as any, undefined, inherited)
         if (removed.length > 0) {
           appDiff[resource.key] = { status: 'extra', current, removed }
           result.inSync = false
@@ -216,7 +214,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
 
       if (resource.inSync) {
         // The server's state has its own shape (certs, checks): the resource compares.
-        const removedHere = resource.removals ? resource.removals(current as any, desired as any) : []
+        const removedHere = resource.removals ? resource.removals(current as any, desired as any, inherited) : []
         let status: DiffStatus
         if (current === undefined) {
           status = 'unknown'
@@ -236,7 +234,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
 
       let removed: string[] = resource.removals
-        ? resource.removals(current as any, desired as any)
+        ? resource.removals(current as any, desired as any, inherited)
         : []
 
       if (resource.forceApply) {
@@ -428,25 +426,32 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
     }
   }
 
-  // Top-level logs: and nginx: against the server's global values
-  for (const [name, declared, read] of [
-    ['logs', config.logs, readGlobalLogs],
-    ['nginx', config.nginx, readGlobalNginx],
-  ] as const) {
+  // The top-level blocks that are Dokku's `--global` settings, against the server's global values.
+  // A block the file does not declare is never read.
+  for (const name of GLOBAL_NAMES) {
+    const declared = config[name]
     if (declared === undefined) continue
     let current: Record<string, string>
     try {
-      current = await read(ctx)
+      current = await readGlobal(ctx, name)
     } catch (err) {
       result.global[name] = { status: 'unknown', desired: declared }
       result.readWarnings.push(`could not read global '${name}': ${err instanceof Error ? err.message : String(err)}`)
       result.inSync = false
       continue
     }
-    const differs = Object.entries(declared).filter(([k, v]) => current[k] !== String(v))
-    if (differs.length === 0) continue
-    const shown = Object.fromEntries(Object.keys(declared).filter(k => k in current).map(k => [k, current[k]]))
-    result.global[name] = { status: differs.every(([k]) => !(k in current)) ? 'missing' : 'changed', desired: declared, current: shown }
+    const plan = planGlobal(name, declared, current)
+    if (plan.changes.length === 0 && plan.removals.length === 0) continue
+    // The server's values for the keys the block declares (a scheduler string declares `selected`).
+    const declaredKeys = new Set(typeof declared === 'string' ? ['selected'] : Object.keys(declared))
+    const shown = Object.fromEntries(Object.entries(current).filter(([k]) => declaredKeys.has(k)))
+    const removed = plan.removals.map(gk => gk.yaml)
+    const status: DiffStatus = plan.changes.length === 0 ? 'extra'
+      : plan.changes.every(c => !(c.gk.yaml in current)) ? 'missing' : 'changed'
+    result.global[name] = {
+      status, desired: declared, ...(Object.keys(shown).length > 0 || status !== 'extra' ? { current: shown } : {}),
+      ...(removed.length > 0 ? { removed } : {}),
+    }
     result.inSync = false
   }
 
@@ -587,9 +592,12 @@ export function formatSummary(diff: DiffResult): string {
     lines.push(`    ${chalk.yellow('~')} version: ${diff.dokku.file} (file) → ${diff.dokku.server} (server)`)
   }
 
+  if (Object.keys(diff.global).length > 0) lines.push(`  global`)
   for (const [name, d] of Object.entries(diff.global)) {
-    const sym = d.status === 'missing' ? chalk.green('+') : d.status === 'unknown' ? chalk.red('?') : chalk.yellow('~')
-    lines.push(`  global`)
+    const sym = d.status === 'missing' ? chalk.green('+')
+      : d.status === 'unknown' ? chalk.red('?')
+      : d.status === 'extra' ? chalk.red('-')
+      : chalk.yellow('~')
     lines.push(`    ${sym} ${name}: ${formatFeatureSummary(d)}`)
   }
 

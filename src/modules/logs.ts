@@ -1,6 +1,5 @@
 import type { Context } from '../core/context.js'
-import { parseJsonReport } from '../resources/parsers.js'
-import { logAction, logDone, logSkip } from '../core/logger.js'
+import { ensureGlobal, type GlobalOptions } from './global.js'
 
 export async function ensureAppLogs(
   ctx: Context,
@@ -12,27 +11,9 @@ export async function ensureAppLogs(
   }
 }
 
-/** Global logs settings from `logs:report --global --format json` (unredacted in json). */
-export async function readGlobalLogs(ctx: Context): Promise<Record<string, string>> {
-  return parseJsonReport(await ctx.queryStrict('logs:report', '--global', '--format', 'json'), 'global')
-}
-
-/** Sets only the global logs settings whose server value differs. */
-export async function ensureGlobalLogs(
-  ctx: Context,
-  logs: Record<string, string | number>
-): Promise<void> {
-  logAction('global', 'Configuring logs')
-  const current = await readGlobalLogs(ctx)
-  let changed = false
-  for (const [key, value] of Object.entries(logs)) {
-    if (current[key] === String(value)) continue
-    await ctx.run('logs:set', '--global', key, String(value))
-    changed = true
-  }
-  if (changed) logDone()
-  else logSkip()
-}
+/** Sets the global logs settings whose server value differs; under `--prune` clears the ones the block dropped. */
+export const ensureGlobalLogs = (ctx: Context, block: Record<string, string | number>, opts: GlobalOptions = {}): Promise<boolean> =>
+  ensureGlobal(ctx, 'logs', block, opts)
 
 export async function exportAppLogs(
   ctx: Context,

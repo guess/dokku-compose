@@ -29,9 +29,15 @@ export interface Resource<T = unknown> {
    * Settings on the server that the file no longer declares (`desired` is
    * undefined when the whole block is gone), as display labels. Computed only
    * over the resource's settable keys, so read-only report lines never appear.
-   * `diff` shows them as `-`; nothing here removes them.
+   * `diff` shows them as `-`; nothing here removes them. `inherited` is the top-level
+   * block of the same name (see `inheritsGlobal`).
    */
-  removals?(current: T, desired: T | undefined): string[]
+  removals?(current: T, desired: T | undefined, inherited?: unknown): string[]
+  /**
+   * The top-level block of the same key is Dokku's `--global` setting for this resource, and
+   * `removals` needs it: `up` and `diff` pass `config[key]` as `inherited`.
+   */
+  inheritsGlobal?: boolean
   /**
    * Returns the `removed` settings (from `removals`) to Dokku's defaults. Called
    * only under `up --prune`, after the normal apply. Never destroys anything.
@@ -47,11 +53,16 @@ export async function reconcile<T>(
   /** Called with the removals found in the state this reconcile already read. */
   onRemovals?: (removed: string[]) => void,
   /** `up --prune`: reset the settings the file no longer declares (one extra read when the block is absent or force-applied). */
-  prune = false
+  prune = false,
+  /**
+   * The top-level block of the same name, for a resource whose `removals` must know what an app
+   * inherits from `--global` (a per-app git `deploy-branch` equal to the global one is a copy).
+   */
+  inherited?: unknown
 ): Promise<void> {
   const canPrune = prune && !!resource.prune && !!resource.removals
   const pruneFrom = async (current: T) => {
-    const removed = resource.removals!(current, desired)
+    const removed = resource.removals!(current, desired, inherited)
     if (removed.length === 0) return
     logAction(target, `${resource.key} (prune)`)
     await resource.prune!(ctx, target, removed, current, desired)
@@ -79,14 +90,14 @@ export async function reconcile<T>(
       await resource.onChange(ctx, target, { before, after: desired, changed: true })
       logDone()
     }
-    if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
+    if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired, inherited))
     if (canPrune) await pruneFrom(before)
     return
   }
-  if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired))
+  if (onRemovals && resource.removals) onRemovals(resource.removals(before, desired, inherited))
   if (canPrune) {
     const change = resource.additive ? computeAdditiveChange(before, desired) : computeChange(before, desired)
-    const pending = resource.removals!(before, desired).length > 0
+    const pending = resource.removals!(before, desired, inherited).length > 0
     if (change.changed) {
       await resource.onChange(ctx, target, change, pending)
       logDone()

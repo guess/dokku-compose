@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createRunner } from '../core/dokku.js'
 import { runExport } from './export.js'
-import { emptyAnswer, logsAppJson } from '../tests/fake-server.js'
+import { emptyAnswer, logsAppJson, globalReportJson, nginxGlobalJson } from '../tests/fake-server.js'
+import { ConfigSchema } from '../core/schema.js'
 
 // Strict reads go through the same stub as lenient ones; an empty JSON
 // report reads as nothing set.
@@ -50,7 +51,7 @@ describe('runExport', () => {
     // logs reads per-app JSON (the bulk report redacts sinks), certs reads the installed certificate, and storage reads per-app JSON (the bulk JSON report is concatenated objects).
     const perApp = ['apps:report', 'ps:report', 'builder:report', 'builder-dockerfile:report', 'app-json:report', 'docker-options:report', 'logs:report', 'certs:report', 'storage:report']
     const perAppReportCalls = queryCalls.filter(
-      c => c[0].endsWith(':report') && c.length >= 2 && !perApp.includes(c[0])
+      c => c[0].endsWith(':report') && c.length >= 2 && !perApp.includes(c[0]) && !c.includes('--global')
     )
     expect(perAppReportCalls).toEqual([])
   })
@@ -148,5 +149,68 @@ describe('runExport', () => {
     stubStrict(runner)
     const result = await runExport(runner, {})
     expect(result.apps.myapp.build).toEqual({ args: { B: '3' } })
+  })
+
+  describe('global settings', () => {
+    function globalRunner(answers: Record<string, string>) {
+      const runner = createRunner({ dryRun: false })
+      runner.query = vi.fn(async (...args: string[]) => {
+        if (args[0] === 'version') return 'dokku version 0.38.32'
+        if (args[0] === 'apps:list') return 'myapp'
+        return answers[args.join(' ')] ?? emptyAnswer(...args) ?? ''
+      })
+      runner.check = vi.fn().mockResolvedValue(false)
+      stubStrict(runner)
+      return runner
+    }
+
+    it('writes each top-level block that holds a value on the server, with typed values', async () => {
+      const result = await runExport(globalRunner({
+        'scheduler:report --global --format json': globalReportJson('scheduler', { selected: 'docker-local' }),
+        'registry:report --global --format json': globalReportJson('registry', { server: 'registry.example.com', 'push-on-release': 'true', 'auth-servers': 'registry.example.com' }),
+        'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
+        'ps:report --global --format json': globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'skip-deploy': 'false' }),
+        'builder:report --global --format json': globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true' }),
+        'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
+        'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net worker-net', 'bind-all-interfaces': 'false', tld: 'internal' }),
+        'proxy:report --global --format json': globalReportJson('proxy', { type: 'nginx', 'proxy-port': '80' }),
+        'git:report --global --format json': globalReportJson('git', { 'deploy-branch': 'main', 'keep-git-dir': 'true', 'archive-max-files': '20000' }),
+        'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '50m' }),
+      }), {})
+      expect(result.scheduler).toBe('docker-local')
+      expect(result.registry).toEqual({ 'push-on-release': true, server: 'registry.example.com' })
+      expect(result.checks).toEqual({ 'wait-to-retire': '30' })
+      expect(result.ps).toEqual({ 'restart-policy': 'on-failure:5', 'skip-deploy': false })
+      expect(result.build).toEqual({ selected: 'dockerfile', skip_cleanup: true, dockerfile: 'Dockerfile' })
+      expect(result.network).toEqual({ attach_post_deploy: ['backend-net', 'worker-net'], bind_all_interfaces: false, tld: 'internal' })
+      expect(result.proxy).toEqual({ type: 'nginx', proxy_port: '80' })
+      expect(result.git).toEqual({ deploy_branch: 'main', keep_git_dir: true, archive_max_files: '20000' })
+      expect(result.nginx).toEqual({ 'client-max-body-size': '50m' })
+      expect(result.logs).toBeUndefined()
+      // What export writes, validate and up read back.
+      expect(() => ConfigSchema.parse(result)).not.toThrow()
+    })
+
+    it('a scheduler with a shell is a map', async () => {
+      const result = await runExport(globalRunner({
+        'scheduler:report --global --format json': globalReportJson('scheduler', { selected: 'docker-local', shell: 'bash' }),
+      }), {})
+      expect(result.scheduler).toEqual({ selected: 'docker-local', shell: 'bash' })
+    })
+
+    it('leaves out a block whose report cannot be read, with a warning, and exports the rest', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const result = await runExport(globalRunner({
+          'scheduler:report --global --format json': 'not json',
+          'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
+        }), {})
+        expect(result.scheduler).toBeUndefined()
+        expect(result.checks).toEqual({ 'wait-to-retire': '30' })
+        expect(warn.mock.calls.map(c => String(c[0])).join('\n')).toContain("could not read 'scheduler'")
+      } finally {
+        warn.mockRestore()
+      }
+    })
   })
 })

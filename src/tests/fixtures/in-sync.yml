@@ -23,6 +23,12 @@ env:
 networks:
   - backend-net
 
+network:
+  attach_post_deploy:
+    - backend-net
+  tld: internal
+  bind_all_interfaces: false
+
 volumes:
   uploads: {}               # default location, chowned to herokuish
   data:
@@ -41,8 +47,33 @@ logs:
   max-size: "50m"
   vector-sink: "console://?encoding[codec]=json"
 
+scheduler: docker-local
+
+registry:
+  server: registry.example.com
+  push-on-release: true
+
+checks:
+  wait-to-retire: 30
+
+ps:
+  restart-policy: "on-failure:5"
+  stop-timeout-seconds: 45
+
+build:
+  selected: dockerfile
+  skip_cleanup: true
+  dockerfile: Dockerfile
+  app_json: app.json
+
+proxy:
+  type: nginx
+  proxy_port: 80
+
 git:
   deploy_branch: main
+  keep_git_dir: true
+  archive_max_files: 20000
 
 postgres:
   myapp-db:

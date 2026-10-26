@@ -7,11 +7,17 @@ import { createHash } from 'crypto'
 import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
-import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, globalReportJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
 const SINK = 'console://?encoding[codec]=json'
+/** `git:report <app>` rows of an app with no git settings of its own: it computes the global ones. */
+const INHERITED_GIT = {
+  'Git global deploy branch': 'main', 'Git computed deploy branch': 'main',
+  'Git global keep git dir': 'true', 'Git computed keep git dir': 'true',
+  'Git global archive max files': '20000', 'Git computed archive max files': '20000',
+}
 
 /** The reads that look for removed settings on an app whose file declares none of these blocks. */
 function nothingSet(name: string): Record<string, string> {
@@ -98,6 +104,18 @@ function inSyncServer(): FakeServer {
         'global-vector-sink': SINK, 'logs-global-vector-sink': SINK, 'computed-vector-sink': SINK, 'logs-computed-vector-sink': SINK,
       }),
       'nginx:report --global --format json': nginxGlobalJson({ 'global-client-max-body-size': '20m' }),
+      'scheduler:report --global --format json': globalReportJson('scheduler', { selected: 'docker-local' }),
+      'registry:report --global --format json': globalReportJson('registry', {
+        'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'true',
+      }),
+      'checks:report --global --format json': globalReportJson('checks', { 'wait-to-retire': '30' }),
+      'ps:report --global --format json': globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'stop-timeout-seconds': '45' }),
+      'builder:report --global --format json': globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true' }),
+      'builder-dockerfile:report --global --format json': globalReportJson('builder-dockerfile', { 'dockerfile-path': 'Dockerfile' }),
+      'app-json:report --global --format json': globalReportJson('app-json', { 'appjson-path': 'app.json' }),
+      'network:report --global --format json': globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal' }),
+      'proxy:report --global --format json': globalReportJson('proxy', { type: 'nginx', 'proxy-port': '80' }),
+      'git:report --global --format json': globalReportJson('git', { 'deploy-branch': 'main', 'keep-git-dir': 'true', 'archive-max-files': '20000' }),
       // Global env as config:export --global prints it: a hand-set key beside the managed ones.
       'config:export --global --format json': JSON.stringify({
         TZ: 'UTC', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X', HAND_SET: 'x',
@@ -174,7 +192,8 @@ function inSyncServer(): FakeServer {
         ],
         'deploy-list': ['--shm-size 256m'],
       }),
-      [`git:report ${app}`]: gitReport(app, { 'Git deploy branch': 'main' }),
+      // No own git settings: the app inherits the global ones (`git:set --global`).
+      [`git:report ${app}`]: gitReport(app, INHERITED_GIT),
 
       // myapp-worker: no cert, all checks disabled, its own deploy branch
       [`certs:report ${worker} --ssl-enabled`]: 'false',
@@ -192,7 +211,7 @@ function inSyncServer(): FakeServer {
       [`certs:report ${edge} --ssl-enabled`]: 'true',
       [`certs:show ${edge} crt`]: CRT,
       [`config:get ${edge} DOKKU_COMPOSE_MANAGED_KEYS`]: '',
-      [`git:report ${edge}`]: gitReport(edge, { 'Git deploy branch': 'main' }),
+      [`git:report ${edge}`]: gitReport(edge, INHERITED_GIT),
       [`config:export --format json ${edge}`]: JSON.stringify({ SET_BY_SCRIPT: 'listed-value' }),
       [`checks:report ${edge}`]: report(edge, 'checks', { 'Checks disabled list': 'none', 'Checks skipped list': 'none' }),
       ...nothingSet(edge),
@@ -648,5 +667,308 @@ describe('a server whose state equals the file', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, loadConfig(FIXTURE), [], { prune: true })
     expect(runner.dryRunLog).toEqual([])
+  })
+})
+
+// The top-level blocks are Dokku's own `--global` settings. Each test changes one value on the
+// in-sync server and checks that `up` sets exactly that, and that `--prune` clears a dropped key.
+describe('top-level global blocks', () => {
+  let log: ReturnType<typeof vi.spyOn>
+  let warn: ReturnType<typeof vi.spyOn>
+  beforeEach(() => {
+    log = vi.spyOn(console, 'log').mockImplementation(() => {})
+    warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  })
+  afterEach(() => { log.mockRestore(); warn.mockRestore() })
+
+  async function up(server: FakeServer, opts: { prune?: boolean } = {}, apps: string[] = []) {
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), apps, opts)
+    return { ctx, log: runner.dryRunLog }
+  }
+
+  it('nginx and logs: a key the declared block dropped is cleared by --prune and left otherwise', async () => {
+    const server = inSyncServer()
+    server.queries['nginx:report --global --format json'] = nginxGlobalJson({ 'global-client-max-body-size': '20m', 'global-hsts': 'true' })
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual(['nginx:set --global hsts'])
+    expect(warn.mock.calls.map(c => String(c[0])).some(l => l.includes('1 global nginx setting(s) no longer in the compose file'))).toBe(true)
+
+    const logs = inSyncServer()
+    logs.queries['logs:report --global --format json'] = logsGlobalJson({
+      'global-max-size': '50m', 'global-vector-sink': SINK, 'global-vector-image': 'timberio/vector:0.36.0-alpine',
+    })
+    expect((await up(logs, { prune: true })).log).toEqual(['logs:set --global vector-image'])
+  })
+
+  it('scheduler: a different global selected is set; a dropped shell is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null', shell: 'bash' })
+    expect((await up(server)).log).toEqual(['scheduler:set --global selected docker-local'])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'scheduler:set --global selected docker-local',
+      'scheduler:set --global shell',
+    ])
+  })
+
+  it('registry: a changed push-on-release is set; a dropped template is pruned; auth-servers is never touched', async () => {
+    const server = inSyncServer()
+    server.queries['registry:report --global --format json'] = globalReportJson('registry', {
+      'auth-servers': 'registry.example.com', server: 'registry.example.com', 'push-on-release': 'false',
+      'image-repo-template': 'example/{{ .AppName }}',
+    })
+    expect((await up(server)).log).toEqual(['registry:set --global push-on-release true'])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'registry:set --global push-on-release true',
+      'registry:set --global image-repo-template',
+    ])
+  })
+
+  it('checks: a changed global wait-to-retire is set and lists no restart; an empty declared block prunes it', async () => {
+    const server = inSyncServer()
+    server.queries['checks:report --global --format json'] = globalReportJson('checks', { 'wait-to-retire': '20' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['checks:set --global wait-to-retire 30'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+
+    const config = loadConfig(FIXTURE)
+    config.checks = {}
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    expect(runner.dryRunLog).toEqual(['checks:set --global wait-to-retire'])
+  })
+
+  it('ps: a changed restart policy is set without a restart listing; a dropped skip-deploy is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['ps:report --global --format json'] = globalReportJson('ps', {
+      'restart-policy': 'always', 'stop-timeout-seconds': '45', 'skip-deploy': 'true',
+    })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['ps:set --global restart-policy on-failure:5'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+    expect((await up(server, { prune: true })).log).toEqual([
+      'ps:set --global restart-policy on-failure:5',
+      'ps:set --global skip-deploy',
+    ])
+  })
+
+  it('build: a changed global key sets it with its own command and lists the apps that do not set it for rebuild', async () => {
+    const server = inSyncServer()
+    server.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'pack', 'skip-cleanup': 'true' })
+    server.queries['builder-dockerfile:report --global --format json'] = globalReportJson('builder-dockerfile', { 'dockerfile-path': 'old/Dockerfile' })
+    const changed = await up(server, {}, ['myapp', 'myapp-worker'])
+    expect(changed.log).toEqual([
+      'builder-dockerfile:set --global dockerfile-path Dockerfile',
+      'builder:set --global selected dockerfile',
+    ])
+    // myapp sets build.dockerfile itself, so only `selected` reaches it; both reach the worker.
+    expect([...changed.ctx.rebuilds.keys()].sort()).toEqual(['myapp', 'myapp-worker'])
+    const skip = inSyncServer()
+    skip.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'dockerfile' })
+    const cleanup = await up(skip, {}, ['myapp'])
+    expect(cleanup.log).toEqual(['builder:set --global skip-cleanup true'])
+    expect(cleanup.ctx.rebuilds.size).toBe(0)
+  })
+
+  it('build: --prune clears a dropped key with its own command', async () => {
+    const server = inSyncServer()
+    server.queries['builder:report --global --format json'] = globalReportJson('builder', { selected: 'dockerfile', 'skip-cleanup': 'true', 'build-dir': 'apps/api' })
+    server.queries['app-json:report --global --format json'] = globalReportJson('app-json', { 'appjson-path': 'app.json' })
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual(['builder:set --global build-dir'])
+  })
+
+  it('network: a changed attach_post_deploy lists for rebuild only the apps without their own networks:', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', { tld: 'internal' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['network:set --global attach-post-deploy backend-net'])
+    expect([...changed.ctx.rebuilds.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+    expect(changed.ctx.restarts.size).toBe(0)
+  })
+
+  it('network: a changed tld lists for restart only the apps without their own tld', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'cluster.local' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['network:set --global tld internal'])
+    expect([...changed.ctx.restarts.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+    // A run limited to one app lists only it; apps outside the run are never listed.
+    const limited = await up(server, {}, ['myapp-worker'])
+    expect([...limited.ctx.restarts.keys()]).toEqual(['myapp-worker'])
+  })
+
+  it('network: bind_all_interfaces false is in sync when unset and set to false when the server says true', async () => {
+    const server = inSyncServer()
+    expect((await up(server)).log).toEqual([])
+    server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal', 'bind-all-interfaces': 'true' })
+    expect((await up(server)).log).toEqual(['network:set --global bind-all-interfaces false'])
+  })
+
+  it('network: --prune clears a dropped key and lists the apps, but never attach_post_deploy', async () => {
+    const server = inSyncServer()
+    server.queries['network:report --global --format json'] = globalReportJson('network', {
+      'attach-post-deploy': 'backend-net', tld: 'internal', 'initial-network': 'bridge',
+    })
+    expect((await up(server)).log).toEqual([])
+    const pruned = await up(server, { prune: true })
+    expect(pruned.log).toEqual(['network:set --global initial-network'])
+    // myapp sets initial_network itself, so the cleared global value does not reach it.
+    expect([...pruned.ctx.rebuilds.keys()].sort()).toEqual(['myapp-edge', 'myapp-worker'])
+
+    const config = loadConfig(FIXTURE)
+    config.network = { tld: 'internal' }
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    expect(runner.dryRunLog).toEqual(['network:set --global initial-network'])
+  })
+
+  it('a block the file does not declare is never read or touched, even under --prune', async () => {
+    const config = loadConfig(FIXTURE)
+    for (const name of ['scheduler', 'registry', 'checks', 'ps', 'build', 'network', 'proxy', 'git', 'nginx', 'logs'] as const) delete (config as any)[name]
+    const server = inSyncServer()
+    // Settings made outside the file.
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null' })
+    server.queries['git:report --global --format json'] = globalReportJson('git', { 'deploy-branch': 'master' })
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { prune: true })
+    const reads = (runner.queryStrict as any).mock.calls.map((c: string[]) => c.join(' '))
+    expect(reads.filter((r: string) => r.includes('--global') && /^(scheduler|registry|checks|ps|builder|network|proxy|git|nginx|logs):/.test(r))).toEqual([])
+    expect(runner.dryRunLog.filter(c => c.includes('--global'))).toEqual([])
+  })
+
+  it('a failing global step aborts the run before any app is processed', async () => {
+    const server = inSyncServer()
+    server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', { selected: 'null' })
+    const { ctx, runner } = fakeContext(server)
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'scheduler:set') throw new Error('dokku scheduler:set failed')
+    })
+    await expect(runUp(ctx, loadConfig(FIXTURE), [])).rejects.toThrow('scheduler:set failed')
+    expect((runner.run as any).mock.calls.filter((c: string[]) => c[0] === 'apps:create')).toEqual([])
+    expect(ctx.commands.some(c => c[0] === 'ports:set' || c[0] === 'git:set')).toBe(false)
+  })
+
+  it('an unreadable global report aborts the run too', async () => {
+    const server = inSyncServer()
+    server.queries['ps:report --global --format json'] = 'not json'
+    await expect(runUp(fakeContext(server).ctx, loadConfig(FIXTURE), [])).rejects.toThrow(/json/)
+  })
+
+  describe('diff shows the global blocks under global', () => {
+    const diffOf = (server: FakeServer, mutate: (c: ReturnType<typeof loadConfig>) => void = () => {}) => {
+      const config = loadConfig(FIXTURE)
+      mutate(config)
+      return computeDiff(fakeContext(server).ctx, config)
+    }
+
+    it('a changed value is ~, a value the server lacks is +, and both count as drift', async () => {
+      const server = inSyncServer()
+      server.queries['registry:report --global --format json'] = globalReportJson('registry', { server: 'old.example.com', 'push-on-release': 'true' })
+      server.queries['scheduler:report --global --format json'] = globalReportJson('scheduler', {})
+      server.queries['checks:report --global --format json'] = globalReportJson('checks', {})
+      const diff = await diffOf(server)
+      expect(diff.global.registry).toMatchObject({ status: 'changed', desired: { server: 'registry.example.com', 'push-on-release': true }, current: { server: 'old.example.com', 'push-on-release': 'true' } })
+      expect(diff.global.scheduler).toMatchObject({ status: 'missing', desired: 'docker-local' })
+      expect(diff.global.checks).toMatchObject({ status: 'missing' })
+      expect(diff.inSync).toBe(false)
+      const summary = formatSummary(diff)
+      expect(summary.match(/^  global$/gm)).toHaveLength(1)
+      expect(summary).toMatch(/~ registry/)
+      expect(summary).toMatch(/\+ scheduler/)
+      expect(formatVerbose(diff)).toContain('@@ global / registry @@')
+    })
+
+    it('a key the declared block dropped is - and counts as drift', async () => {
+      const server = inSyncServer()
+      server.queries['ps:report --global --format json'] = globalReportJson('ps', { 'restart-policy': 'on-failure:5', 'stop-timeout-seconds': '45', 'skip-deploy': 'true' })
+      server.queries['network:report --global --format json'] = globalReportJson('network', { 'attach-post-deploy': 'backend-net', tld: 'internal', 'initial-network': 'bridge' })
+      const diff = await diffOf(server)
+      expect(diff.global.ps).toMatchObject({ status: 'extra', removed: ['skip-deploy'] })
+      expect(diff.global.network).toMatchObject({ status: 'extra', removed: ['initial_network'] })
+      expect(diff.inSync).toBe(false)
+      expect(formatSummary(diff)).toContain('not in the file: skip-deploy')
+      expect(formatVerbose(diff)).toContain('- skip-deploy (not in the file)')
+    })
+
+    it('a block the file does not declare is never read or shown', async () => {
+      const server = inSyncServer()
+      server.queries['ps:report --global --format json'] = globalReportJson('ps', { 'restart-policy': 'always' })
+      const diff = await diffOf(server, c => { delete (c as any).ps })
+      expect(diff.global.ps).toBeUndefined()
+      expect(diff.inSync).toBe(true)
+    })
+
+    it('an attach_post_deploy the block does not declare is not a removal', async () => {
+      const server = inSyncServer()
+      const diff = await diffOf(server, c => { c.network = { tld: 'internal', bind_all_interfaces: false } })
+      expect(diff.global.network).toBeUndefined()
+      expect(diff.inSync).toBe(true)
+    })
+
+    it('an unreadable global report is unknown, not missing', async () => {
+      const server = inSyncServer()
+      server.queries['git:report --global --format json'] = 'not json'
+      const diff = await diffOf(server)
+      expect(diff.global.git).toMatchObject({ status: 'unknown' })
+      expect(diff.readWarnings.join('\n')).toContain("could not read global 'git'")
+      expect(diff.inSync).toBe(false)
+    })
+
+    it('a log sink under global is masked in the output', async () => {
+      const server = inSyncServer()
+      server.queries['logs:report --global --format json'] = logsGlobalJson({ 'global-max-size': '50m', 'global-vector-sink': 'http://user:secret@logs.example.com' })
+      const diff = await diffOf(server)
+      expect(diff.global.logs).toMatchObject({ status: 'changed' })
+      expect(JSON.stringify(maskDiffResult(diff))).not.toContain('secret')
+    })
+  })
+
+  it('proxy: a changed type or port is set and lists no restart; a dropped key is pruned; enabled stays per app', async () => {
+    const server = inSyncServer()
+    server.queries['proxy:report --global --format json'] = globalReportJson('proxy', { type: 'caddy', 'proxy-port': '80', 'proxy-ssl-port': '443' })
+    const changed = await up(server)
+    expect(changed.log).toEqual(['proxy:set --global type nginx'])
+    expect(changed.ctx.restarts.size + changed.ctx.rebuilds.size).toBe(0)
+    expect((await up(server, { prune: true })).log).toEqual(['proxy:set --global type nginx', 'proxy:set --global proxy-ssl-port'])
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.global.proxy).toMatchObject({ status: 'changed', removed: ['proxy_ssl_port'] })
+  })
+
+  it('git: a changed global value is set, including the limits that exist only globally; a dropped key is pruned', async () => {
+    const server = inSyncServer()
+    server.queries['git:report --global --format json'] = globalReportJson('git', {
+      'deploy-branch': 'master', 'keep-git-dir': 'true', 'archive-max-files': '5000', 'archive-max-size': '1073741824',
+    })
+    expect((await up(server)).log).toEqual([
+      'git:set --global deploy-branch main',
+      'git:set --global archive-max-files 20000',
+    ])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'git:set --global deploy-branch main',
+      'git:set --global archive-max-files 20000',
+      'git:set --global archive-max-size',
+    ])
+  })
+
+  it('git migration: what the old top-level git: copied onto an app is a diff removal and --prune clears it', async () => {
+    const server = inSyncServer()
+    // The old behaviour wrote the top-level block onto every app that had no git: of its own.
+    server.queries['git:report myapp'] = gitReport('myapp', { ...INHERITED_GIT, 'Git deploy branch': 'main', 'Git keep git dir': 'true' })
+    // An app with a different deploy branch chose it: an override, not a copy.
+    server.queries['git:report myapp-edge'] = gitReport('myapp-edge', { ...INHERITED_GIT, 'Git deploy branch': 'release', 'Git keep git dir': 'true' })
+
+    const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
+    expect(diff.apps.myapp.git).toMatchObject({ status: 'extra', removed: ['deploy_branch', 'keep_git_dir'] })
+    expect(diff.apps['myapp-edge'].git).toMatchObject({ status: 'extra', removed: ['keep_git_dir'] })
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('not in the file: deploy_branch, keep_git_dir')
+
+    expect((await up(server)).log).toEqual([])
+    expect((await up(server, { prune: true })).log).toEqual([
+      'git:set myapp deploy-branch',
+      'git:set myapp keep-git-dir',
+      'git:set myapp-edge keep-git-dir',
+    ])
   })
 })
