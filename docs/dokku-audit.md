@@ -73,10 +73,10 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `openresty` |  |  | 3 | 5 |
 | `plugin` | 3 |  | 3 | 3 |
 | `ports` | 2 |  |  | 4 |
-| `postgres` | 12 | 2 | 4 | 24 |
+| `postgres` | 15 | 1 | 2 | 24 |
 | `proxy` | 5 |  |  | 1 |
 | `ps` | 3 |  |  | 6 |
-| `redis` | 12 | 2 | 4 | 22 |
+| `redis` | 15 | 1 | 2 | 22 |
 | `registry` | 5 |  |  |  |
 | `repo` |  |  |  | 2 |
 | `resource` |  |  | 5 |  |
@@ -88,7 +88,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 6 |  |  | 11 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **99** | **4** | **66** | **186** |
+| **Total** | **105** | **2** | **62** | **186** |
 <!-- /generated:summary -->
 
 ## Priorities

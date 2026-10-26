@@ -7,8 +7,6 @@ import {
   parseServiceMountString, serviceMountIssues, declaredServiceMounts, type ServiceMountItem,
 } from './volume-rules.js'
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
-import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs } from '../modules/service-property-keys.js'
-import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs } from '../modules/service-property-keys.js'
 import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs, cleanPath } from '../modules/service-property-keys.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
