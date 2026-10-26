@@ -163,8 +163,8 @@ proxy:build-config	R	Run after `nginx:set` (hidden in help)
 proxy:clear-config	X	Maintenance
 proxy:disable	Y	`proxy.enabled: false`
 proxy:enable	Y	`proxy.enabled: true`
-proxy:report	R	`proxy` read
-proxy:set	P	`proxy.type`, `proxy.proxy_port`, `proxy.proxy_ssl_port` per app; no top-level `proxy:` (`--global`) by design: dokku-compose runs the nginx proxy only (F10)
+proxy:report	R	`proxy` read, per app and `--global`
+proxy:set	Y	`proxy.type`, `proxy.proxy_port`, `proxy.proxy_ssl_port` per app and in the top-level `proxy:` (`--global`)
 ps:inspect	X	Read-only
 ps:rebuild	X	Runtime action
 ps:report	R	`scale`, `ps` read, per app and `--global`; deployed check

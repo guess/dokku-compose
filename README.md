@@ -58,7 +58,7 @@ dokku-compose diff
   1 resource(s) out of sync.
 ```
 
-When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `env:`, `nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:` and `git:` (under `global`; log sinks are masked), shared networks and storage entries (`volumes:`) missing or different on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
+When `diff` says a box is in sync, `up` runs no command on it. `diff` also covers the top-level `domains:`, `env:`, `nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:`, `proxy:` and `git:` (under `global`; log sinks are masked), shared networks and storage entries (`volumes:`) missing or different on the server, and a replaced `ssl.certfile` (compared with the installed certificate). `diff --verbose` prints `Everything in sync.` when nothing differs. `diff` also notes, by name only, each app env key the file does not declare (a key set by hand or by a script); a note is not drift and never changes the exit code. List the keys something else sets under the app's `env_external:` and `diff` stops noting them ([config](docs/reference/config.md#keys-set-elsewhere-appsappenv_external)).
 
 ### 3. Preview changes
 
@@ -141,7 +141,7 @@ A top-level (global) change also reaches apps that are not in the file or that t
 
 `diff` marks with a red `-` every setting the server still has that the file no longer declares
 (managed env keys, nginx, logs, registry, scheduler, checks, `ps`, network, proxy and git
-properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. A key set globally on the server that a declared top-level block (`nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:`, `git:`) no longer lists is shown too, under `global`; a top-level block that is absent from the file is never read, so settings made outside the file stay. Only
+properties, build settings and args, and entries missing from a declared list), including when the whole block is gone. A key set globally on the server that a declared top-level block (`nginx:`, `logs:`, `scheduler:`, `registry:`, `checks:`, `ps:`, `build:`, `network:`, `proxy:`, `git:`) no longer lists is shown too, under `global`; a top-level block that is absent from the file is never read, so settings made outside the file stay. Only
 settable keys count, never read-only report lines, and a `-` counts as drift. It also warns when
 an app has no `links:` but has services linked on the server, because `up` unlinks them.
 
@@ -152,7 +152,7 @@ an app has no `links:` but has services linked on the server, because `up` unlin
 | Resource | Reset command |
 |----------|---------------|
 | `nginx`, `logs`, `registry`, `ps` (not the Dokku-written `ps` key `restore`) | `<plugin>:set <app> <key>` with no value (Dokku's default); nginx then rebuilds the proxy config |
-| top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network`, `git` (only the keys of a block the file declares) | `<plugin>:set --global <key>` with no value (`builder:set`, `builder-dockerfile:set` and `app-json:set` for `build`; `network` never clears `attach_post_deploy`) |
+| top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network`, `proxy`, `git` (only the keys of a block the file declares) | `<plugin>:set --global <key>` with no value (`builder:set`, `builder-dockerfile:set` and `app-json:set` for `build`; `network` never clears `attach_post_deploy`) |
 | `scheduler` | `scheduler:set <app> selected` or `shell` |
 | `proxy` properties | `proxy:set <app> type` with no value (`proxy-port` and `proxy-ssl-port` are written by Dokku) |
 | `network` properties | `network:set <app> <key>` with no value (`attach_post_create` becomes `attach-post-create`, and so on) |
@@ -165,7 +165,7 @@ It covers a block that is gone from the file as well as keys removed from a decl
 
 ### Order of a run
 
-`up` applies the host and global settings first, then each app. The global part runs in this order: version check, plugins and Docker auth, global `domains`, `env`, `logs`, `nginx`, `scheduler`, `registry`, `checks`, `ps`, `build` and `git`, then the shared `networks` are created, the global `network` properties are set and the `volumes:` entries are created, then services. Every app is processed after all of that, so a per-app value, or a `--prune` that clears one, always meets the final global value. The top-level blocks are Dokku's own `--global` settings: Dokku does the inheritance, and a block that is absent from the file is never touched.
+`up` applies the host and global settings first, then each app. The global part runs in this order: version check, plugins and Docker auth, global `domains`, `env`, `logs`, `nginx`, `scheduler`, `registry`, `checks`, `ps`, `build`, `proxy` and `git`, then the shared `networks` are created, the global `network` properties are set and the `volumes:` entries are created, then services. Every app is processed after all of that, so a per-app value, or a `--prune` that clears one, always meets the final global value. The top-level blocks are Dokku's own `--global` settings: Dokku does the inheritance, and a block that is absent from the file is never touched.
 
 ### Errors
 
@@ -193,7 +193,7 @@ All features are idempotent — running `up` twice produces no changes.
 | Domains | Configure domains per app or globally | [domains](docs/reference/domains.md) |
 | Port Mappings | Map external ports to container ports | [ports](docs/reference/ports.md) |
 | SSL Certificates | Add, replace or remove SSL certs | [certs](docs/reference/certs.md) |
-| Proxy | Enable/disable proxy, select implementation | [proxy](docs/reference/proxy.md) |
+| Proxy | Enable/disable proxy, select implementation per app or globally | [proxy](docs/reference/proxy.md) |
 | Storage | Named storage entries (`volumes:`) with owner and mode, mounted into apps by name and converged with `storage:mount --replace` | [storage](docs/reference/storage.md) |
 | Nginx | Set any nginx property per app or globally | [nginx](docs/reference/nginx.md) |
 | Scheduler | Select the scheduler and shell per app or globally (`scheduler:set`) | [scheduler](docs/reference/scheduler.md) |
@@ -210,7 +210,7 @@ All features are idempotent — running `up` twice produces no changes.
 
 ### Global defaults
 
-A top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network` or `git` block is Dokku's own `--global` setting for that namespace: apps without their own value inherit it, and Dokku does the inheriting. The keys are the per-app ones that Dokku accepts globally.
+A top-level `nginx`, `logs`, `scheduler`, `registry`, `checks`, `ps`, `build`, `network`, `proxy` or `git` block is Dokku's own `--global` setting for that namespace: apps without their own value inherit it, and Dokku does the inheriting. The keys are the per-app ones that Dokku accepts globally.
 
 ```yaml
 git:
@@ -283,7 +283,7 @@ dokku-compose/
 │   │   ├── config.ts         # dokku config:* (global)
 │   │   ├── docker-auth.ts    # docker login for docker_auth
 │   │   ├── domains.ts        # dokku domains:* (global)
-│   │   ├── global.ts         # <ns>:set --global for the top-level nginx, logs, scheduler, registry, checks, ps, build, network and git blocks
+│   │   ├── global.ts         # <ns>:set --global for the top-level nginx, logs, scheduler, registry, checks, ps, build, network, proxy and git blocks
 │   │   ├── links.ts          # Service link resolution across plugins
 │   │   ├── logs.ts           # dokku logs:* (per-app helpers)
 │   │   ├── network.ts        # dokku network:create
