@@ -1,6 +1,7 @@
 import * as fs from 'fs'
 import * as yaml from 'js-yaml'
 import { ConfigSchema } from '../core/schema.js'
+import { PLUGIN_SET_KEYS, TESTED_PLUGIN_VERSION, rejectedReason } from '../modules/service-property-keys.js'
 
 export interface ValidationResult {
   errors: string[]
@@ -60,6 +61,18 @@ export function validate(filePath: string): ValidationResult {
         if (typeof link === 'string' && !serviceNames.has(link)) {
           errors.push(`apps.${appName}.links: service "${link}" not defined in postgres or redis`)
         }
+      }
+    }
+  }
+
+  // 4b. Service properties the tested plugin version does not list (warnings only: `up` passes them on)
+  for (const plugin of ['postgres', 'redis'] as const) {
+    for (const [svc, cfg] of Object.entries<any>(data?.[plugin] && typeof data[plugin] === 'object' ? data[plugin] : {})) {
+      const props = cfg?.properties
+      if (!props || typeof props !== 'object' || Array.isArray(props)) continue
+      for (const key of Object.keys(props)) {
+        if (PLUGIN_SET_KEYS[plugin].includes(key) || rejectedReason(key)) continue
+        warnings.push(`${plugin}.${svc}.properties.${key}: not a ${plugin}:set key of dokku-${plugin} ${TESTED_PLUGIN_VERSION}; up passes it on and fails the service if the plugin refuses it`)
       }
     }
   }

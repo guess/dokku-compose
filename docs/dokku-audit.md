@@ -73,10 +73,10 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `openresty` |  |  | 3 | 5 |
 | `plugin` | 3 |  | 3 | 3 |
 | `ports` | 2 |  |  | 4 |
-| `postgres` | 12 | 2 | 4 | 24 |
+| `postgres` | 15 | 1 | 2 | 24 |
 | `proxy` | 5 |  |  | 1 |
 | `ps` | 3 |  |  | 6 |
-| `redis` | 12 | 2 | 4 | 22 |
+| `redis` | 15 | 1 | 2 | 22 |
 | `registry` | 5 |  |  |  |
 | `repo` |  |  |  | 2 |
 | `resource` |  |  | 5 |  |
@@ -88,7 +88,7 @@ Commands by namespace (✅ includes commands dokku-compose only reads with):
 | `storage` | 6 |  |  | 11 |
 | `trace` |  |  |  | 2 |
 | `traefik` |  |  | 3 | 5 |
-| **Total** | **99** | **4** | **66** | **186** |
+| **Total** | **105** | **2** | **62** | **186** |
 <!-- /generated:summary -->
 
 ## Priorities
@@ -109,10 +109,11 @@ say what shipped), 🟡 partial (shipped, with what is left in the Notes), ❌ t
 | F5 | **Property lists behind Dokku 0.38.31** | ✅ [#25](https://github.com/guess/dokku-compose/pull/25) | Every app-scope `:set` key of nginx, logs, ps, network, proxy, scheduler, builder, git, registry and checks is in a list, the schema and `validate`; `diff` and `--prune` see them all. `checks:` takes only `wait-to-retire` (plus `disabled`/`skipped`), and `registry:` rejects the report-only `auth-servers`. `src/tests/property-keys.test.ts` derives each namespace's settable keys from real Dokku 0.38.31 `<ns>:report --format json` output checked in under `src/tests/fixtures/dokku-0.38.31/reports/` and compares them with the lists. Keys Dokku writes itself (git `deploy-branch` and `source-image`, proxy `proxy-port` and `proxy-ssl-port`, ps `restore`) are compared only when declared and never counted as removals. Global scopes stay in F10. | 3 |
 | F6 | **Link options** | ✅ [#24](https://github.com/guess/dokku-compose/pull/24) | A `links:` entry is a name or `{ service, alias?, env_var?, querystring? }`, passed as `--alias`, `--env-var`, `--querystring`. `diff` reads the variable and its querystring from the app's env; changed options unlink then link. | 2 |
 | F7 | **Redis backups** | ✅ [#38](https://github.com/guess/dokku-compose/pull/38) | `redis.<name>.backup` takes exactly the keys of postgres (`schedule`, `bucket`, `auth`, `encryption`, `storage_class`, `object_name`, `mailto`, `timestamp`, or `false`) through the same code, read from `redis:info --format json` (dokku-redis 2.4.0 reports the same `backup-*` keys, `backup-auth-fingerprint` included). Needs dokku-redis 2.3.1 or later; `export` writes the block too. | 2 |
-| F8 | **Datastore settings after create** | ❌ | No create flag beyond `--image`/`--image-version`, and no `:set` beyond `backup-bucket`. dokku-postgres/redis 2.x make every setting a reconcilable `:set` property: `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `post-start-network`, `restart-policy`, `log-driver`, `log-opt`, `expose-*`, plus `:mount`. Needs a design first: which keys apply only at create or after a restart, masking `password` and `custom-env`, whether `expose` is worth it on Docker 29, and splitting the work. | 5 |
+| F8 | **Datastore settings after create** | ✅ [#41](https://github.com/guess/dokku-compose/pull/41) | `postgres.<name>` and `redis.<name>` take `properties:` (a map keyed by the plugin's own `:set` names) and `mounts:`. `up` reads `<plugin>:info --format json`, compares and runs `<plugin>:set <svc> <key> -- <value>` for what differs; `mounts:` lists `volumes:` entries (`<entry>:<container-dir>` or `{ entry, container_dir, readonly?, options? }`), resolved to host paths for `:mount --replace` and `:create --volume`, and `mounts: []` runs `:unmount --all`; `export` maps a host path back to an entry or adds one with `path:`. A built-in table covers the managed keys: `password` (compared by fingerprint, applied with `--no-restart`, linked apps added to the restart summary, never pruned), `custom-env` (a map, `;` rejected), the network and `log-opt` lists (compared as sets), `memory` (`0` is unset), `volume-targets` (a map, compared as a set, `--volume-target` once per entry), the `:create` flags (a new service is created with them, so it is not restarted) and the keys that need stop and start. `backup-*`, `expose-*`, `port-*`, `export-args`, `import-args`, `root-password` and `service-memory` (the plugins have neither) are rejected; any other key passes through, compares as an exact string and only warns in `validate`. `up` never restarts a service: it lists `dokku <plugin>:stop <svc> && dokku <plugin>:start <svc>  # keys` (`Context.needsServiceRestart`). A key the plugin refuses fails that service's step: the run goes on and ends non-zero. `diff` shows `~` for a difference and `-` for a known key the server holds and the file omits, which only `up --prune` clears (never the password, never a whole `mounts` list). `password` and `custom-env` values are masked in logs, `diff` and the dry-run listing unless `--sensitive`. `export` writes `properties` and `mounts` (no password; `custom-env` values as `REPLACE_ME`). The known-key list is pinned by a fixture of the plugins' readmes (`src/tests/fixtures/datastore-2.4.0`). Expose is F12. | 5 |
 | F9 | **Named storage entries** | ✅ [#39](https://github.com/guess/dokku-compose/pull/39) | A top-level `volumes:` block declares entries (`storage:create <name> [<path>] [--chown] [--mode]`, then `storage:set <name> chown\|mode` on a difference). An entry at the default location is chowned to `herokuish` unless `chown` says otherwise (`chown: false` opts out); one with a `path:` is left alone, since Dokku refuses owner and mode there. Apps mount entries by name in `storage:` as `entry:container-dir` or a map with `readonly`, `phases`, `options` and `process_type`, converged per process type with `storage:mount --replace` and `storage:unmount --all --process-type` (the host-path string form is gone; `subpath` and `volume_chown` are left out because docker-local stores but never applies them). Dokku floor 0.38.32. An entry dropped from the file is never destroyed, `--prune` included, and `diff` notes it. `diff` reads `storage:list-entries` and `storage:report <app> --format json`; `export` writes `legacy-*` entries as named entries with `path:`, so a box moves off its `legacy-<hash>` mounts without a copy (see [storage](reference/storage.md#migrating-host-path-mounts)). Left out: the k3s entry properties, annotations, labels and `reclaim-policy`. | 5 |
 | F10 | **Global defaults for supported namespaces** | ✅ [#40](https://github.com/guess/dokku-compose/pull/40) | Top-level `scheduler`, `registry`, `checks`, `ps`, `build` (builder, builder-dockerfile, app-json), `network`, `proxy` and `git` blocks run `<ns>:set --global`, as `nginx` and `logs` already did, and Dokku does the inheritance. They take the keys Dokku 0.38.31 accepts with `--global` (`src/modules/global.ts`, checked against real report output in `src/tests/global-keys.test.ts`); per-app-only keys (registry `image-repo`, git `rev_env_var`, ps `start-cmd`, checks `disabled`, build `args`, …) are rejected with a reason, and the global-only git limits `archive_max_files` and `archive_max_size` are declarable. The plural `networks:` stays the list of networks to create; `validate` points a list under `network:` or properties under `networks:` to the right key, and global `attach_post_deploy` is `network.attach_post_deploy`. `up` reads `<ns>:report --global --format json` and sets only what differs, in the global phase before any app (network right after the shared networks exist); a failing or unreadable global step aborts the run. `diff` shows every declared block under `global` (`~`, `+`, and `-` for a key the block dropped) and `export` writes the server's global values back, nginx and logs included. `up --prune` clears a key that left a declared top-level block with `<ns>:set --global <key>` (never `attach_post_deploy`); a block absent from the file is never read or touched. A changed global `network` or `build` key lists the processed apps that do not set it themselves for restart or rebuild; apps outside the file or the run are never listed. `proxy` takes `type`, `proxy_port` and `proxy_ssl_port` (`enabled` has no global form); a global `type` switches every app without its own `proxy.type`, and dokku-compose is tested with nginx. **Breaking:** top-level `git:` is no longer copied onto each app without its own `git:`; the copies it wrote show in `diff` as removals (`keep-git-dir`, and a `deploy-branch` equal to the top-level one when the app does not declare its own) and `up --prune` clears them, while a different `deploy-branch` is an override and stays. Global nginx and logs gained `diff` removals, `--prune` and `export`. | 3 |
 | F11 | **Backups authenticating with an instance role (`use_iam`)** | ❌ | `backup.use_iam: true` for a service on a host with an instance role, making `backup.auth` optional (required otherwise). Applied with `:backup-schedule <svc> <schedule> <bucket> --use-iam` and read back from `backup-use-iam` in `<plugin>:info`. `backup-use-iam` is a property of the schedule, so `set backup-use-iam` and `set backup-bucket` fail without a schedule: `up` must (re)schedule rather than `:set` it, and `use_iam` without `schedule` is rejected by `validate`. Switching from credentials to an instance role also needs a decision on `:backup-deauth`. Postgres and redis, after F3 and F7. | 2 |
+| F12 | **Datastore `expose`** | ❌ | Ships after F8, on its generic property path. `expose: { ports, mode, host, bind_address, source_range }` or `expose: false` on a postgres or redis service. `mode` defaults to `direct` (no ambassador container). Runs `:set` for `expose-mode`, `expose-host`, `port-bind-address`, `port-source-range`, then `:expose`/`:unexpose` when the ports differ. `source_range` with `mode: direct` is a `validate` error (Docker cannot enforce it). A direct-mode port change on a running service needs stop and start, so `up` lists `:expose <svc> <ports> --force` in the restart summary instead of forcing it. Until then `expose-*`, `port-bind-address` and `port-source-range` are rejected in `properties:`. | 2 |
 
 ### Add new namespaces
 
@@ -213,8 +214,9 @@ does not accept the property there.
 | `openresty:set` | `allowed-letsencrypt-domains-func-base64`, `image`, `log-level`, `letsencrypt-email`, `letsencrypt-server` | — | ❌ | A9 |
 | `traefik:set` | 15 keys (`api-*`, `dashboard-enabled`, `challenge-mode`, `letsencrypt-*`, …) | — | ❌ | A9 |
 | `scheduler-k3s:set` | 11 app keys, more global | ❌ | ❌ | A12 (not planned) |
-| `postgres:set` / `redis:set` | `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `post-start-network`, `restart-policy`, `log-driver`, `log-opt`, `wait-timeout`, `volume-targets`, `password` | ❌ | — | F8 (`image`, `version` are create flags today) |
-| `postgres:set` / `redis:set` | `expose-host`, `expose-mode`, `port-bind-address`, `port-source-range` | ❌ | — | F8 |
+| `postgres:set` / `redis:set` | `memory`, `shm-size`, `custom-env`, `config-options`, `initial-network`, `post-create-network`, `post-start-network`, `restart-policy`, `log-driver`, `log-opt`, `wait-timeout`, `volume-targets`, `password` | ✅ | — | `properties:`; `password` by fingerprint; also `:create` flags |
+| `postgres:set` / `redis:set` | `service-memory` | ⛔ | — | Not in 2.4.0 postgres or redis (the plugin refuses it); rejected in `properties:` |
+| `postgres:set` / `redis:set` | `expose-host`, `expose-mode`, `port-bind-address`, `port-source-range` | ❌ | — | F12; rejected in `properties:` until then |
 | `postgres:set` / `redis:set` | `export-args`, `import-args` | ⛔ | — | Only affect one-shot data operations |
 | `postgres:set` / `redis:set` | `backup-*` (bucket, credentials, endpoint, encryption, schedule options) | ✅ | ✅ | `backup:` reads them from `<plugin>:info` and sets credentials and schedule with `:backup-auth`/`:backup-schedule`, a lone bucket change with `backup-bucket`, encryption with `backup-encryption-passphrase`/`backup-public-key-id`/`backup-keyserver`, and `backup-storage-class`/`-object-name`/`-mailto`/`-timestamp`; `backup-use-iam` is F11 |
 
@@ -565,21 +567,21 @@ Every Dokku v0.38.31 command, grouped by area. "What it does" is Dokku's own hel
 
 | Subcommand | postgres | redis | dokku-compose |
 |---|:-:|:-:|---|
-| `:create` | 🟡 | 🟡 | `postgres.<name>` / `redis.<name>` with `image`, `version`; create only; a later `version`/`image` change is shown as drift and warned about, not applied (F2); other create flags missing (F8) |
+| `:create` | ✅ | ✅ | `postgres.<name>` / `redis.<name>` with `image`, `version` and the `properties:` and `mounts:` create flags; a later `version`/`image` change is shown as drift and warned about, not applied (F2) |
 | `:destroy` | ✅ | ✅ | `down` |
-| `:info` | ✅ | ✅ | `diff`, `up` and `export`: version, image and backup settings |
+| `:info` | ✅ | ✅ | `diff`, `up` and `export`: version, image, backup settings, properties and mounts |
 | `:list` | ✅ | ✅ | `export` |
 | `:exists` | ✅ | ✅ | Before create and in `diff` |
 | `:logs` | ⛔ | ⛔ | Read-only |
 | `:link` | ✅ | ✅ | `apps.<app>.links` with `--alias`, `--env-var`, `--querystring` |
 | `:unlink` | ✅ | ✅ | `links` removal, `down` |
-| `:set` | 🟡 | 🟡 | `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; F11: `backup-use-iam` |
-| `:mount` | ❌ | ❌ | F8 |
-| `:unmount` | ❌ | ❌ | F8 |
+| `:set` | 🟡 | 🟡 | `properties:` (memory, shm-size, custom-env, config-options, networks, restart-policy, log options, wait-timeout, volume-targets, password), `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); expose F12; `backup-use-iam` F11 |
+| `:mount` | ✅ | ✅ | `mounts:` (`volumes:` entries resolved to host paths; `--replace`, the whole set) |
+| `:unmount` | ✅ | ✅ | `mounts: []` (`--all`) |
 | `:connect` | ⛔ | ⛔ | Interactive |
 | `:enter` | ⛔ | ⛔ | Interactive |
-| `:expose` | ❌ | ❌ | postgres: F8 (low: its ambassador container breaks on Docker 29); redis: F8 |
-| `:unexpose` | ❌ | ❌ | F8 |
+| `:expose` | ❌ | ❌ | postgres: F12 (low: its ambassador container breaks on Docker 29); redis: F12 |
+| `:unexpose` | ❌ | ❌ | F12 |
 | `:reexpose` | ⛔ | ⛔ | Maintenance |
 | `:promote` | ⛔ | ⛔ | One-shot action |
 | `:start` | ⛔ | ⛔ | Runtime action |

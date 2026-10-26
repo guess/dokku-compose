@@ -28,6 +28,14 @@ export interface Context {
    * which also restarts). Build settings and network attach settings.
    */
   needsRebuild(app: string, reason: string): void
+  /**
+   * Record that a datastore service needs `dokku <plugin>:stop <svc> && dokku <plugin>:start <svc>`
+   * for a change `up` just applied (a property the container reads only when it is made).
+   * Call it after the mutating command succeeded; never for a service created in the same run.
+   */
+  needsServiceRestart(plugin: string, service: string, reason: string): void
+  /** `<plugin>:<service>` -> reasons recorded by `needsServiceRestart`, in the order services were first marked */
+  serviceRestarts: Map<string, { plugin: string; service: string; reasons: string[] }>
   /** App -> reasons recorded by `needsRebuild` */
   rebuilds: Map<string, string[]>
   /** App -> reasons recorded by `needsRestart`, in the order apps were first marked */
@@ -43,12 +51,21 @@ export function createContext(runner: Runner): Context {
   const commands: string[][] = []
   const restarts = new Map<string, string[]>()
   const rebuilds = new Map<string, string[]>()
+  const serviceRestarts = new Map<string, { plugin: string; service: string; reasons: string[] }>()
 
   return {
     commands,
     runner,
     restarts,
     rebuilds,
+    serviceRestarts,
+
+    needsServiceRestart(plugin: string, service: string, reason: string): void {
+      const key = `${plugin}:${service}`
+      const entry = serviceRestarts.get(key) ?? { plugin, service, reasons: [] }
+      if (!entry.reasons.includes(reason)) entry.reasons.push(reason)
+      serviceRestarts.set(key, entry)
+    },
 
     needsRebuild(app: string, reason: string): void {
       const reasons = rebuilds.get(app) ?? []

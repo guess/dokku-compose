@@ -220,6 +220,9 @@ export function serviceInfoJson(svc: string, image: string, imageVersion: string
     'backup-encryption-fingerprint': '', 'backup-public-key-id': '', 'backup-keyserver': '', 'backup-storage-class': '',
     'backup-object-name': '', 'backup-mailto': '', 'backup-timestamp': 'true', 'config-dir': `/var/lib/dokku/services/x/${svc}/config`,
     'data-dir': `/var/lib/dokku/services/x/${svc}/data`, status: 'running',
+    // settings of a service nothing has set: unset reads empty, memory reads 0, a password only its fingerprint
+    'password-fingerprint': '', memory: '0', mounts: '', 'custom-env': '', 'config-options': '', 'shm-size': '', 'restart-policy': '',
+    'volume-targets': '', 'log-driver': '', 'log-opt': '', 'wait-timeout': '', 'initial-network': '', 'post-create-network': '', 'post-start-network': '',
     service: svc, image, 'image-version': imageVersion, version: `${image}:${imageVersion}`, links: 'myapp',
     ...values,
   })

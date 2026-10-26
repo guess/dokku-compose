@@ -4,8 +4,10 @@ import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resou
 import {
   entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation,
   parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
+  parseServiceMountString, serviceMountIssues, declaredServiceMounts, type ServiceMountItem,
 } from './volume-rules.js'
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
+import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs, cleanPath } from '../modules/service-property-keys.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V, scope = '') {
@@ -331,18 +333,105 @@ const ServiceBackupSchema = z.object({
   timestamp: z.literal(false).optional(),
 }).strict()
 
+
+const PropertyValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.array(z.union([z.string(), z.number()])),
+  z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])),
+])
+
+/**
+ * `properties:` of a postgres or redis service: the plugin's own `:set` keys. Keys with
+ * built-in handling are checked here; any other key passes through (`validate` warns on
+ * keys the tested plugin version does not list).
+ */
+const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superRefine((props, ctx) => {
+  const issue = (key: string, message: string) => ctx.addIssue({ code: 'custom', path: [key], message })
+  for (const [key, value] of Object.entries(props)) {
+    const rejected = rejectedReason(key)
+    if (rejected) { issue(key, `'${key}' cannot be set here: ${rejected}`); continue }
+    const kind = MANAGED_PROPERTIES[key]?.kind
+    if (kind === 'map') {
+      if (Array.isArray(value)) { issue(key, `'${key}' takes a map of names to values`); continue }
+      for (const [name, v] of customEnvPairs(value as string | Record<string, string | number | boolean>)) {
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) issue(key, `'${name}' is not an environment variable name`)
+        if (/[;\r\n]/.test(v)) issue(key, `the value of ${name} must not contain ';' or a newline`)
+        if (v === EXPORT_PLACEHOLDER) issue(key, `the value of ${name}: ${placeholderMessage}`)
+      }
+      if (typeof value === 'string' && /[\r\n]/.test(value)) issue(key, `'${key}' must be a single line`)
+      continue
+    }
+    if (kind === 'targets') {
+      if (Array.isArray(value)) { issue(key, `'${key}' takes a map of volumes to container paths`); continue }
+      const seen = new Set<string>()
+      for (const [volume, target] of targetPairs(value as string | Record<string, string | number | boolean>)) {
+        if (volume === '' || target === '') { issue(key, `'${volume}' needs a container path (<volume>=<container-path>)`); continue }
+        if (seen.has(volume)) issue(key, `the volume ${volume} is moved more than once`)
+        seen.add(volume)
+        if (!target.startsWith('/')) issue(key, `the container path of ${volume} must be absolute`)
+        else if (/[:,\s]/.test(target)) issue(key, `the container path of ${volume} must not contain a colon, a comma or whitespace`)
+        else if (cleanPath(target) === '/') issue(key, `the volume ${volume} must not be mounted at /`)
+      }
+      continue
+    }
+    if (kind === 'list') {
+      const items = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : undefined
+      if (!items) { issue(key, `'${key}' takes a list`); continue }
+      if (items.some(i => String(i).trim() === '' || /[,\s]/.test(String(i).trim()))) issue(key, `'${key}' entries must not be empty or contain commas or spaces`)
+      continue
+    }
+    if (typeof value === 'object') { issue(key, `'${key}' takes a string or number`); continue }
+    const text = String(value)
+    if (text.trim() === '') { issue(key, `'${key}' is empty: leave the key out`); continue }
+    if (/[\r\n]/.test(text)) { issue(key, `'${key}' must be a single line`); continue }
+    if (kind === 'secret') {
+      if (!/^[A-Za-z0-9._~-]+$/.test(text)) issue(key, `'${key}' may hold only letters, digits, '.', '_', '~' and '-'`)
+      if (text === EXPORT_PLACEHOLDER) issue(key, placeholderMessage)
+    } else if (key === 'memory') {
+      if (!/^\d+$/.test(text.trim())) issue(key, 'memory is a whole number of megabytes (0 for no limit)')
+    } else if (key === 'wait-timeout') {
+      if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'wait-timeout is a whole number of seconds greater than 0')
+    }
+  }
+})
+
+const ServiceMountObjectSchema = z.object({
+  entry: z.string().min(1),
+  container_dir: z.string().min(1),
+  readonly: z.boolean().optional(),
+  options: z.array(z.string()).optional(),
+}).strict().superRefine((m, ctx) => {
+  for (const message of serviceMountIssues(m)) ctx.addIssue({ code: 'custom', message })
+})
+
+const ServiceMountStringSchema = z.string().superRefine((s, ctx) => {
+  const parsed = parseServiceMountString(s)
+  if (typeof parsed === 'string') ctx.addIssue({ code: 'custom', message: parsed })
+  else for (const message of serviceMountIssues(parsed)) ctx.addIssue({ code: 'custom', message })
+})
+
+/** `mounts:` of a service: `volumes:` entries, short form `<entry>:<container-dir>` or the map form. */
+const ServiceMountsSchema = z.array(z.union([ServiceMountStringSchema, ServiceMountObjectSchema]))
+
 const PostgresSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
   // false removes the service's backup schedule, credentials, encryption and settings; absent leaves them alone
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
+  // the plugin's `:set` keys; absent leaves them alone, `--prune` clears the known ones removed from the file
+  properties: ServicePropertiesSchema.optional(),
+  // the whole set of mounts; absent leaves them alone, [] removes them all
+  mounts: ServiceMountsSchema.optional(),
 }).strict()
 
 const RedisSchema = z.object({
   version: z.string().optional(),
   image: z.string().optional(),
-  // same block as postgres
+  // same blocks as postgres
   backup: z.union([ServiceBackupSchema, z.literal(false)]).optional(),
+  properties: ServicePropertiesSchema.optional(),
+  mounts: ServiceMountsSchema.optional(),
 }).strict()
 
 const PluginSchema = z.object({
@@ -383,6 +472,25 @@ export const ConfigSchema = z.object({
   proxy: GlobalProxySchema.optional(),
   git: GlobalGitSchema.optional(),
 }).strict().superRefine((config, ctx) => {
+  // A service's mounts name declared entries, and no two share a container dir.
+  for (const plugin of ['postgres', 'redis'] as const) {
+    for (const [svc, svcConfig] of Object.entries(config[plugin] ?? {})) {
+      const mounts = (svcConfig.mounts ?? []).flatMap((item, index) => {
+        const [mount] = declaredServiceMounts([item as string | ServiceMountItem])
+        return mount ? [{ mount, index }] : []
+      })
+      mounts.forEach(({ mount: m, index }, i) => {
+        const where = [plugin, svc, 'mounts', index]
+        if (!config.volumes || !(m.entry in config.volumes)) {
+          ctx.addIssue({ code: 'custom', path: where, message: `entry '${m.entry}' is not declared under volumes: (a host directory is an entry's path:)` })
+        }
+        if (mounts.slice(0, i).some(({ mount: earlier }) => earlier.container_dir === m.container_dir)) {
+          ctx.addIssue({ code: 'custom', path: where, message: `container_dir '${m.container_dir}' is mounted twice` })
+        }
+      })
+    }
+  }
+
   // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
   for (const [app, appConfig] of Object.entries(config.apps)) {
     // Keep each mount's position in the list, so a message names the item it is about.
@@ -410,6 +518,8 @@ export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>
 export type PostgresConfig = z.infer<typeof PostgresSchema>
 export type RedisConfig = z.infer<typeof RedisSchema>
+export type ServiceMountsConfig = z.infer<typeof ServiceMountsSchema>
+export type ServicePropertiesConfig = z.infer<typeof ServicePropertiesSchema>
 export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>
 export type DockerAuthEntry = z.infer<typeof DockerAuthEntrySchema>

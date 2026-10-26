@@ -1,20 +1,20 @@
 # datastore subcommand	postgres status	postgres note	redis status	redis note
 # status as in commands.tsv; '-' when that plugin has no such subcommand; a redis note starting 'Same' reuses the postgres note
-create	P	`postgres.<name>` / `redis.<name>` with `image`, `version`; create only; a later `version`/`image` change is shown as drift and warned about, not applied (F2); other create flags missing (F8)	P	Same as postgres (F2, F8)
+create	Y	`postgres.<name>` / `redis.<name>` with `image`, `version` and the `properties:` and `mounts:` create flags; a later `version`/`image` change is shown as drift and warned about, not applied (F2)	Y	Same as postgres
 destroy	Y	`down`	Y	`down`
-info	R	`diff`, `up` and `export`: version, image and backup settings	R	Same as postgres
+info	R	`diff`, `up` and `export`: version, image, backup settings, properties and mounts	R	Same as postgres
 list	R	`export`	R	`export`
 exists	R	Before create and in `diff`	R	Before create and in `diff`
 logs	X	Read-only	X	Read-only
 link	Y	`apps.<app>.links` with `--alias`, `--env-var`, `--querystring`	Y	Same as postgres
 unlink	Y	`links` removal, `down`	Y	`links` removal, `down`
-set	P	`backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); F8: memory, shm-size, custom-env, config-options, networks, restart-policy, log options, expose; F11: `backup-use-iam`	P	Same as postgres
-mount	N	F8	N	F8
-unmount	N	F8	N	F8
+set	P	`properties:` (memory, shm-size, custom-env, config-options, networks, restart-policy, log options, wait-timeout, volume-targets, password), `backup.bucket` alone (`backup-bucket`), `backup.encryption`, `storage_class`, `object_name`, `mailto` and `timestamp` (`backup-*`); expose F12; `backup-use-iam` F11	P	Same as postgres
+mount	Y	`mounts:` (`volumes:` entries resolved to host paths; `--replace`, the whole set)	Y	Same as postgres
+unmount	Y	`mounts: []` (`--all`)	Y	Same as postgres
 connect	X	Interactive	X	Interactive
 enter	X	Interactive	X	Interactive
-expose	N	F8 (low: its ambassador container breaks on Docker 29)	N	F8
-unexpose	N	F8	N	F8
+expose	N	F12 (low: its ambassador container breaks on Docker 29)	N	F12
+unexpose	N	F12	N	F12
 reexpose	X	Maintenance	X	Maintenance
 promote	X	One-shot action	X	One-shot action
 start	X	Runtime action	X	Runtime action

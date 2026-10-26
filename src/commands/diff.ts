@@ -7,13 +7,15 @@ import { proxyProps } from '../resources/toggle.js'
 import { desiredSpecs } from '../resources/storage.js'
 import { readEntries, desiredEntries, entryState, stateError } from '../modules/volumes.js'
 import { isLegacyName } from '../core/volume-rules.js'
-import { maskSensitiveData } from '../core/mask.js'
+import { maskSensitiveData, maskCustomEnv } from '../core/mask.js'
 import { planPlugins } from '../modules/plugins.js'
 import { assertDokkuSupported, compareToFile } from '../modules/version.js'
 import { GLOBAL_NAMES, readGlobal, planGlobal } from '../modules/global.js'
 import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceInfo, versionMismatches, type ServiceMismatch } from '../modules/service-drift.js'
 import { backupMismatches, backupNotes } from '../modules/service-backup.js'
+import { propertyMismatches, mountMismatches } from '../modules/service-properties.js'
+import { resolveServiceMounts } from '../modules/service-mounts.js'
 import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
 import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
 import { staleBackupHashKeys } from '../modules/postgres.js'
@@ -506,11 +508,18 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
       }
       const backup = declared.backup
       // Nothing declared to compare: the read only looks for backup notes, and a failed one is best effort.
-      const compares = declared?.version !== undefined || declared?.image !== undefined || backup !== undefined
+      const compares = declared?.version !== undefined || declared?.image !== undefined || backup !== undefined ||
+        declared?.properties !== undefined || declared?.mounts !== undefined
       try {
         // One info read covers version, image and backup.
         const info = await readServiceInfo(ctx, plugin, svc)
-        const mismatches = [...versionMismatches(info, declared), ...(backup !== undefined ? backupMismatches(plugin, info, backup) : [])]
+        // A property the server holds and the file omits is a `-` (removed): only `up --prune` clears it.
+        const mismatches = [
+          ...versionMismatches(info, declared),
+          ...(backup !== undefined ? backupMismatches(plugin, info, backup) : []),
+          ...propertyMismatches(plugin, info, declared.properties),
+          ...mountMismatches(plugin, info, await resolveServiceMounts(ctx, config.volumes, declared.mounts)),
+        ]
         // What up leaves alone on purpose (an undeclared backup, encryption or setting, other schedules) is a note, not drift.
         const notes = backupNotes(info, backup)
         result.services[svc] = { status: mismatches.length ? 'changed' : 'in-sync', mismatches, note: notes.length ? notes.join('; ') : undefined }
@@ -528,9 +537,20 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
   return result
 }
 
+/** custom-env values are masked in a service's drift: the names stay, the values never show. */
+function maskServices(services: DiffResult['services']): DiffResult['services'] {
+  return Object.fromEntries(Object.entries(services).map(([svc, d]) => [svc, {
+    ...d,
+    ...(d.mismatches ? {
+      mismatches: d.mismatches.map(m => m.field === 'properties.custom-env'
+        ? { ...m, desired: m.removed ? m.desired : maskCustomEnv(m.desired), current: maskCustomEnv(m.current) } : m),
+    } : {}),
+  }]))
+}
+
 export function maskDiffResult(diff: DiffResult): DiffResult {
   const masked: DiffResult = {
-    apps: {}, services: diff.services, plugins: diff.plugins, dokku: diff.dokku,
+    apps: {}, services: maskServices(diff.services), plugins: diff.plugins, dokku: diff.dokku,
     global: Object.fromEntries(Object.entries(diff.global).map(([k, d]) => [k, {
       ...d, desired: maskSensitiveData(d.desired), current: maskSensitiveData(d.current),
     }])),
@@ -629,7 +649,9 @@ export function formatSummary(diff: DiffResult): string {
     }
     if (d.mismatches?.length || d.note) lines.push(`  services: ${svc}`)
     for (const m of d.mismatches ?? []) {
-      lines.push(`    ${chalk.yellow('~')} ${m.field}: ${m.current || '(unknown)'} → ${m.desired}`)
+      lines.push(m.removed
+        ? `    ${chalk.red('-')} ${m.field}: ${m.current} (not in the file)`
+        : `    ${chalk.yellow('~')} ${m.field}: ${m.current || '(unknown)'} → ${m.desired}`)
     }
     if (d.note) lines.push(`    note: ${d.note}`)
   }
@@ -772,7 +794,7 @@ export function formatVerbose(diff: DiffResult): string {
     for (const m of d.mismatches ?? []) {
       lines.push(`@@ services: ${svc} ${m.field} @@`)
       lines.push(chalk.red(`- ${m.current}`))
-      lines.push(chalk.green(`+ ${m.desired}`))
+      if (!m.removed) lines.push(chalk.green(`+ ${m.desired}`))
     }
     if (d.note) lines.push(`@@ services: ${svc} @@\n  (${d.note})`)
   }

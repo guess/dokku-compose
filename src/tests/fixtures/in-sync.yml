@@ -36,6 +36,10 @@ volumes:
     mode: "0750"
   media:
     path: /srv/media        # an existing directory; owner and mode are left alone
+  db-extra:
+    chown: 999              # the user the database container runs as
+  db-vol:
+    path: dbvol             # a Docker volume
 
 domains:
   - example.com
@@ -79,6 +83,22 @@ postgres:
   myapp-db:
     version: "17-3.5"
     image: postgis/postgis
+    properties:
+      memory: 512
+      shm-size: 256m
+      restart-policy: unless-stopped
+      post-create-network: [backend-net, other-net]
+      custom-env:
+        TZ: UTC
+        PGOPTIONS: "-c work_mem=8MB"
+      password: Zq7-Hk9vbn2
+      volume-targets:
+        data: /var/lib/postgresql/data
+    mounts:
+      - db-extra:/opt/extra
+      - entry: db-vol
+        container_dir: /opt/data
+        readonly: true
 
   myapp-reports:
     backup:
@@ -90,6 +110,13 @@ postgres:
 redis:
   myapp-redis:
     version: "7.2-alpine"
+    properties:
+      memory: 128
+      log-driver: json-file
+      log-opt: [max-size=10m, max-file=3]
+      wait-timeout: 90
+      config-options: "--maxmemory-policy allkeys-lru"
+    mounts: []
     backup:
       schedule: "0 * * * *"
       bucket: backups/myapp-redis

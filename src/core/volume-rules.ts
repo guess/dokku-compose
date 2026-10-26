@@ -164,6 +164,50 @@ export function scopesOverlap(a: string, b: string): boolean {
   return a === DEFAULT_SCOPE || b === DEFAULT_SCOPE || a === b
 }
 
+/** One mount of a postgres or redis service as declared: `entry:dir` or the map form. */
+export interface ServiceMountItem {
+  entry: string
+  container_dir: string
+  readonly?: boolean
+  options?: string[]
+}
+
+/** A service mount with every default filled in. */
+export interface ServiceMount {
+  entry: string
+  container_dir: string
+  readonly: boolean
+  options: string[]
+}
+
+/** The short form of a service mount, `entry:dir`; an error string when it is anything else. */
+export function parseServiceMountString(s: string): ServiceMountItem | string {
+  if (s.startsWith('/')) {
+    return `'${s}' is a host path, which mounts no longer take: declare the directory as an entry under volumes: (with path:) and mount it as <entry>:<container-dir>`
+  }
+  const parsed = parseMountString(s)
+  return typeof parsed === 'string' ? parsed.replace('storage', 'a service mount') : { entry: parsed.entry, container_dir: parsed.container_dir }
+}
+
+/** Problems with one declared service mount, apart from whether its entry is declared. */
+export function serviceMountIssues(m: ServiceMountItem): string[] {
+  return mountIssues(m)
+}
+
+export function normalizeServiceMount(m: ServiceMountItem): ServiceMount {
+  return { entry: m.entry, container_dir: m.container_dir, readonly: m.readonly ?? false, options: m.options ?? [] }
+}
+
+/** The declared mounts of a service as normalised mounts; an item that does not parse is left out (the schema reports it). */
+export function declaredServiceMounts(mounts: (string | ServiceMountItem)[] | undefined): ServiceMount[] {
+  const out: ServiceMount[] = []
+  for (const item of mounts ?? []) {
+    const parsed = typeof item === 'string' ? parseServiceMountString(item) : item
+    if (typeof parsed !== 'string') out.push(normalizeServiceMount(parsed))
+  }
+  return out
+}
+
 /** The declared mounts of an app as normalised mounts; an item that does not parse is left out (the schema reports it). */
 export function declaredMounts(storage: (string | MountItem)[] | undefined): Mount[] {
   const mounts: Mount[] = []

@@ -22,6 +22,7 @@ import { ensurePostgres, removeBackupHashKeys } from '../modules/postgres.js'
 import { ensureServiceBackups } from '../modules/service-backup.js'
 import { ensureVolumes } from '../modules/volumes.js'
 import { ensureRedis } from '../modules/redis.js'
+import { ensureServiceProperties } from '../modules/service-properties.js'
 import { assertDokkuSupported, enforceFileVersion } from '../modules/version.js'
 import { ensureAppLinks } from '../modules/links.js'
 import { ensureGlobalDomains } from '../modules/domains.js'
@@ -49,21 +50,33 @@ export function markGlobalEnvRestart(ctx: Context, apps: string[], reason = 'glo
   for (const app of apps) ctx.needsRestart(app, reason)
 }
 
-/** Print the apps whose applied changes need `dokku ps:restart`. Nothing is restarted (no --restart flag by design). */
+/**
+ * Print the services and apps whose applied changes need a restart or rebuild. Nothing is
+ * restarted (no --restart flag by design). A service needs stop and start: `restart` keeps
+ * the container it has.
+ */
 export function printRestartSummary(ctx: Context, dryRun = false): void {
   // A rebuild restarts the app, so an app needing both shows only the rebuild line.
   const restarts = [...ctx.restarts].filter(([app]) => !ctx.rebuilds.has(app))
+  const services = [...(ctx.serviceRestarts?.values() ?? [])]
+  if (services.length > 0) {
+    console.log(`\n# Services that ${dryRun ? 'would need' : 'need'} a stop and start:`)
+    for (const { plugin, service, reasons } of services) {
+      console.log(`dokku ${plugin}:stop ${service} && dokku ${plugin}:start ${service}  # ${reasons.join(', ')}`)
+    }
+  }
   if (restarts.length === 0 && ctx.rebuilds.size === 0) return
   console.log(`\n# Apps that ${dryRun ? 'would need' : 'need'} a restart or rebuild:`)
   for (const [app, reasons] of restarts) console.log(`dokku ps:restart ${app}  # ${reasons.join(', ')}`)
   for (const [app, reasons] of ctx.rebuilds) console.log(`dokku ps:rebuild ${app}  # ${reasons.join(', ')}`)
 }
 
-/** Thrown by runUp when one or more apps failed during the per-app phase. */
+/** Thrown by runUp when one or more apps or services failed. A service failure is named `<plugin>:<name>`. */
 export class UpFailedError extends Error {
-  constructor(public readonly failures: { app: string; error: unknown }[]) {
+  constructor(public readonly failures: { app: string; error: unknown; service?: boolean }[]) {
+    const kinds = failures.every(f => f.service) ? 'service(s)' : failures.some(f => f.service) ? 'app(s) and service(s)' : 'app(s)'
     super(
-      `up failed for ${failures.length} app(s): ${failures.map(f => f.app).join(', ')}`
+      `up failed for ${failures.length} ${kinds}: ${failures.map(f => f.app).join(', ')}`
     )
     this.name = 'UpFailedError'
   }
@@ -208,28 +221,50 @@ async function runUpPhases(
   const failedVolumes = config.volumes ? await ensureVolumes(ctx, config.volumes, opts.failFast) : new Map<string, string>()
 
   // Phase 4: Services
-  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
-  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis) : new Set<string>()
-  if (config.postgres) {
-    await ensureServiceBackups(ctx, 'postgres', config.postgres, {
+  // A service that cannot be created (a mounted entry failed, the plugin refused it) is reported and the run goes on.
+  const createFailures: { service: string; error: unknown }[] = []
+  const redisCreateFailures: { service: string; error: unknown }[] = []
+  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres, config.volumes, { failedVolumes, failures: createFailures }) : new Set<string>()
+  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis, config.volumes, { failedVolumes, failures: redisCreateFailures }) : new Set<string>()
+  // What is left to configure: the services that exist.
+  const without = <T>(services: Record<string, T> | undefined, failed: { service: string }[]): Record<string, T> | undefined =>
+    services && Object.fromEntries(Object.entries(services).filter(([name]) => !failed.some(f => f.service === name)))
+  const postgres = without(config.postgres, createFailures)
+  const redis = without(config.redis, redisCreateFailures)
+  if (postgres) {
+    await ensureServiceBackups(ctx, 'postgres', postgres, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdPostgres : undefined,
     })
   }
-  if (config.redis) {
-    await ensureServiceBackups(ctx, 'redis', config.redis, {
+  if (redis) {
+    await ensureServiceBackups(ctx, 'redis', redis, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdRedis : undefined,
     })
   }
+  // A service whose properties fail is reported; the run goes on and ends non-zero.
+  const serviceFailures: { app: string; error: unknown; service: true }[] = [
+    ...createFailures.map(f => ({ app: `postgres:${f.service}`, error: f.error, service: true as const })),
+    ...redisCreateFailures.map(f => ({ app: `redis:${f.service}`, error: f.error, service: true as const })),
+  ]
+  if (opts.failFast && serviceFailures.length > 0) throw new UpFailedError(serviceFailures)
+  for (const [plugin, services, created] of [['postgres', postgres, createdPostgres], ['redis', redis, createdRedis]] as const) {
+    if (!services) continue
+    const failed = await ensureServiceProperties(ctx, plugin, services, config, {
+      prune: opts.prune, dryRun: opts.dryRun, dryRunCreated: opts.dryRun ? created : undefined, failedVolumes,
+    })
+    serviceFailures.push(...failed.map(f => ({ app: `${plugin}:${f.service}`, error: f.error, service: true as const })))
+  }
+  if (opts.failFast && serviceFailures.length > 0) throw new UpFailedError(serviceFailures)
   await removeBackupHashKeys(ctx)
 
   // Phase 5: Per-app. Default (documented) behaviour is to continue to the
   // next app on failure and report a summary at the end, exiting non-zero.
   // --fail-fast stops at the first failure instead.
-  const failures: { app: string; error: unknown }[] = []
+  const failures: { app: string; error: unknown; service?: boolean }[] = [...serviceFailures]
   for (const app of apps) {
     const appConfig = config.apps[app]
     if (!appConfig) continue

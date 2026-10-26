@@ -8,6 +8,8 @@ import { loadConfig } from '../core/config.js'
 import { computeDiff, formatSummary, formatVerbose, maskDiffResult } from '../commands/diff.js'
 import { runUp } from '../commands/up.js'
 import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, globalReportJson, serviceInfoJson, type FakeServer } from './fake-server.js'
+import { maskSensitiveArgs } from '../core/mask.js'
+import { fakeContext, report, emptyAnswer, gitReport, proxyReport, storageReportJson, logsAppJson, logsGlobalJson, nginxGlobalJson, serviceInfoJson, type FakeServer } from './fake-server.js'
 
 const FIXTURE = 'src/tests/fixtures/in-sync.yml'
 const CRT = fs.readFileSync('src/tests/fixtures/certs/myapp.crt', 'utf8')
@@ -55,6 +57,20 @@ const REPORTS_BACKUP = {
   'backup-public-key-id': 'ABCD1234ABCD1234', 'backup-keyserver': 'hkp://keys.example.com', 'backup-encrypted': 'true',
 }
 
+// sha256 of 'Zq7-Hk9vbn2', no newline
+const PASSWORD_FINGERPRINT = createHash('sha256').update('Zq7-Hk9vbn2').digest('hex')
+// As the plugins report the properties and mounts the fixture declares (lists in the server's order, mounts normalised).
+const DB_PROPERTIES = {
+  memory: '512', 'shm-size': '256m', 'restart-policy': 'unless-stopped', 'post-create-network': 'other-net,backend-net',
+  'custom-env': 'PGOPTIONS=-c work_mem=8MB;TZ=UTC', 'password-fingerprint': PASSWORD_FINGERPRINT,
+  mounts: 'dbvol:/opt/data:ro /var/lib/dokku/data/storage/db-extra:/opt/extra',
+  'volume-targets': 'data=/var/lib/postgresql/data',
+}
+const REDIS_PROPERTIES = {
+  memory: '128', 'log-driver': 'json-file', 'log-opt': 'max-file=3,max-size=10m', 'wait-timeout': '90',
+  'config-options': '--maxmemory-policy allkeys-lru', mounts: '',
+}
+
 function inSyncServer(): FakeServer {
   const app = 'myapp'
   const worker = 'myapp-worker'
@@ -87,13 +103,15 @@ function inSyncServer(): FakeServer {
         { name: 'postgres', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
         { name: 'redis', version: '2.4.0', committish: '2.4.0', enabled: true, core: false },
       ]),
-      'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5'),
-      'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', REDIS_BACKUP),
+      'postgres:info myapp-db --format json': serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', DB_PROPERTIES),
+      'redis:info myapp-redis --format json': serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES }),
       'postgres:info myapp-reports --format json': serviceInfoJson('myapp-reports', 'postgres', '17', REPORTS_BACKUP),
       'redis:backup-schedule-cat myapp-redis': '0 * * * * dokku /usr/bin/dokku redis:backup myapp-redis backups/myapp-redis',
       // Storage entries, as `storage:list-entries --format json` prints them (an entry made by hand and one by Dokku's legacy migration are not in the file).
       'storage:list-entries --format json': JSON.stringify([
         { name: 'data', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/data', chown: '1000', mode: '0750', schema_version: 1 },
+        { name: 'db-extra', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/db-extra', chown: '999', schema_version: 1 },
+        { name: 'db-vol', scheduler: 'docker-local', host_path: 'dbvol', schema_version: 1 },
         { name: 'media', scheduler: 'docker-local', host_path: '/srv/media', schema_version: 1 },
         { name: 'uploads', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/uploads', chown: 'herokuish', schema_version: 1 },
       ]),
@@ -381,8 +399,8 @@ describe('a server whose state equals the file', () => {
 
   it('a service whose version or image differs shows in diff, and up warns and runs no :upgrade', async () => {
     const server = inSyncServer()
-    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgres', '16.1')
-    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.0-alpine', REDIS_BACKUP)
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgres', '16.1', DB_PROPERTIES)
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.0-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES })
     const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
     expect(diff.services['myapp-db']).toMatchObject({
       status: 'changed',
@@ -479,7 +497,7 @@ describe('a server whose state equals the file', () => {
 
     const server = inSyncServer()
     server.queries['config:export --global --format json'] = JSON.stringify({
-      TZ: 'Europe/Paris', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X',
+      TZ: 'Qx7vK/Zw3', FEATURE_X: 'true', DOKKU_COMPOSE_GLOBAL_MANAGED_KEYS: 'TZ,FEATURE_X',
     })
     const changed = fakeContext(server)
     await runUp(changed.ctx, loadConfig(FIXTURE), ['myapp', 'myapp-edge'])
@@ -558,7 +576,7 @@ describe('a server whose state equals the file', () => {
       'backup-default-region': 'auto', 'backup-signature-version': 's3v4', 'backup-endpoint-url': 'https://s3.example.com',
     }
     const server = inSyncServer()
-    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', onServer)
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, ...onServer })
     const same = fakeContext(server)
     expect((await computeDiff(same.ctx, config)).inSync).toBe(true)
     const quiet = fakeContext(server)
@@ -566,7 +584,7 @@ describe('a server whose state equals the file', () => {
     expect(quiet.runner.dryRunLog).toEqual([])
     expect((quiet.runner.queryStrict as any).mock.calls.filter((c: string[]) => c[0] === 'postgres:info' && c[1] === 'myapp-db')).toHaveLength(1)
 
-    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...onServer, 'backup-bucket': 'old/myapp-db' })
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, ...onServer, 'backup-bucket': 'old/myapp-db' })
     server.queries['config:export --global --format json'] = JSON.stringify({
       ...JSON.parse(server.queries['config:export --global --format json']), DOKKU_COMPOSE_BACKUP_HASH_MYAPP_DB: 'abc123',
     })
@@ -597,7 +615,7 @@ describe('a server whose state equals the file', () => {
 
   it('a backup on the server that the file omits is a diff note; up --prune only warns', async () => {
     const server = inSyncServer()
-    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES,
       'backup-schedule': '0 3 * * *', 'backup-bucket': 'backups/myapp-db', 'backup-authenticated': 'true',
     })
     const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
@@ -616,7 +634,7 @@ describe('a server whose state equals the file', () => {
 
   it('redis encryption and settings drift shows in diff without the passphrase, and up fixes exactly those', async () => {
     const server = inSyncServer()
-    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', {
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_PROPERTIES,
       ...REDIS_BACKUP, 'backup-encryption-fingerprint': createHash('sha256').update('old-passphrase').digest('hex'),
       'backup-mailto': 'other@example.com', 'backup-timestamp': 'true',
     })
@@ -658,7 +676,7 @@ describe('a server whose state equals the file', () => {
 
   it('other schedules on a 2.5.0 plugin are a diff note and never touched by up', async () => {
     const server = inSyncServer()
-    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', {
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_PROPERTIES,
       ...REDIS_BACKUP, 'backup-schedules': 'default|0 * * * *|backups/myapp-redis|false;monthly|@monthly|archive|false',
     })
     const diff = await computeDiff(fakeContext(server).ctx, loadConfig(FIXTURE))
@@ -970,5 +988,240 @@ describe('top-level global blocks', () => {
       'git:set myapp keep-git-dir',
       'git:set myapp-edge keep-git-dir',
     ])
+  })
+})
+
+describe('datastore properties and mounts', () => {
+  let lines: string[]
+  beforeEach(() => {
+    lines = []
+    vi.spyOn(console, 'log').mockImplementation((...a: unknown[]) => { lines.push(a.join(' ')) })
+  })
+  afterEach(() => { vi.restoreAllMocks() })
+
+  const leaks = (out: string, secret: string) => {
+    const found: string[] = []
+    for (let i = 0; i + 3 <= secret.length; i++) if (out.includes(secret.slice(i, i + 3))) found.push(secret.slice(i, i + 3))
+    return found
+  }
+
+  it('a changed memory, a changed custom-env and a changed mount show in diff, and up sets exactly those and lists the service for stop and start', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {
+      ...DB_PROPERTIES, memory: '256', 'custom-env': 'TZ=Qx7vK/Zw3', mounts: 'dbvol:/opt/data:ro',
+    })
+    const config = loadConfig(FIXTURE)
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db'].mismatches!.map(m => m.field)).toEqual(['properties.memory', 'properties.custom-env', 'mounts'])
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { dryRun: true })
+    expect(runner.dryRunLog).toEqual([
+      'postgres:set myapp-db memory -- 512',
+      "postgres:set myapp-db custom-env -- 'TZ=UTC;PGOPTIONS=-c work_mem=8MB'",
+      'postgres:mount --replace myapp-db /var/lib/dokku/data/storage/db-extra:/opt/extra dbvol:/opt/data:ro',
+    ])
+    expect(lines).toContain('dokku postgres:stop myapp-db && dokku postgres:start myapp-db  # memory, custom-env, mounts')
+  })
+
+  it('custom-env values never show in the masked diff or the masked dry-run listing, only with --sensitive', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {
+      ...DB_PROPERTIES, 'custom-env': 'TZ=Qx7vK/Zw3;PGOPTIONS=zqxwv-9k3',
+    })
+    const config = loadConfig(FIXTURE)
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    const masked = formatVerbose(maskDiffResult(diff)) + formatSummary(maskDiffResult(diff)) + JSON.stringify(maskDiffResult(diff))
+    for (const secret of ['Qx7vK/Zw3', 'zqxwv-9k3']) expect(leaks(masked, secret)).toEqual([])
+    // the file's own value (PGOPTIONS=-c work_mem=8MB) is a desired value, masked as well
+    expect(masked).not.toContain('work_mem')
+    expect(masked).toContain('TZ=****')
+    expect(formatVerbose(diff)).toContain('Qx7vK/Zw3')
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { dryRun: true })
+    expect(maskSensitiveArgs(runner.dryRunLog[0])).toBe('postgres:set myapp-db custom-env -- TZ=****;PGOPTIONS=****')
+  })
+
+  it('a changed password shows without either value, up sets it with --no-restart and lists the linked apps, and nothing prints it', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', {
+      ...DB_PROPERTIES, 'password-fingerprint': createHash('sha256').update('Jv8-Hh2.zq7k').digest('hex'),
+    })
+    const config = loadConfig(FIXTURE)
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db'].mismatches).toEqual([{ field: 'properties.password', desired: 'the password from the file', current: 'another password' }])
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { dryRun: true })
+    expect(runner.dryRunLog).toEqual(['postgres:set --no-restart myapp-db password -- Zq7-Hk9vbn2'])
+    expect(maskSensitiveArgs(runner.dryRunLog[0])).toBe('postgres:set --no-restart myapp-db password -- ****')
+    expect(lines).toContain('dokku ps:restart myapp  # myapp-db password changed')
+    const output = lines.join('\n') + formatVerbose(maskDiffResult(diff)) + formatSummary(maskDiffResult(diff))
+    for (const secret of ['Zq7-Hk9vbn2', 'Jv8-Hh2.zq7k']) expect(leaks(output, secret)).toEqual([])
+  })
+
+  it('a key the file dropped is a - in diff and in the count; up leaves it, up --prune clears exactly it', async () => {
+    const config = loadConfig(FIXTURE)
+    delete config.postgres!['myapp-db'].properties!['restart-policy']
+    const server = inSyncServer()
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-db'].mismatches).toEqual([{ field: 'properties.restart-policy', desired: '(not in the file)', current: 'unless-stopped', removed: true }])
+    expect(diff.inSync).toBe(false)
+    expect(formatSummary(diff)).toContain('- properties.restart-policy: unless-stopped (not in the file)')
+    const plain = fakeContext(server)
+    await runUp(plain.ctx, config, [], { dryRun: true })
+    expect(plain.runner.dryRunLog).toEqual([])
+    const pruned = fakeContext(server)
+    await runUp(pruned.ctx, config, [], { dryRun: true, prune: true })
+    expect(pruned.runner.dryRunLog).toEqual(['postgres:set myapp-db restart-policy'])
+  })
+
+  it('a service with no properties: block still shows a known key the server holds as a -', async () => {
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-reports'].properties = undefined
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-reports --format json'] = serviceInfoJson('myapp-reports', 'postgres', '17', { ...REPORTS_BACKUP, 'log-driver': 'syslog' })
+    const diff = await computeDiff(fakeContext(server).ctx, config)
+    expect(diff.services['myapp-reports'].mismatches).toEqual([{ field: 'properties.log-driver', desired: '(not in the file)', current: 'syslog', removed: true }])
+  })
+
+  it('redis: mounts: [] removes the mounts the server has, and an absent mounts: leaves them even with --prune', async () => {
+    const server = inSyncServer()
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', {
+      ...REDIS_BACKUP, ...REDIS_PROPERTIES, mounts: '/srv/cache:/data',
+    })
+    const config = loadConfig(FIXTURE)
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { dryRun: true })
+    expect(runner.dryRunLog).toEqual(['redis:unmount --all myapp-redis'])
+    delete config.redis!['myapp-redis'].mounts
+    const kept = fakeContext(server)
+    await runUp(kept.ctx, config, [], { dryRun: true, prune: true })
+    expect(kept.runner.dryRunLog).toEqual([])
+  })
+
+  it('a key the plugin refuses fails that service only: the run reports it, goes on, and ends in an error', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, memory: '256' })
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES, memory: '64' })
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-db'].properties!['some-future-key'] = 'x'
+    const { ctx, runner } = fakeContext(server)
+    const run = runner.run
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'postgres:set' && args.includes('some-future-key')) throw new Error('Invalid key specified, valid keys include: memory')
+      return run(...args)
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, config, [], { dryRun: true })).rejects.toThrow('up failed for 1 service(s): postgres:myapp-db')
+    expect(runner.dryRunLog).toEqual(['postgres:set myapp-db memory -- 512', 'redis:set myapp-redis memory -- 128'])
+  })
+
+  it('--fail-fast stops after a failed service, before any app', async () => {
+    const server = inSyncServer()
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, memory: '256' })
+    const { ctx, runner } = fakeContext(server)
+    runner.run = vi.fn(async (...args: string[]) => { if (args[0] === 'postgres:set') throw new Error('refused') })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true, failFast: true })).rejects.toThrow('up failed for 1 service(s)')
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists')).toBe(false)
+  })
+
+  it('a service planned for creation in a dry run gets its properties and mounts on :create, and no set, restart or info read', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, loadConfig(FIXTURE), ['__none__'], { dryRun: true })
+    expect(runner.dryRunLog[0]).toBe(
+      "postgres:create myapp-db --image postgis/postgis --image-version 17-3.5 --memory 512 --shm-size 256m --restart unless-stopped --post-create-network backend-net,other-net --custom-env 'TZ=UTC;PGOPTIONS=-c work_mem=8MB' --password Zq7-Hk9vbn2 --volume-target data=/var/lib/postgresql/data --volume /var/lib/dokku/data/storage/db-extra:/opt/extra --volume dbvol:/opt/data:ro",
+    )
+    expect(ctx.serviceRestarts.size).toBe(0)
+    expect(maskSensitiveArgs(runner.dryRunLog[0])).not.toContain('Zq7-Hk9vbn2')
+  })
+
+  it('a password and custom-env leave no 3-character piece of either in any output of up --dry-run', async () => {
+    const config = loadConfig(FIXTURE)
+    config.postgres!['myapp-db'].properties!.password = 'Zq7-Wxk9.vBn2'
+    config.postgres!['myapp-db'].properties!['custom-env'] = { API_KEY: 'zq7 wxk9 vbn2', TZ: 'Asia/Tokyo' }
+    const server = inSyncServer()
+    const { ctx, runner } = fakeContext(server)
+    await runUp(ctx, config, [], { dryRun: true })
+    const listing = runner.dryRunLog.map(maskSensitiveArgs).join('\n')
+    const output = listing + lines.join('\n') + formatVerbose(maskDiffResult(await computeDiff(fakeContext(server).ctx, config)))
+    for (const secret of ['Zq7-Wxk9.vBn2', 'zq7 wxk9 vbn2', 'Asia/Tokyo']) expect(leaks(output, secret), secret).toEqual([])
+    expect(listing).toContain('API_KEY=****;TZ=****')
+  })
+
+  it('a service that mounts an entry that cannot be converged fails its step with the entry name, and mounts nothing', async () => {
+    const server = inSyncServer()
+    // the entry sits at another path on the server, which Dokku cannot change
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      ...JSON.parse(server.queries['storage:list-entries --format json']).filter((e: { name: string }) => e.name !== 'db-extra'),
+      { name: 'db-extra', scheduler: 'docker-local', host_path: '/srv/elsewhere', chown: '999', schema_version: 1 },
+    ])
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, mounts: '' })
+    const { ctx, runner } = fakeContext(server)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true })).rejects.toThrow('postgres:myapp-db')
+    expect(runner.dryRunLog.filter(c => c.startsWith('postgres:mount'))).toEqual([])
+  })
+
+  it('an entry moved to another path shows in diff as a different resolved host path', async () => {
+    const config = loadConfig(FIXTURE)
+    config.volumes!['db-extra'] = { path: '/srv/db-extra' }
+    const diff = await computeDiff(fakeContext(inSyncServer()).ctx, config)
+    expect(diff.services['myapp-db'].mismatches).toEqual([{
+      field: 'mounts',
+      desired: '/srv/db-extra:/opt/extra dbvol:/opt/data:ro',
+      current: '/var/lib/dokku/data/storage/db-extra:/opt/extra dbvol:/opt/data:ro',
+    }])
+  })
+
+  it('a NEW service that mounts a failed entry fails alone: no :create, the other service and the apps still run, and up ends in an error', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    // the entry sits at another path on the server, which Dokku cannot change
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      ...JSON.parse(server.queries['storage:list-entries --format json']).filter((e: { name: string }) => e.name !== 'db-extra'),
+      { name: 'db-extra', scheduler: 'docker-local', host_path: '/srv/elsewhere', chown: '999', schema_version: 1 },
+    ])
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES, memory: '64' })
+    const { ctx, runner } = fakeContext(server)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = await runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true }).catch(e => e)
+    expect(String(error.message)).toContain('up failed for 1 service(s): postgres:myapp-db')
+    expect(runner.dryRunLog.some(c => c.startsWith('postgres:create'))).toBe(false)
+    expect(runner.dryRunLog).toContain('redis:set myapp-redis memory -- 128')
+    // the apps ran: their checks were read
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists' && c[1] === 'myapp')).toBe(true)
+  })
+
+  it('a :create the plugin refuses for one service does not stop the next service or the apps', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    server.checks['postgres:exists myapp-reports'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    delete server.queries['postgres:info myapp-reports --format json']
+    const { ctx, runner } = fakeContext(server)
+    const run = runner.run
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'postgres:create' && args[1] === 'myapp-db') throw new Error('Container path must not be /')
+      return run(...args)
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true })).rejects.toThrow('up failed for 1 service(s): postgres:myapp-db')
+    expect(runner.dryRunLog.some(c => c.startsWith('postgres:create myapp-reports'))).toBe(true)
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists' && c[1] === 'myapp')).toBe(true)
+  })
+
+  it('--fail-fast stops after a service that cannot be created, before any app', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    const { ctx, runner } = fakeContext(server)
+    runner.run = vi.fn(async (...args: string[]) => { if (args[0] === 'postgres:create') throw new Error('refused') })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true, failFast: true })).rejects.toThrow('up failed for 1 service(s)')
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists')).toBe(false)
   })
 })
