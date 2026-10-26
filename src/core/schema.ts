@@ -8,6 +8,7 @@ import {
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
 import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs } from '../modules/service-property-keys.js'
 import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs } from '../modules/service-property-keys.js'
+import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs, cleanPath } from '../modules/service-property-keys.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V, scope = '') {
@@ -371,7 +372,7 @@ const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superR
         seen.add(volume)
         if (!target.startsWith('/')) issue(key, `the container path of ${volume} must be absolute`)
         else if (/[:,\s]/.test(target)) issue(key, `the container path of ${volume} must not contain a colon, a comma or whitespace`)
-        else if (target.replace(/\/+$/, '') === '') issue(key, `the volume ${volume} must not be mounted at /`)
+        else if (cleanPath(target) === '/') issue(key, `the volume ${volume} must not be mounted at /`)
       }
       continue
     }

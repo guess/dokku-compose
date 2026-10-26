@@ -88,6 +88,17 @@ describe('values', () => {
     expect(isDefaultProperty('volume-targets', 'a=/a')).toBe(false)
   })
 
+  it('cleans volume-targets paths the way the plugin does (Go path.Clean), so a normalised path compares equal', () => {
+    expect(propertyString('volume-targets', { data: '/srv/b/' })).toBe('data=/srv/b')
+    expect(propertyString('volume-targets', 'data=//x')).toBe('data=/x')
+    expect(propertyString('volume-targets', { data: '/a/./b' })).toBe('data=/a/b')
+    expect(propertyString('volume-targets', { data: '/a/b/../c//' })).toBe('data=/a/c')
+    expect(sameProperty('volume-targets', 'data=/srv/b/', 'data=/srv/b')).toBe(true)
+    expect(sameProperty('volume-targets', 'data=/a/./b', 'data=/a/b')).toBe(true)
+    expect(sameProperty('volume-targets', 'data=//x b=/y/', 'b=/y data=/x')).toBe(true)
+    expect(sameProperty('volume-targets', 'data=/srv/b/', 'data=/srv/c')).toBe(false)
+  })
+
   it('reads an unset key and memory 0 as the default', () => {
     expect(isDefaultProperty('memory', '0')).toBe(true)
     expect(isDefaultProperty('memory', '')).toBe(true)

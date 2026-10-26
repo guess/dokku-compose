@@ -52,6 +52,8 @@ describe('service properties', () => {
     expect(issues({ 'volume-targets': { a: 'relative' } })).toContain('absolute')
     expect(issues({ 'volume-targets': { a: '/x:ro' } })).toContain('colon')
     expect(issues({ 'volume-targets': { a: '/' } })).toContain('at /')
+    expect(issues({ 'volume-targets': { a: '/x/..' } })).toContain('at /')
+    expect(issues({ 'volume-targets': { a: '/srv/b/' } })).toBe('')
     expect(issues({ 'volume-targets': 'a=/x a=/y' })).toContain('more than once')
     expect(issues({ 'volume-targets': 'a' })).toContain('container path')
     expect(issues({ 'volume-targets': ['a=/x'] })).toContain('map')

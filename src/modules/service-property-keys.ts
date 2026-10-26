@@ -5,6 +5,8 @@
 // care (secrets, restarts, create flags, typed values); every other key the plugin accepts is
 // passed through and compared as an exact string.
 
+import { posix } from 'node:path'
+
 export type ServicePlugin = 'postgres' | 'redis'
 
 export type PropertyKind =
@@ -101,6 +103,7 @@ export function propertyString(key: string, value: PropertyValue): string {
     if (MANAGED_PROPERTIES[key]?.kind === 'targets') return targetPairs(value).map(([k, v]) => `${k}=${v}`).join(' ')
     return Object.entries(value).map(([k, v]) => `${k}=${v}`).join(';')
   }
+  if (MANAGED_PROPERTIES[key]?.kind === 'targets') return targetPairs(String(value)).map(([k, v]) => `${k}=${v}`).join(' ')
   return String(value).trim()
 }
 
@@ -111,7 +114,7 @@ export function comparableProperty(key: string, value: string): string {
   switch (MANAGED_PROPERTIES[key]?.kind) {
     case 'list': return splitSorted(value, ',')
     case 'map': return splitSorted(value, ';')
-    case 'targets': return value.split(/\s+/).filter(s => s !== '').sort().join(' ')
+    case 'targets': return targetPairs(value).map(([k, v]) => `${k}=${v}`).join(' ')
     case 'number': return key === 'memory' && value === '' ? '0' : value.trim()
     default: return value
   }
@@ -137,7 +140,13 @@ export function customEnvPairs(value: string | Record<string, string | number | 
   return Object.entries(value).map(([k, v]) => [k, String(v)] as [string, string])
 }
 
-/** volume-targets entries as `[volume, container path]` pairs sorted by volume; a space-joined string and a map are both taken. */
+/** The container path as the plugin stores it: Go's `path.Clean` (no `//`, `.` or trailing slash; `..` resolved). */
+export function cleanPath(p: string): string {
+  const n = posix.normalize(p)
+  return n.length > 1 ? n.replace(/\/+$/, '') : n
+}
+
+/** volume-targets entries as `[volume, container path]` pairs sorted by volume, each path cleaned; a space-joined string and a map are both taken. */
 export function targetPairs(value: string | Record<string, string | number | boolean>): [string, string][] {
   const pairs: [string, string][] = typeof value === 'string'
     ? value.split(/\s+/).filter(s => s !== '').map(s => {
@@ -145,7 +154,7 @@ export function targetPairs(value: string | Record<string, string | number | boo
         return (i === -1 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]
       })
     : Object.entries(value).map(([k, v]) => [k, String(v)] as [string, string])
-  return pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return pairs.map(([k, v]) => [k, v.startsWith('/') ? cleanPath(v) : v] as [string, string]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 }
 
 /**
