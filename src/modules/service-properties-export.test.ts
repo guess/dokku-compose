@@ -51,8 +51,8 @@ describe.each(['postgres', 'redis'] as const)('%s export of properties and mount
     })
   })
 
-  it('writes the mounts as a normalised sorted list', async () => {
-    expect(await exported({ mounts: 'vol:/data:ro /srv/a:/opt/a' })).toEqual({ mounts: ['/srv/a:/opt/a', 'vol:/data:ro'] })
+  it('returns the mounts as a normalised sorted list of host-path specs, for export to map back to entries', async () => {
+    expect(await exported({ mounts: 'vol:/data:ro /srv/a:/opt/a' })).toEqual({ mountSpecs: ['/srv/a:/opt/a', 'vol:/data:ro'] })
   })
 
   it('writes neither when the info cannot be read', async () => {
@@ -77,8 +77,10 @@ describe('the service export includes them, and the file only needs its secrets 
           [`${plugin}:info api --format json`]: serviceInfoJson('api', plugin, '1', { memory: '512', 'custom-env': 'TZ=UTC', mounts: '/srv/a:/opt/a' }),
         },
       })
-      const services = await exportAll(ctx)
-      expect(services.api).toMatchObject({ properties: { memory: 512, 'custom-env': { TZ: 'REPLACE_ME' } }, mounts: ['/srv/a:/opt/a'] })
+      const specs = new Map<string, string[]>()
+      const services = await exportAll(ctx, specs)
+      expect(services.api).toEqual({ image: 'x', version: '1', properties: { memory: 512, 'custom-env': { TZ: 'REPLACE_ME' } } })
+      expect(specs.get('api')).toEqual(['/srv/a:/opt/a'])
       // an exported file cannot be applied before the placeholder is replaced
       expect(() => parseConfig({ apps: {}, [plugin]: services })).toThrow('REPLACE_ME')
       const filled = { ...services.api, properties: { ...services.api.properties, 'custom-env': { TZ: 'UTC' } } }

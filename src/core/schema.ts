@@ -4,6 +4,7 @@ import { NGINX_KEYS, LOGS_KEYS, LOGS_GLOBAL_KEYS, REGISTRY_KEYS } from '../resou
 import {
   entryNameError, isLegacyName, chownError, modeError, pathError, usesDefaultLocation,
   parseMountString, mountIssues, declaredMounts, scopesOverlap, DEFAULT_SCOPE, type MountItem,
+  parseServiceMountString, serviceMountIssues, declaredServiceMounts, type ServiceMountItem,
 } from './volume-rules.js'
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
 import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs } from '../modules/service-property-keys.js'
@@ -397,10 +398,23 @@ const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superR
   }
 })
 
-/** `mounts:` of a service: `<source>:<container-dir>[:<options>]`, no whitespace. */
-const ServiceMountsSchema = z.array(
-  z.string().min(1).regex(/^\S+$/, 'a mount spec must not contain whitespace').regex(/^[^:]+:[^:]+(:.*)?$/, 'a mount is <source>:<container-dir>[:<options>]')
-)
+const ServiceMountObjectSchema = z.object({
+  entry: z.string().min(1),
+  container_dir: z.string().min(1),
+  readonly: z.boolean().optional(),
+  options: z.array(z.string()).optional(),
+}).strict().superRefine((m, ctx) => {
+  for (const message of serviceMountIssues(m)) ctx.addIssue({ code: 'custom', message })
+})
+
+const ServiceMountStringSchema = z.string().superRefine((s, ctx) => {
+  const parsed = parseServiceMountString(s)
+  if (typeof parsed === 'string') ctx.addIssue({ code: 'custom', message: parsed })
+  else for (const message of serviceMountIssues(parsed)) ctx.addIssue({ code: 'custom', message })
+})
+
+/** `mounts:` of a service: `volumes:` entries, short form `<entry>:<container-dir>` or the map form. */
+const ServiceMountsSchema = z.array(z.union([ServiceMountStringSchema, ServiceMountObjectSchema]))
 
 const PostgresSchema = z.object({
   version: z.string().optional(),
@@ -460,6 +474,25 @@ export const ConfigSchema = z.object({
   proxy: GlobalProxySchema.optional(),
   git: GlobalGitSchema.optional(),
 }).strict().superRefine((config, ctx) => {
+  // A service's mounts name declared entries, and no two share a container dir.
+  for (const plugin of ['postgres', 'redis'] as const) {
+    for (const [svc, svcConfig] of Object.entries(config[plugin] ?? {})) {
+      const mounts = (svcConfig.mounts ?? []).flatMap((item, index) => {
+        const [mount] = declaredServiceMounts([item as string | ServiceMountItem])
+        return mount ? [{ mount, index }] : []
+      })
+      mounts.forEach(({ mount: m, index }, i) => {
+        const where = [plugin, svc, 'mounts', index]
+        if (!config.volumes || !(m.entry in config.volumes)) {
+          ctx.addIssue({ code: 'custom', path: where, message: `entry '${m.entry}' is not declared under volumes: (a host directory is an entry's path:)` })
+        }
+        if (mounts.slice(0, i).some(({ mount: earlier }) => earlier.container_dir === m.container_dir)) {
+          ctx.addIssue({ code: 'custom', path: where, message: `container_dir '${m.container_dir}' is mounted twice` })
+        }
+      })
+    }
+  }
+
   // Mounts name declared entries, and no two of an app's mounts may share a container dir in overlapping scopes.
   for (const [app, appConfig] of Object.entries(config.apps)) {
     // Keep each mount's position in the list, so a message names the item it is about.
@@ -487,6 +520,7 @@ export type Config = z.infer<typeof ConfigSchema>
 export type AppConfig = z.infer<typeof AppSchema>
 export type PostgresConfig = z.infer<typeof PostgresSchema>
 export type RedisConfig = z.infer<typeof RedisSchema>
+export type ServiceMountsConfig = z.infer<typeof ServiceMountsSchema>
 export type ServicePropertiesConfig = z.infer<typeof ServicePropertiesSchema>
 export type ServiceBackupConfig = z.infer<typeof ServiceBackupSchema>
 export type PluginConfig = z.infer<typeof PluginSchema>

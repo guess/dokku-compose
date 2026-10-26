@@ -7,9 +7,9 @@ import { exportRedis } from '../modules/redis.js'
 import { exportAppLinks } from '../modules/links.js'
 import { exportNetworks } from '../modules/network.js'
 import { GLOBAL_NAMES, exportGlobal } from '../modules/global.js'
-import { readEntries, exportVolumes } from '../modules/volumes.js'
+import { readEntries, exportVolumes, legacyExportNames, DOCKER_LOCAL, type ServerEntry } from '../modules/volumes.js'
 import { parseSpec } from '../resources/storage.js'
-import { DEFAULT_SCOPE, ALL_PHASES, type MountItem } from '../core/volume-rules.js'
+import { DEFAULT_SCOPE, ALL_PHASES, defaultPath, isLegacyName, pathError, type MountItem, type ServiceMountItem } from '../core/volume-rules.js'
 import { logWarn } from '../core/logger.js'
 import { assertDokkuSupported } from '../modules/version.js'
 
@@ -40,9 +40,14 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
   }
 
   // Services
-  const postgres = await exportPostgres(ctx)
+  const serviceMounts = new Map<string, { plugin: 'postgres' | 'redis'; specs: string[] }>()
+  const specsOf = new Map<string, string[]>()
+  const postgres = await exportPostgres(ctx, specsOf)
+  for (const [name, specs] of specsOf) serviceMounts.set(name, { plugin: 'postgres', specs })
+  specsOf.clear()
   if (Object.keys(postgres).length > 0) config.postgres = postgres
-  const redis = await exportRedis(ctx)
+  const redis = await exportRedis(ctx, specsOf)
+  for (const [name, specs] of specsOf) serviceMounts.set(name, { plugin: 'redis', specs })
   if (Object.keys(redis).length > 0) config.redis = redis
 
   // Bulk prefetch: run all readAll queries in parallel
@@ -112,23 +117,35 @@ export async function runExport(ctx: Context, opts: ExportOptions): Promise<Conf
     config.apps[app] = appConfig
   }
 
-  await exportStorage(ctx, config, mounts, !!opts.appFilter?.length)
+  await exportStorage(ctx, config, mounts, !!opts.appFilter?.length, serviceMounts)
 
   return config
 }
 
 /** `volumes:` and each app's `storage:`, from the entries and mounts on the server. */
-async function exportStorage(ctx: Context, config: Config, mounts: Map<string, string[]>, onlyMounted: boolean): Promise<void> {
+async function exportStorage(
+  ctx: Context, config: Config, mounts: Map<string, string[]>, onlyMounted: boolean,
+  serviceMounts: Map<string, { plugin: 'postgres' | 'redis'; specs: string[] }>,
+): Promise<void> {
   let server
   try {
     server = await readEntries(ctx)
   } catch (err) {
     logWarn('storage', `could not read the storage entries, storage left out of the export: ${err instanceof Error ? err.message : String(err)}`)
+    for (const name of serviceMounts.keys()) logWarn(name, 'its mounts are left out of the export: the storage entries could not be read')
     return
   }
   const parsed = new Map([...mounts].map(([app, specs]) => [app, specs.map(parseSpec)]))
   const mounted = new Set([...parsed.values()].flat().map(m => m.entry))
+  // A service mount names a host path: the entry at that path (the named one before a legacy one) is the entry it mounts.
+  const byPath = new Map<string, string>()
+  for (const e of [...server.values()].filter(e => e.scheduler === DOCKER_LOCAL && e.host_path).sort((a, b) => Number(isLegacyName(a.name)) - Number(isLegacyName(b.name)) || a.name.localeCompare(b.name))) {
+    if (!byPath.has(e.host_path!)) byPath.set(e.host_path!, e.name)
+  }
+  const serviceSpecs = new Map([...serviceMounts].map(([name, { specs }]) => [name, specs.map(parseServiceSpec)]))
+  for (const list of serviceSpecs.values()) for (const m of list) { const entry = byPath.get(m.source); if (entry) mounted.add(entry) }
   const { volumes, names } = exportVolumes(server, mounted, onlyMounted)
+  exportServiceMounts(config, serviceMounts, serviceSpecs, byPath, names, volumes, server)
   if (Object.keys(volumes).length > 0) config.volumes = volumes
 
   for (const [app, list] of parsed) {
@@ -155,5 +172,60 @@ async function exportStorage(ctx: Context, config: Config, mounts: Map<string, s
       })
     }
     if (items.length > 0) config.apps[app].storage = items
+  }
+}
+
+interface ServiceSpec { source: string; dir: string; readonly: boolean; options: string[]; dropped: string[] }
+
+/** `<host-path>:<container-dir>[:<options>]` as `<plugin>:info` reports a mount. */
+function parseServiceSpec(spec: string): ServiceSpec {
+  const [source = '', dir = '', ...rest] = spec.split(':')
+  const out: ServiceSpec = { source, dir, readonly: false, options: [], dropped: [] }
+  for (const token of rest.join(':').split(',').filter(Boolean)) {
+    if (token === 'ro') out.readonly = true
+    else if (token.startsWith('volume-subpath=') || token.startsWith('volume-chown=')) out.dropped.push(token.split('=')[0])
+    else out.options.push(token)
+  }
+  return out
+}
+
+/**
+ * Each service's `mounts:`: the `volumes:` entry at the mount's host path, else a new entry named after
+ * the directory (added to `volumes`, with `path:`). A mount that cannot be an entry is left out with a warning.
+ */
+function exportServiceMounts(
+  config: Config,
+  serviceMounts: Map<string, { plugin: 'postgres' | 'redis'; specs: string[] }>,
+  parsed: Map<string, ServiceSpec[]>,
+  byPath: Map<string, string>,
+  names: Map<string, string>,
+  volumes: NonNullable<Config['volumes']>,
+  server: Map<string, ServerEntry>,
+): void {
+  const taken = new Set([...server.keys(), ...Object.keys(volumes)])
+  const added = new Map<string, string>()
+  for (const [svc, { plugin }] of serviceMounts) {
+    const items: (string | ServiceMountItem)[] = []
+    for (const m of parsed.get(svc) ?? []) {
+      let entry = byPath.has(m.source) ? names.get(byPath.get(m.source)!) : added.get(m.source)
+      if (entry === undefined && !byPath.has(m.source)) {
+        const given = pathError(m.source) === undefined
+          ? legacyExportNames([{ name: m.source, scheduler: DOCKER_LOCAL, host_path: m.source }], taken).get(m.source) ?? null
+          : null
+        if (given === null) {
+          logWarn(svc, `mount of ${m.source} at ${m.dir} left out of the export: no valid volumes: entry can name it`)
+          continue
+        }
+        volumes[given] = m.source === defaultPath(given) ? { chown: false } : { path: m.source }
+        added.set(m.source, given)
+        entry = given
+      }
+      if (entry === undefined) { logWarn(svc, `mount of ${m.source} at ${m.dir} left out of the export: dokku-compose manages only docker-local entries`); continue }
+      if (m.dropped.length > 0) logWarn(svc, `${m.dir}: ${m.dropped.join(' and ')} dropped: not managed for a service mount`)
+      items.push(!m.readonly && m.options.length === 0
+        ? `${entry}:${m.dir}`
+        : { entry, container_dir: m.dir, ...(m.readonly ? { readonly: true } : {}), ...(m.options.length > 0 ? { options: m.options } : {}) })
+    }
+    if (items.length > 0) (config[plugin] as Record<string, { mounts?: (string | ServiceMountItem)[] }>)[svc].mounts = items
   }
 }

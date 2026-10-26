@@ -221,8 +221,8 @@ async function runUpPhases(
   const failedVolumes = config.volumes ? await ensureVolumes(ctx, config.volumes, opts.failFast) : new Map<string, string>()
 
   // Phase 4: Services
-  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres) : new Set<string>()
-  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis) : new Set<string>()
+  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres, config.volumes) : new Set<string>()
+  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis, config.volumes) : new Set<string>()
   if (config.postgres) {
     await ensureServiceBackups(ctx, 'postgres', config.postgres, {
       prune: opts.prune,
@@ -242,7 +242,7 @@ async function runUpPhases(
   for (const [plugin, services, created] of [['postgres', config.postgres, createdPostgres], ['redis', config.redis, createdRedis]] as const) {
     if (!services) continue
     const failed = await ensureServiceProperties(ctx, plugin, services, config, {
-      prune: opts.prune, dryRun: opts.dryRun, dryRunCreated: opts.dryRun ? created : undefined,
+      prune: opts.prune, dryRun: opts.dryRun, dryRunCreated: opts.dryRun ? created : undefined, failedVolumes,
     })
     serviceFailures.push(...failed.map(f => ({ app: `${plugin}:${f.service}`, error: f.error, service: true as const })))
   }

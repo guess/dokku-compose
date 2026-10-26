@@ -1,6 +1,7 @@
 import { createHash } from 'crypto'
 import type { Context } from '../core/context.js'
-import { EXPORT_PLACEHOLDER, type Config, type ServicePropertiesConfig } from '../core/schema.js'
+import { EXPORT_PLACEHOLDER, type Config, type ServicePropertiesConfig, type ServiceMountsConfig } from '../core/schema.js'
+import { resolveServiceMounts } from './service-mounts.js'
 import { logAction, logDone, logError, logSkip } from '../core/logger.js'
 import { normalizeLink } from './links.js'
 import { forgetServiceInfo, readServiceInfo, field, type ServiceInfo, type ServiceMismatch } from './service-drift.js'
@@ -12,7 +13,7 @@ import {
 /** The parts of a postgres or redis service these functions read. */
 export interface ServicePropertiesInput {
   properties?: ServicePropertiesConfig
-  mounts?: string[]
+  mounts?: ServiceMountsConfig
 }
 
 /**
@@ -20,7 +21,7 @@ export interface ServicePropertiesInput {
  * managed key is a create flag, so a new service is made with them and needs no restart.
  * Keys with no built-in entry are set after the service exists.
  */
-export function createArgs(declared: ServicePropertiesInput): string[] {
+export function createArgs(declared: ServicePropertiesInput, mounts?: string[]): string[] {
   const args: string[] = []
   for (const [key, value] of declaredEntries(declared.properties)) {
     const spec = MANAGED_PROPERTIES[key]
@@ -29,7 +30,7 @@ export function createArgs(declared: ServicePropertiesInput): string[] {
     if (spec.repeat) for (const pair of value.split(' ')) args.push(`--${spec.createFlag}`, pair)
     else args.push(`--${spec.createFlag}`, value)
   }
-  for (const mount of declared.mounts ?? []) args.push('--volume', mount)
+  for (const mount of mounts ?? []) args.push('--volume', mount)
   return args
 }
 
@@ -140,7 +141,7 @@ export async function ensureServiceProperties(
   plugin: ServicePlugin,
   services: Record<string, ServicePropertiesInput>,
   config: Config,
-  opts: { prune?: boolean; dryRun?: boolean; dryRunCreated?: Set<string> } = {},
+  opts: { prune?: boolean; dryRun?: boolean; dryRunCreated?: Set<string>; failedVolumes?: Map<string, string> } = {},
 ): Promise<{ service: string; error: unknown }[]> {
   const failures: { service: string; error: unknown }[] = []
   for (const [name, declared] of Object.entries(services)) {
@@ -155,8 +156,9 @@ export async function ensureServiceProperties(
     }
     try {
       const info = await readServiceInfo(ctx, plugin, name)
+      const mountSpecs = await resolveServiceMounts(ctx, config.volumes, declared.mounts, opts.failedVolumes)
       const changes = propertyChanges(plugin, info, declared.properties, opts.prune ?? false)
-      const mount = mountCommand(plugin, name, info, declared.mounts)
+      const mount = mountCommand(plugin, name, info, mountSpecs)
       logAction('services', `Configuring properties for ${name}`)
       if (changes.length === 0 && !mount) { logSkip(); continue }
       for (const change of changes) {
@@ -213,7 +215,8 @@ export function propertyMismatches(plugin: ServicePlugin, info: ServiceInfo, pro
 }
 
 /**
- * The `properties` and `mounts` `export` writes for a service, from `<plugin>:info --format json`:
+ * The `properties` `export` writes for a service and the host-path specs of its mounts (which `export` maps back to
+ * `volumes:` entries once it has read them), from `<plugin>:info --format json`:
  * managed keys with a value that is not the plugin's default. `password` is never written (only its
  * fingerprint is readable) and every `custom-env` value is `REPLACE_ME`. A service whose info cannot
  * be read gets neither (the backup export has already said so).
@@ -222,7 +225,7 @@ export async function exportServiceProperties(
   ctx: Context,
   plugin: ServicePlugin,
   name: string,
-): Promise<{ properties?: ServicePropertiesConfig; mounts?: string[] }> {
+): Promise<{ properties?: ServicePropertiesConfig; mountSpecs?: string[] }> {
   let info: ServiceInfo
   try {
     info = await readServiceInfo(ctx, plugin, name)
@@ -244,6 +247,6 @@ export async function exportServiceProperties(
   const mounts = 'mounts' in info ? parseInfoMounts(field(info, 'mounts')) : []
   return {
     ...(Object.keys(properties).length > 0 ? { properties } : {}),
-    ...(mounts.length > 0 ? { mounts } : {}),
+    ...(mounts.length > 0 ? { mountSpecs: mounts } : {}),
   }
 }

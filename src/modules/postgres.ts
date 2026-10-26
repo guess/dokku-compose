@@ -1,14 +1,16 @@
 import type { Context } from '../core/context.js'
-import type { PostgresConfig } from '../core/schema.js'
+import type { Config, PostgresConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
 import { createArgs, exportServiceProperties } from './service-properties.js'
+import { resolveServiceMounts } from './service-mounts.js'
 import { exportServiceBackup } from './service-backup.js'
 import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
 
 export async function ensurePostgres(
   ctx: Context,
-  services: Record<string, PostgresConfig>
+  services: Record<string, PostgresConfig>,
+  volumes?: Config['volumes'],
 ): Promise<Set<string>> {
   const created = new Set<string>()
   for (const [name, config] of Object.entries(services)) {
@@ -32,7 +34,7 @@ export async function ensurePostgres(
     const args: string[] = ['postgres:create', name]
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
-    args.push(...createArgs(config))
+    args.push(...createArgs(config, await resolveServiceMounts(ctx, volumes, config.mounts)))
     await ctx.run(...args)
     created.add(name)
     logDone()
@@ -78,7 +80,9 @@ export async function destroyPostgres(
 }
 
 export async function exportPostgres(
-  ctx: Context
+  ctx: Context,
+  /** Receives each service's mounts as the host-path specs the server reports */
+  mountSpecs?: Map<string, string[]>,
 ): Promise<Record<string, PostgresConfig>> {
   const services: Record<string, PostgresConfig> = {}
   const listOutput = await ctx.query('postgres:list')
@@ -108,7 +112,9 @@ export async function exportPostgres(
     const backup = await exportServiceBackup(ctx, 'postgres', name)
     if (backup) config.backup = backup
 
-    Object.assign(config, await exportServiceProperties(ctx, 'postgres', name))
+    const exported = await exportServiceProperties(ctx, 'postgres', name)
+    if (exported.properties) config.properties = exported.properties
+    if (exported.mountSpecs) mountSpecs?.set(name, exported.mountSpecs)
 
     services[name] = config
   }

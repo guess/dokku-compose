@@ -14,8 +14,7 @@ describe('createArgs', () => {
         password: 'hunter2', 'wait-timeout': 90, 'shm-size': '256m', 'config-options': '-c x=1',
         'log-driver': 'json-file', 'log-opt': ['max-size=10m'], 'initial-network': 'n', 'post-start-network': ['c'],
       },
-      mounts: ['/srv/a:/opt/a', 'vol:/data:ro'],
-    })).toEqual([
+    }, ['/srv/a:/opt/a', 'vol:/data:ro'])).toEqual([
       '--memory', '512', '--restart', 'unless-stopped', '--post-create-network', 'a,b', '--custom-env', 'TZ=UTC',
       '--password', 'hunter2', '--wait-timeout', '90', '--shm-size', '256m', '--config-options', '-c x=1',
       '--log-driver', 'json-file', '--log-opt', 'max-size=10m', '--initial-network', 'n', '--post-start-network', 'c',
@@ -38,7 +37,7 @@ describe('createArgs', () => {
 describe.each([['postgres', ensurePostgres], ['redis', ensureRedis]] as const)('%s create', (plugin, ensure) => {
   it('creates a missing service with image, version, property flags and mounts on the :create line', async () => {
     const { ctx, runner } = fakeContext({ checks: { [`${plugin}:exists db`]: false }, queries: {} })
-    const created = await ensure(ctx, { db: { version: '17', properties: { memory: 512, password: 'hunter2' }, mounts: ['/srv/a:/opt/a'] } } as any)
+    const created = await ensure(ctx, { db: { version: '17', properties: { memory: 512, password: 'hunter2' }, mounts: ['a:/opt/a'] } } as any, { a: { path: '/srv/a' } } as any)
     expect([...created]).toEqual(['db'])
     expect(runner.dryRunLog).toEqual([
       `${plugin}:create db --image-version 17 --memory 512 --password hunter2 --volume /srv/a:/opt/a`,

@@ -1,13 +1,15 @@
 import type { Context } from '../core/context.js'
-import type { RedisConfig } from '../core/schema.js'
+import type { Config, RedisConfig } from '../core/schema.js'
 import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
 import { createArgs, exportServiceProperties } from './service-properties.js'
+import { resolveServiceMounts } from './service-mounts.js'
 import { exportServiceBackup } from './service-backup.js'
 
 export async function ensureRedis(
   ctx: Context,
-  services: Record<string, RedisConfig>
+  services: Record<string, RedisConfig>,
+  volumes?: Config['volumes'],
 ): Promise<Set<string>> {
   const created = new Set<string>()
   for (const [name, config] of Object.entries(services)) {
@@ -31,7 +33,7 @@ export async function ensureRedis(
     const args: string[] = ['redis:create', name]
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
-    args.push(...createArgs(config))
+    args.push(...createArgs(config, await resolveServiceMounts(ctx, volumes, config.mounts)))
     await ctx.run(...args)
     created.add(name)
     logDone()
@@ -53,7 +55,9 @@ export async function destroyRedis(
 }
 
 export async function exportRedis(
-  ctx: Context
+  ctx: Context,
+  /** Receives each service's mounts as the host-path specs the server reports */
+  mountSpecs?: Map<string, string[]>,
 ): Promise<Record<string, RedisConfig>> {
   const services: Record<string, RedisConfig> = {}
   const listOutput = await ctx.query('redis:list')
@@ -83,7 +87,9 @@ export async function exportRedis(
     const backup = await exportServiceBackup(ctx, 'redis', name)
     if (backup) config.backup = backup
 
-    Object.assign(config, await exportServiceProperties(ctx, 'redis', name))
+    const exported = await exportServiceProperties(ctx, 'redis', name)
+    if (exported.properties) config.properties = exported.properties
+    if (exported.mountSpecs) mountSpecs?.set(name, exported.mountSpecs)
 
     services[name] = config
   }

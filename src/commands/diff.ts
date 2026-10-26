@@ -15,6 +15,7 @@ import { readGlobalDomains, globalDomainsInSync } from '../modules/domains.js'
 import { readServiceInfo, versionMismatches, type ServiceMismatch } from '../modules/service-drift.js'
 import { backupMismatches, backupNotes } from '../modules/service-backup.js'
 import { propertyMismatches, mountMismatches } from '../modules/service-properties.js'
+import { resolveServiceMounts } from '../modules/service-mounts.js'
 import { readGlobalEnv, readGlobalEnvDrift, GLOBAL_MANAGED_KEYS_VAR } from '../modules/config.js'
 import { undeclaredEnvKeys, type EnvNote } from '../modules/env-notes.js'
 import { staleBackupHashKeys } from '../modules/postgres.js'
@@ -517,7 +518,7 @@ export async function computeDiff(ctx: Context, config: Config): Promise<DiffRes
           ...versionMismatches(info, declared),
           ...(backup !== undefined ? backupMismatches(plugin, info, backup) : []),
           ...propertyMismatches(plugin, info, declared.properties),
-          ...mountMismatches(plugin, info, declared.mounts),
+          ...mountMismatches(plugin, info, await resolveServiceMounts(ctx, config.volumes, declared.mounts)),
         ]
         // What up leaves alone on purpose (an undeclared backup, encryption or setting, other schedules) is a note, not drift.
         const notes = backupNotes(info, backup)

@@ -63,7 +63,7 @@ const PASSWORD_FINGERPRINT = createHash('sha256').update('Zq7-Hk9vbn2').digest('
 const DB_PROPERTIES = {
   memory: '512', 'shm-size': '256m', 'restart-policy': 'unless-stopped', 'post-create-network': 'other-net,backend-net',
   'custom-env': 'PGOPTIONS=-c work_mem=8MB;TZ=UTC', 'password-fingerprint': PASSWORD_FINGERPRINT,
-  mounts: 'dbvol:/opt/data:ro /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra',
+  mounts: 'dbvol:/opt/data:ro /var/lib/dokku/data/storage/db-extra:/opt/extra',
   'volume-targets': 'data=/var/lib/postgresql/data',
 }
 const REDIS_PROPERTIES = {
@@ -110,6 +110,8 @@ function inSyncServer(): FakeServer {
       // Storage entries, as `storage:list-entries --format json` prints them (an entry made by hand and one by Dokku's legacy migration are not in the file).
       'storage:list-entries --format json': JSON.stringify([
         { name: 'data', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/data', chown: '1000', mode: '0750', schema_version: 1 },
+        { name: 'db-extra', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/db-extra', chown: '999', schema_version: 1 },
+        { name: 'db-vol', scheduler: 'docker-local', host_path: 'dbvol', schema_version: 1 },
         { name: 'media', scheduler: 'docker-local', host_path: '/srv/media', schema_version: 1 },
         { name: 'uploads', scheduler: 'docker-local', host_path: '/var/lib/dokku/data/storage/uploads', chown: 'herokuish', schema_version: 1 },
       ]),
@@ -1016,7 +1018,7 @@ describe('datastore properties and mounts', () => {
     expect(runner.dryRunLog).toEqual([
       'postgres:set myapp-db memory -- 512',
       "postgres:set myapp-db custom-env -- 'TZ=UTC;PGOPTIONS=-c work_mem=8MB'",
-      'postgres:mount --replace myapp-db /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra dbvol:/opt/data:ro',
+      'postgres:mount --replace myapp-db /var/lib/dokku/data/storage/db-extra:/opt/extra dbvol:/opt/data:ro',
     ])
     expect(lines).toContain('dokku postgres:stop myapp-db && dokku postgres:start myapp-db  # memory, custom-env, mounts')
   })
@@ -1130,7 +1132,7 @@ describe('datastore properties and mounts', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, loadConfig(FIXTURE), ['__none__'], { dryRun: true })
     expect(runner.dryRunLog[0]).toBe(
-      "postgres:create myapp-db --image postgis/postgis --image-version 17-3.5 --memory 512 --shm-size 256m --restart unless-stopped --post-create-network backend-net,other-net --custom-env 'TZ=UTC;PGOPTIONS=-c work_mem=8MB' --password Zq7-Hk9vbn2 --volume-target data=/var/lib/postgresql/data --volume /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra --volume dbvol:/opt/data:ro",
+      "postgres:create myapp-db --image postgis/postgis --image-version 17-3.5 --memory 512 --shm-size 256m --restart unless-stopped --post-create-network backend-net,other-net --custom-env 'TZ=UTC;PGOPTIONS=-c work_mem=8MB' --password Zq7-Hk9vbn2 --volume-target data=/var/lib/postgresql/data --volume /var/lib/dokku/data/storage/db-extra:/opt/extra --volume dbvol:/opt/data:ro",
     )
     expect(ctx.serviceRestarts.size).toBe(0)
     expect(maskSensitiveArgs(runner.dryRunLog[0])).not.toContain('Zq7-Hk9vbn2')
@@ -1147,5 +1149,30 @@ describe('datastore properties and mounts', () => {
     const output = listing + lines.join('\n') + formatVerbose(maskDiffResult(await computeDiff(fakeContext(server).ctx, config)))
     for (const secret of ['Zq7-Wxk9.vBn2', 'zq7 wxk9 vbn2', 'Asia/Tokyo']) expect(leaks(output, secret), secret).toEqual([])
     expect(listing).toContain('API_KEY=****;TZ=****')
+  })
+
+  it('a service that mounts an entry that cannot be converged fails its step with the entry name, and mounts nothing', async () => {
+    const server = inSyncServer()
+    // the entry sits at another path on the server, which Dokku cannot change
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      ...JSON.parse(server.queries['storage:list-entries --format json']).filter((e: { name: string }) => e.name !== 'db-extra'),
+      { name: 'db-extra', scheduler: 'docker-local', host_path: '/srv/elsewhere', chown: '999', schema_version: 1 },
+    ])
+    server.queries['postgres:info myapp-db --format json'] = serviceInfoJson('myapp-db', 'postgis/postgis', '17-3.5', { ...DB_PROPERTIES, mounts: '' })
+    const { ctx, runner } = fakeContext(server)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true })).rejects.toThrow('postgres:myapp-db')
+    expect(runner.dryRunLog.filter(c => c.startsWith('postgres:mount'))).toEqual([])
+  })
+
+  it('an entry moved to another path shows in diff as a different resolved host path', async () => {
+    const config = loadConfig(FIXTURE)
+    config.volumes!['db-extra'] = { path: '/srv/db-extra' }
+    const diff = await computeDiff(fakeContext(inSyncServer()).ctx, config)
+    expect(diff.services['myapp-db'].mismatches).toEqual([{
+      field: 'mounts',
+      desired: '/srv/db-extra:/opt/extra dbvol:/opt/data:ro',
+      current: '/var/lib/dokku/data/storage/db-extra:/opt/extra dbvol:/opt/data:ro',
+    }])
   })
 })

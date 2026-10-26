@@ -4,8 +4,8 @@ import { parseConfig } from './schema.js'
 const issues = (properties: unknown, plugin: 'postgres' | 'redis' = 'postgres') => {
   try { parseConfig({ apps: {}, [plugin]: { db: { properties } } }); return '' } catch (e: any) { return String(e.message) }
 }
-const mountIssues = (mounts: unknown) => {
-  try { parseConfig({ apps: {}, postgres: { db: { mounts } } }); return '' } catch (e: any) { return String(e.message) }
+const mountIssues = (mounts: unknown, volumes: unknown = { data: {}, dumps: { path: '/srv/dumps' } }) => {
+  try { parseConfig({ apps: {}, ...(volumes === null ? {} : { volumes }), postgres: { db: { mounts } } }); return '' } catch (e: any) { return String(e.message) }
 }
 
 describe('service properties', () => {
@@ -78,15 +78,27 @@ describe('service properties', () => {
 })
 
 describe('service mounts', () => {
-  it('takes a list of specs, an empty list, and nothing', () => {
-    expect(mountIssues(['/srv/a:/opt/a', 'vol:/data:ro,nocopy'])).toBe('')
+  it('takes entries of volumes: in the short form and the long form, an empty list, and nothing', () => {
+    expect(mountIssues(['data:/opt/extra', { entry: 'dumps', container_dir: '/opt/dumps', readonly: true, options: ['z'] }])).toBe('')
     expect(mountIssues([])).toBe('')
     expect(mountIssues(undefined)).toBe('')
   })
 
-  it('rejects whitespace, a missing container dir and a non-list', () => {
-    expect(mountIssues(['/srv/a b:/opt/a'])).toContain('whitespace')
-    expect(mountIssues(['/srv/a'])).toContain('<source>:<container-dir>')
-    expect(mountIssues('/srv/a:/opt/a')).not.toBe('')
+  it('rejects a host path with a hint, packed options, an undeclared entry and no volumes: at all', () => {
+    expect(mountIssues(['/srv/dumps:/opt/dumps'])).toContain('declare the directory as an entry under volumes:')
+    expect(mountIssues(['data:/opt/extra:ro'])).toContain('options need the map form')
+    expect(mountIssues(['nope:/opt/extra'])).toContain("entry 'nope' is not declared under volumes:")
+    expect(mountIssues([{ entry: 'nope', container_dir: '/x' }])).toContain("entry 'nope' is not declared")
+    expect(mountIssues(['data:/opt/extra'], null)).toContain('not declared')
+  })
+
+  it('rejects a bad container dir, a dir used twice, bad options and keys a service mount does not have', () => {
+    expect(mountIssues(['data:relative'])).toContain('container_dir')
+    expect(mountIssues(['data:/opt/x/'])).toContain('normalised')
+    expect(mountIssues(['data:/opt/x', 'dumps:/opt/x'])).toContain('mounted twice')
+    expect(mountIssues([{ entry: 'data', container_dir: '/x', options: ['ro'] }])).toContain("use readonly")
+    expect(mountIssues([{ entry: 'data', container_dir: '/x', phases: ['deploy'] }])).not.toBe('')
+    expect(mountIssues([{ entry: 'data', container_dir: '/x', process_type: 'web' }])).not.toBe('')
+    expect(mountIssues('data:/opt/extra')).not.toBe('')
   })
 })

@@ -36,6 +36,10 @@ volumes:
     mode: "0750"
   media:
     path: /srv/media        # an existing directory; owner and mode are left alone
+  db-extra:
+    chown: 999              # the user the database container runs as
+  db-vol:
+    path: dbvol             # a Docker volume
 
 domains:
   - example.com
@@ -91,8 +95,10 @@ postgres:
       volume-targets:
         data: /var/lib/postgresql/data
     mounts:
-      - /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra
-      - dbvol:/opt/data:ro
+      - db-extra:/opt/extra
+      - entry: db-vol
+        container_dir: /opt/data
+        readonly: true
 
   myapp-reports:
     backup:
