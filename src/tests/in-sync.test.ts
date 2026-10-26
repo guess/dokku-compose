@@ -1175,4 +1175,53 @@ describe('datastore properties and mounts', () => {
       current: '/var/lib/dokku/data/storage/db-extra:/opt/extra dbvol:/opt/data:ro',
     }])
   })
+
+  it('a NEW service that mounts a failed entry fails alone: no :create, the other service and the apps still run, and up ends in an error', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    // the entry sits at another path on the server, which Dokku cannot change
+    server.queries['storage:list-entries --format json'] = JSON.stringify([
+      ...JSON.parse(server.queries['storage:list-entries --format json']).filter((e: { name: string }) => e.name !== 'db-extra'),
+      { name: 'db-extra', scheduler: 'docker-local', host_path: '/srv/elsewhere', chown: '999', schema_version: 1 },
+    ])
+    server.queries['redis:info myapp-redis --format json'] = serviceInfoJson('myapp-redis', 'redis', '7.2-alpine', { ...REDIS_BACKUP, ...REDIS_PROPERTIES, memory: '64' })
+    const { ctx, runner } = fakeContext(server)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const error = await runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true }).catch(e => e)
+    expect(String(error.message)).toContain('up failed for 1 service(s): postgres:myapp-db')
+    expect(runner.dryRunLog.some(c => c.startsWith('postgres:create'))).toBe(false)
+    expect(runner.dryRunLog).toContain('redis:set myapp-redis memory -- 128')
+    // the apps ran: their checks were read
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists' && c[1] === 'myapp')).toBe(true)
+  })
+
+  it('a :create the plugin refuses for one service does not stop the next service or the apps', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    server.checks['postgres:exists myapp-reports'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    delete server.queries['postgres:info myapp-reports --format json']
+    const { ctx, runner } = fakeContext(server)
+    const run = runner.run
+    runner.run = vi.fn(async (...args: string[]) => {
+      if (args[0] === 'postgres:create' && args[1] === 'myapp-db') throw new Error('Container path must not be /')
+      return run(...args)
+    })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true })).rejects.toThrow('up failed for 1 service(s): postgres:myapp-db')
+    expect(runner.dryRunLog.some(c => c.startsWith('postgres:create myapp-reports'))).toBe(true)
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists' && c[1] === 'myapp')).toBe(true)
+  })
+
+  it('--fail-fast stops after a service that cannot be created, before any app', async () => {
+    const server = inSyncServer()
+    server.checks['postgres:exists myapp-db'] = false
+    delete server.queries['postgres:info myapp-db --format json']
+    const { ctx, runner } = fakeContext(server)
+    runner.run = vi.fn(async (...args: string[]) => { if (args[0] === 'postgres:create') throw new Error('refused') })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(runUp(ctx, loadConfig(FIXTURE), [], { dryRun: true, failFast: true })).rejects.toThrow('up failed for 1 service(s)')
+    expect((runner.check as any).mock.calls.some((c: string[]) => c[0] === 'apps:exists')).toBe(false)
+  })
 })

@@ -10,6 +10,15 @@ import {
   type ServicePlugin,
 } from './service-property-keys.js'
 
+/**
+ * How `ensurePostgres` and `ensureRedis` report a service that cannot be created: `failures` collects it
+ * (and the others carry on); without it the error is thrown. `failedVolumes` are the entries `up` could not converge.
+ */
+export interface ServiceCreateOptions {
+  failedVolumes?: Map<string, string>
+  failures?: { service: string; error: unknown }[]
+}
+
 /** The parts of a postgres or redis service these functions read. */
 export interface ServicePropertiesInput {
   properties?: ServicePropertiesConfig

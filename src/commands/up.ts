@@ -221,25 +221,37 @@ async function runUpPhases(
   const failedVolumes = config.volumes ? await ensureVolumes(ctx, config.volumes, opts.failFast) : new Map<string, string>()
 
   // Phase 4: Services
-  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres, config.volumes) : new Set<string>()
-  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis, config.volumes) : new Set<string>()
-  if (config.postgres) {
-    await ensureServiceBackups(ctx, 'postgres', config.postgres, {
+  // A service that cannot be created (a mounted entry failed, the plugin refused it) is reported and the run goes on.
+  const createFailures: { service: string; error: unknown }[] = []
+  const redisCreateFailures: { service: string; error: unknown }[] = []
+  const createdPostgres = config.postgres ? await ensurePostgres(ctx, config.postgres, config.volumes, { failedVolumes, failures: createFailures }) : new Set<string>()
+  const createdRedis = config.redis ? await ensureRedis(ctx, config.redis, config.volumes, { failedVolumes, failures: redisCreateFailures }) : new Set<string>()
+  // What is left to configure: the services that exist.
+  const without = <T>(services: Record<string, T> | undefined, failed: { service: string }[]): Record<string, T> | undefined =>
+    services && Object.fromEntries(Object.entries(services).filter(([name]) => !failed.some(f => f.service === name)))
+  const postgres = without(config.postgres, createFailures)
+  const redis = without(config.redis, redisCreateFailures)
+  if (postgres) {
+    await ensureServiceBackups(ctx, 'postgres', postgres, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdPostgres : undefined,
     })
   }
-  if (config.redis) {
-    await ensureServiceBackups(ctx, 'redis', config.redis, {
+  if (redis) {
+    await ensureServiceBackups(ctx, 'redis', redis, {
       prune: opts.prune,
       dryRun: opts.dryRun,
       dryRunCreated: opts.dryRun ? createdRedis : undefined,
     })
   }
   // A service whose properties fail is reported; the run goes on and ends non-zero.
-  const serviceFailures: { app: string; error: unknown; service: true }[] = []
-  for (const [plugin, services, created] of [['postgres', config.postgres, createdPostgres], ['redis', config.redis, createdRedis]] as const) {
+  const serviceFailures: { app: string; error: unknown; service: true }[] = [
+    ...createFailures.map(f => ({ app: `postgres:${f.service}`, error: f.error, service: true as const })),
+    ...redisCreateFailures.map(f => ({ app: `redis:${f.service}`, error: f.error, service: true as const })),
+  ]
+  if (opts.failFast && serviceFailures.length > 0) throw new UpFailedError(serviceFailures)
+  for (const [plugin, services, created] of [['postgres', postgres, createdPostgres], ['redis', redis, createdRedis]] as const) {
     if (!services) continue
     const failed = await ensureServiceProperties(ctx, plugin, services, config, {
       prune: opts.prune, dryRun: opts.dryRun, dryRunCreated: opts.dryRun ? created : undefined, failedVolumes,

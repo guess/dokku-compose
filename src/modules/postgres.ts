@@ -1,8 +1,8 @@
 import type { Context } from '../core/context.js'
 import type { Config, PostgresConfig } from '../core/schema.js'
-import { logAction, logDone, logSkip, logWarn } from '../core/logger.js'
+import { logAction, logDone, logError, logSkip, logWarn } from '../core/logger.js'
 import { readServiceMismatches } from './service-drift.js'
-import { createArgs, exportServiceProperties } from './service-properties.js'
+import { createArgs, exportServiceProperties, type ServiceCreateOptions } from './service-properties.js'
 import { resolveServiceMounts } from './service-mounts.js'
 import { exportServiceBackup } from './service-backup.js'
 import { readGlobalEnv, BACKUP_HASH_PREFIX } from './config.js'
@@ -11,6 +11,7 @@ export async function ensurePostgres(
   ctx: Context,
   services: Record<string, PostgresConfig>,
   volumes?: Config['volumes'],
+  opts: ServiceCreateOptions = {},
 ): Promise<Set<string>> {
   const created = new Set<string>()
   for (const [name, config] of Object.entries(services)) {
@@ -34,8 +35,17 @@ export async function ensurePostgres(
     const args: string[] = ['postgres:create', name]
     if (config.image) args.push('--image', config.image)
     if (config.version) args.push('--image-version', config.version)
-    args.push(...createArgs(config, await resolveServiceMounts(ctx, volumes, config.mounts)))
-    await ctx.run(...args)
+    try {
+      args.push(...createArgs(config, await resolveServiceMounts(ctx, volumes, config.mounts, opts.failedVolumes)))
+      await ctx.run(...args)
+    } catch (error) {
+      // Without a failure list the error ends the phase; with one, only this service fails.
+      if (!opts.failures) throw error
+      console.log('')
+      logError(name, error instanceof Error ? error.message : String(error))
+      opts.failures.push({ service: name, error })
+      continue
+    }
     created.add(name)
     logDone()
   }
