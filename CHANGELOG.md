@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-26
+
 ### Breaking
 
 - **Every command that loads the file now rejects an unknown key.** A typo such as `domain:` for `domains:`, or an unsupported key such as `locked: true`, used to be ignored without a word; it now stops with `ERROR: apps.<app>: Unrecognized key: "domain"` (`validate`) and a non-zero exit. This covers the top level and `apps.<app>`, plus `dokku`, `plugins.<name>`, `docker_auth.<registry>`, `postgres.<service>` (and its `backup`, `backup.auth`), `redis.<service>`, and an app's `ssl`, `network`, `build` and `docker_options`. Remove or fix the key to continue.
