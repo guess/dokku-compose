@@ -17,6 +17,12 @@ describe('validate service properties', () => {
     expect(result.warnings).toEqual([expect.stringContaining('postgres.db.properties.some-future-key: not a postgres:set key of dokku-postgres 2.4.0')])
   })
 
+  it('accepts volume-targets silently and warns that 2.4.0 does not list service-memory', () => {
+    const result = validate(write('redis:\n  cache:\n    properties:\n      volume-targets:\n        data: /var/lib/data\n      service-memory: 64\napps: {}\n'))
+    expect(result.errors).toEqual([])
+    expect(result.warnings).toEqual([expect.stringContaining('redis.cache.properties.service-memory: not a redis:set key of dokku-redis 2.4.0')])
+  })
+
   it('errors on a rejected key and does not warn about it', () => {
     const result = validate(write('redis:\n  cache:\n    properties:\n      backup-bucket: b\napps: {}\n'))
     expect(result.errors.some(e => e.includes('redis.cache.properties.backup-bucket'))).toBe(true)

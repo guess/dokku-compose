@@ -12,12 +12,15 @@ export type PropertyKind =
   | 'number'   // a whole number, written as a decimal string
   | 'list'     // a list, joined with "," and compared as a set
   | 'map'      // custom-env: a map, joined as KEY=value;KEY=value, compared as a set
+  | 'targets'  // volume-targets: a map of volume to container path, joined as volume=path with spaces, compared as a set
   | 'secret'   // compared by fingerprint, never printed
 
 export interface PropertySpec {
   kind: PropertyKind
   /** The `<plugin>:create` flag (without `--`) that sets it on a new service */
   createFlag: string
+  /** The create flag is given once per entry (`--volume-target volume=path`), not once with a joined value */
+  repeat?: boolean
   /** Takes effect only after `<plugin>:stop` and `<plugin>:start` */
   restart: boolean
 }
@@ -31,9 +34,13 @@ export const MANAGED_PROPERTIES: Record<string, PropertySpec> = {
   'log-opt': { kind: 'list', createFlag: 'log-opt', restart: true },
   'restart-policy': { kind: 'string', createFlag: 'restart', restart: true },
   'wait-timeout': { kind: 'number', createFlag: 'wait-timeout', restart: false },
+  'volume-targets': { kind: 'targets', createFlag: 'volume-target', repeat: true, restart: true },
   'config-options': { kind: 'string', createFlag: 'config-options', restart: true },
   'custom-env': { kind: 'map', createFlag: 'custom-env', restart: true },
   memory: { kind: 'number', createFlag: 'memory', restart: true },
+  // The memory the datastore itself is told to use. A datastore whose definition applies a change to a running
+  // service takes it at once; the others need stop and start. The table cannot tell, so it lists the service.
+  'service-memory': { kind: 'number', createFlag: 'service-memory', restart: true },
   'shm-size': { kind: 'string', createFlag: 'shm-size', restart: true },
   password: { kind: 'secret', createFlag: 'password', restart: false },
 }
@@ -57,6 +64,13 @@ export const PLUGIN_SET_KEYS: Record<ServicePlugin, readonly string[]> = {
 /** The plugin version the lists above were taken from. */
 export const TESTED_PLUGIN_VERSION = '2.4.0'
 
+/**
+ * Managed keys the 2.4.0 postgres and redis do not list: dokku-datastore takes `service-memory` only for a
+ * datastore whose definition declares one, and neither definition does. `validate` warns about it and the
+ * plugin refuses it there.
+ */
+export const MANAGED_NOT_IN_TESTED_VERSION: readonly string[] = ['service-memory']
+
 /** Keys rejected in `properties:`, with what to do instead. `undefined` for a key that is allowed. */
 export function rejectedReason(key: string): string | undefined {
   if (key.startsWith('backup-')) return 'backup settings belong to the `backup:` block'
@@ -69,9 +83,6 @@ export function rejectedReason(key: string): string | undefined {
       return 'arguments for ad-hoc exports and imports are not managed'
     case 'root-password':
       return 'postgres and redis have no root password'
-    case 'volume-targets':
-    case 'service-memory':
-      return 'rarely needed, so not managed; run `set` by hand'
     case 'image':
     case 'image-version':
     case 'version':
@@ -93,7 +104,11 @@ export type PropertyValue = string | number | (string | number)[] | Record<strin
 /** The value `<plugin>:set` and `<plugin>:create` take for a declared value. */
 export function propertyString(key: string, value: PropertyValue): string {
   if (Array.isArray(value)) return value.map(String).join(',')
-  if (typeof value === 'object') return Object.entries(value).map(([k, v]) => `${k}=${v}`).join(';')
+  if (typeof value === 'object') {
+    // the plugin writes volume-targets sorted by volume, separated by spaces
+    if (MANAGED_PROPERTIES[key]?.kind === 'targets') return targetPairs(value).map(([k, v]) => `${k}=${v}`).join(' ')
+    return Object.entries(value).map(([k, v]) => `${k}=${v}`).join(';')
+  }
   return String(value).trim()
 }
 
@@ -104,6 +119,7 @@ export function comparableProperty(key: string, value: string): string {
   switch (MANAGED_PROPERTIES[key]?.kind) {
     case 'list': return splitSorted(value, ',')
     case 'map': return splitSorted(value, ';')
+    case 'targets': return value.split(/\s+/).filter(s => s !== '').sort().join(' ')
     case 'number': return key === 'memory' && value === '' ? '0' : value.trim()
     default: return value
   }
@@ -127,6 +143,17 @@ export function customEnvPairs(value: string | Record<string, string | number | 
     })
   }
   return Object.entries(value).map(([k, v]) => [k, String(v)] as [string, string])
+}
+
+/** volume-targets entries as `[volume, container path]` pairs sorted by volume; a space-joined string and a map are both taken. */
+export function targetPairs(value: string | Record<string, string | number | boolean>): [string, string][] {
+  const pairs: [string, string][] = typeof value === 'string'
+    ? value.split(/\s+/).filter(s => s !== '').map(s => {
+        const i = s.indexOf('=')
+        return (i === -1 ? [s, ''] : [s.slice(0, i), s.slice(i + 1)]) as [string, string]
+      })
+    : Object.entries(value).map(([k, v]) => [k, String(v)] as [string, string])
+  return pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
 }
 
 /**

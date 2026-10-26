@@ -7,6 +7,7 @@ import {
 } from './volume-rules.js'
 import { REGISTRY_GLOBAL_KEYS } from '../modules/global.js'
 import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs } from '../modules/service-property-keys.js'
+import { MANAGED_PROPERTIES, rejectedReason, customEnvPairs, targetPairs } from '../modules/service-property-keys.js'
 
 /** A free-form property map that only takes keys Dokku's `<ns>:set` accepts. */
 function propertyMap<V extends z.ZodTypeAny>(namespace: string, keys: readonly string[], value: V, scope = '') {
@@ -361,6 +362,19 @@ const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superR
       if (typeof value === 'string' && /[\r\n]/.test(value)) issue(key, `'${key}' must be a single line`)
       continue
     }
+    if (kind === 'targets') {
+      if (Array.isArray(value)) { issue(key, `'${key}' takes a map of volumes to container paths`); continue }
+      const seen = new Set<string>()
+      for (const [volume, target] of targetPairs(value as string | Record<string, string | number | boolean>)) {
+        if (volume === '' || target === '') { issue(key, `'${volume}' needs a container path (<volume>=<container-path>)`); continue }
+        if (seen.has(volume)) issue(key, `the volume ${volume} is moved more than once`)
+        seen.add(volume)
+        if (!target.startsWith('/')) issue(key, `the container path of ${volume} must be absolute`)
+        else if (/[:,\s]/.test(target)) issue(key, `the container path of ${volume} must not contain a colon, a comma or whitespace`)
+        else if (target.replace(/\/+$/, '') === '') issue(key, `the volume ${volume} must not be mounted at /`)
+      }
+      continue
+    }
     if (kind === 'list') {
       const items = Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : undefined
       if (!items) { issue(key, `'${key}' takes a list`); continue }
@@ -376,6 +390,8 @@ const ServicePropertiesSchema = z.record(z.string(), PropertyValueSchema).superR
       if (text === EXPORT_PLACEHOLDER) issue(key, placeholderMessage)
     } else if (key === 'memory') {
       if (!/^\d+$/.test(text.trim())) issue(key, 'memory is a whole number of megabytes (0 for no limit)')
+    } else if (key === 'service-memory') {
+      if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'service-memory is a whole number of megabytes greater than 0')
     } else if (key === 'wait-timeout') {
       if (!/^\d+$/.test(text.trim()) || Number(text) < 1) issue(key, 'wait-timeout is a whole number of seconds greater than 0')
     }

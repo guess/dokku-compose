@@ -88,6 +88,8 @@ postgres:
         TZ: UTC
         PGOPTIONS: "-c work_mem=8MB"
       password: Zq7-Hk9vbn2
+      volume-targets:
+        data: /var/lib/postgresql/data
     mounts:
       - /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra
       - dbvol:/opt/data:ro
@@ -108,6 +110,7 @@ redis:
       log-opt: [max-size=10m, max-file=3]
       wait-timeout: 90
       config-options: "--maxmemory-policy allkeys-lru"
+      service-memory: 64
     mounts: []
     backup:
       schedule: "0 * * * *"

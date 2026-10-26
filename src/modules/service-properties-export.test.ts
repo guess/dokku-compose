@@ -41,8 +41,14 @@ describe.each(['postgres', 'redis'] as const)('%s export of properties and mount
   })
 
   it('writes only keys it manages: not backup, expose, unknown or read-only info keys', async () => {
-    const out = await exported({ 'backup-bucket': 'b', 'expose-mode': 'direct', 'port-bind-address': '127.0.0.1', 'some-future-key': 'x', status: 'running', 'volume-targets': 'a=/b' })
+    const out = await exported({ 'backup-bucket': 'b', 'expose-mode': 'direct', 'port-bind-address': '127.0.0.1', 'some-future-key': 'x', status: 'running' })
     expect(out).toEqual({})
+  })
+
+  it('writes volume-targets as a map and service-memory as a number', async () => {
+    expect(await exported({ 'volume-targets': 'data=/var/lib/x backups=/srv/b', 'service-memory': '256' })).toEqual({
+      properties: { 'volume-targets': { backups: '/srv/b', data: '/var/lib/x' }, 'service-memory': 256 },
+    })
   })
 
   it('writes the mounts as a normalised sorted list', async () => {

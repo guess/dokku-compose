@@ -23,6 +23,12 @@ describe('createArgs', () => {
     ])
   })
 
+  it('gives volume-targets one --volume-target per volume, sorted, and service-memory its own flag', () => {
+    expect(createArgs({ properties: { 'volume-targets': { data: '/var/lib/x', backups: '/srv/b' }, 'service-memory': 256 } })).toEqual([
+      '--volume-target', 'backups=/srv/b', '--volume-target', 'data=/var/lib/x', '--service-memory', '256',
+    ])
+  })
+
   it('leaves out keys with no built-in entry: they are set once the service exists', () => {
     expect(createArgs({ properties: { 'some-future-key': 'x' } })).toEqual([])
     expect(createArgs({})).toEqual([])

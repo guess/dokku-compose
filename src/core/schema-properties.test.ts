@@ -15,6 +15,7 @@ describe('service properties', () => {
       'log-opt': ['max-size=10m', 'max-file=3'], 'wait-timeout': 120, 'initial-network': 'myapp-net',
       'post-create-network': ['myapp-net', 'other-net'], 'post-start-network': 'myapp-net',
       'config-options': '-c max_connections=200', 'custom-env': { TZ: 'UTC', N: 1, ON: true }, password: 'hunter2.ok_~-',
+      'volume-targets': { data: '/var/lib/data', backups: '/srv/backups/' }, 'service-memory': 256,
     }
     expect(issues(props)).toBe('')
     expect(issues(props, 'redis')).toBe('')
@@ -31,8 +32,6 @@ describe('service properties', () => {
     expect(issues({ 'port-source-range': '10.0.0.0/8' })).toContain('not managed yet')
     expect(issues({ 'root-password': 'x' })).toContain('no root password')
     expect(issues({ 'export-args': '--x' })).toContain('not managed')
-    expect(issues({ 'volume-targets': 'a=/b' })).toContain('rarely needed')
-    expect(issues({ 'service-memory': '100' }, 'redis')).toContain('rarely needed')
     expect(issues({ mounts: '/a:/b' })).toContain('mounts:')
     expect(issues({ version: '17' })).toContain('beside `properties`')
     expect(issues({ image: 'postgres' })).toContain('beside `properties`')
@@ -45,6 +44,22 @@ describe('service properties', () => {
     expect(issues({ 'custom-env': { TOKEN: 'REPLACE_ME' } })).toContain('REPLACE_ME')
     expect(issues({ 'custom-env': ['A=1'] })).toContain('map')
     expect(issues({ 'custom-env': 'A=1;B=2' })).toBe('')
+  })
+
+  it('checks volume-targets: absolute paths without colon, comma or space, not /, one entry per volume', () => {
+    expect(issues({ 'volume-targets': 'a=/x b=/y' })).toBe('')
+    expect(issues({ 'volume-targets': { a: 'relative' } })).toContain('absolute')
+    expect(issues({ 'volume-targets': { a: '/x:ro' } })).toContain('colon')
+    expect(issues({ 'volume-targets': { a: '/' } })).toContain('at /')
+    expect(issues({ 'volume-targets': 'a=/x a=/y' })).toContain('more than once')
+    expect(issues({ 'volume-targets': 'a' })).toContain('container path')
+    expect(issues({ 'volume-targets': ['a=/x'] })).toContain('map')
+  })
+
+  it('checks service-memory: a whole number of megabytes greater than 0', () => {
+    expect(issues({ 'service-memory': 64 }, 'redis')).toBe('')
+    expect(issues({ 'service-memory': 0 }, 'redis')).toContain('greater than 0')
+    expect(issues({ 'service-memory': 'big' }, 'redis')).toContain('greater than 0')
   })
 
   it('checks the password: allowed characters, not empty, not the placeholder', () => {

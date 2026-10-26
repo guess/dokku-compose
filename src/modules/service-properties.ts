@@ -5,7 +5,7 @@ import { logAction, logDone, logError, logSkip } from '../core/logger.js'
 import { normalizeLink } from './links.js'
 import { forgetServiceInfo, readServiceInfo, field, type ServiceInfo, type ServiceMismatch } from './service-drift.js'
 import {
-  MANAGED_PROPERTIES, PRUNABLE_PROPERTIES, propertyString, sameProperty, isDefaultProperty, mountSet, parseInfoMounts,
+  MANAGED_PROPERTIES, PRUNABLE_PROPERTIES, propertyString, targetPairs, sameProperty, isDefaultProperty, mountSet, parseInfoMounts,
   type ServicePlugin,
 } from './service-property-keys.js'
 
@@ -24,7 +24,10 @@ export function createArgs(declared: ServicePropertiesInput): string[] {
   const args: string[] = []
   for (const [key, value] of declaredEntries(declared.properties)) {
     const spec = MANAGED_PROPERTIES[key]
-    if (spec) args.push(`--${spec.createFlag}`, value)
+    if (!spec) continue
+    // volume-targets: one --volume-target <volume>=<path> per entry
+    if (spec.repeat) for (const pair of value.split(' ')) args.push(`--${spec.createFlag}`, pair)
+    else args.push(`--${spec.createFlag}`, value)
   }
   for (const mount of declared.mounts ?? []) args.push('--volume', mount)
   return args
@@ -227,6 +230,7 @@ export async function exportServiceProperties(
       case 'list': properties[key] = current.split(',').filter(v => v !== ''); break
       case 'map': properties[key] = Object.fromEntries(current.split(';').filter(v => v !== '').map(p => [p.split('=')[0], EXPORT_PLACEHOLDER])); break
       case 'number': properties[key] = Number(current); break
+      case 'targets': properties[key] = Object.fromEntries(targetPairs(current)); break
       default: properties[key] = current
     }
   }

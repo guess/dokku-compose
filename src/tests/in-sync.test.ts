@@ -64,10 +64,11 @@ const DB_PROPERTIES = {
   memory: '512', 'shm-size': '256m', 'restart-policy': 'unless-stopped', 'post-create-network': 'other-net,backend-net',
   'custom-env': 'PGOPTIONS=-c work_mem=8MB;TZ=UTC', 'password-fingerprint': PASSWORD_FINGERPRINT,
   mounts: 'dbvol:/opt/data:ro /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra',
+  'volume-targets': 'data=/var/lib/postgresql/data',
 }
 const REDIS_PROPERTIES = {
   memory: '128', 'log-driver': 'json-file', 'log-opt': 'max-file=3,max-size=10m', 'wait-timeout': '90',
-  'config-options': '--maxmemory-policy allkeys-lru', mounts: '',
+  'config-options': '--maxmemory-policy allkeys-lru', mounts: '', 'service-memory': '64',
 }
 
 function inSyncServer(): FakeServer {
@@ -1130,7 +1131,7 @@ describe('datastore properties and mounts', () => {
     const { ctx, runner } = fakeContext(server)
     await runUp(ctx, loadConfig(FIXTURE), ['__none__'], { dryRun: true })
     expect(runner.dryRunLog[0]).toBe(
-      "postgres:create myapp-db --image postgis/postgis --image-version 17-3.5 --memory 512 --shm-size 256m --restart unless-stopped --post-create-network backend-net,other-net --custom-env 'TZ=UTC;PGOPTIONS=-c work_mem=8MB' --password Zq7-Hk9vbn2 --volume /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra --volume dbvol:/opt/data:ro",
+      "postgres:create myapp-db --image postgis/postgis --image-version 17-3.5 --memory 512 --shm-size 256m --restart unless-stopped --post-create-network backend-net,other-net --custom-env 'TZ=UTC;PGOPTIONS=-c work_mem=8MB' --password Zq7-Hk9vbn2 --volume-target data=/var/lib/postgresql/data --volume /var/lib/dokku/data/storage/myapp-db-extra:/opt/extra --volume dbvol:/opt/data:ro",
     )
     expect(ctx.serviceRestarts.size).toBe(0)
     expect(maskSensitiveArgs(runner.dryRunLog[0])).not.toContain('Zq7-Hk9vbn2')
